@@ -129,6 +129,7 @@ class ArmyCash:
     def hire_unit(self, unit_name, unit_cost, quantity, unit_stats, unit_image):
         """
         Нанимает юнит (оружие), если ресурсов достаточно и соблюдены правила найма по классам.
+
         :param unit_name: Название юнита.
         :param unit_cost: Стоимость юнита в виде кортежа (кроны, рабочие).
         :param quantity: Количество нанимаемых юнитов.
@@ -156,42 +157,61 @@ class ArmyCash:
 
         # Получаем класс юнита
         try:
-            unit_class = int(unit_stats["Класс юнита"].split()[0])  # Например, "1 класс" -> 1
+            unit_class_str = unit_stats.get("Класс юнита", "")
+            unit_class = int(unit_class_str.split()[0])  # Например, "1 класс" -> 1
         except (ValueError, KeyError, IndexError):
-            print("[ERROR] Не удалось определить класс юнита.")
+            print(f"[ERROR] Не удалось определить класс юнита. Получено значение: '{unit_class_str}'")
             return False
 
-        # Проверяем ограничения по классу
+        # --- 🛡️ Основная проверка ограничений по классу ---
         if unit_class == 1:
-            # Класс 1: неограниченный найм
+            # Класс 1 — можно нанимать всегда, без дополнительных проверок
             pass
+
         elif unit_class in [2, 3, 4]:
-            # Проверяем, есть ли уже юнит этого класса у фракции
-            self.cursor.execute("""
-                SELECT u.unit_class
-                FROM garrisons g
-                JOIN units u ON g.unit_name = u.unit_name
-                WHERE g.city_id IN (
-                    SELECT city_id FROM cities WHERE faction = ?
-                ) AND u.unit_class = ?
-            """, (self.faction, unit_class))
-            existing = self.cursor.fetchone()
+            # Проверяем, есть ли уже юнит этого класса в armies или garrisons
+            try:
+                # Проверка в armies
+                self.cursor.execute("""
+                    SELECT 1
+                    FROM armies
+                    WHERE faction = ? AND unit_class = ?
+                    LIMIT 1
+                """, (self.faction, str(unit_class)))  # <-- Теперь сравниваем с числом как строкой
 
-            if existing:
-                self.show_message(
-                    title="Ошибка найма",
-                    message=f"Герой {unit_class} класса уже существует у вашей фракции.\n"
-                            f"Одновременно можно иметь только одного героя такого класса."
-                )
+                exists_in_armies = self.cursor.fetchone()
+
+                # Проверка в garrisons через units
+                self.cursor.execute("""
+                    SELECT 1
+                    FROM garrisons g
+                    JOIN units u ON g.unit_name = u.unit_name
+                    WHERE u.faction = ? AND u.unit_class = ?
+                    LIMIT 1
+                """, (self.faction, str(unit_class)))  # <-- То же самое
+
+                exists_in_garrisons = self.cursor.fetchone()
+
+                if exists_in_armies or exists_in_garrisons:
+                    self.show_message(
+                        title="Ошибка найма",
+                        message=f"Герой {unit_class} класса уже существует у вашей фракции.\n"
+                                f"Одновременно можно иметь только одного героя такого класса."
+                    )
+                    return False
+
+                # Герои: только один
+                if quantity > 1:
+                    self.show_message(
+                        title="Ошибка найма",
+                        message=f"Можно нанять только одного героя {unit_class} класса."
+                    )
+                    return False
+
+            except sqlite3.Error as e:
+                print(f"[ERROR] Ошибка при проверке существующего героя: {e}")
                 return False
 
-            # Ограничиваем количество до 1
-            if quantity > 1:
-                self.show_message(
-                    title="Ошибка найма",
-                    message=f"Можно нанять только одного героя {unit_class} класса."
-                )
-                return False
         else:
             self.show_message(
                 title="Ошибка найма",
@@ -208,6 +228,7 @@ class ArmyCash:
             message=f"{unit_name} нанят!\n"
                     f"Потрачено: {format_number(required_crowns)} крон и {format_number(required_workers)} рабочих."
         )
+
         return True
 
     def add_or_update_army_unit(self, unit_name, quantity, unit_stats, unit_image):
@@ -427,7 +448,10 @@ def start_army_mode(faction, game_area, class_faction, conn):
 
     # Загрузка и сортировка юнитов
     unit_data = load_unit_data(faction, conn)
-    sorted_units = sorted(unit_data.items(), key=lambda x: int(x[1]['stats']['Класс юнита'].split()[0]))
+    sorted_units = sorted(
+        unit_data.items(),
+        key=lambda x: int(x[1]['stats']['Класс юнита'].split()[0])
+    )
 
     # Создание слайдов
     for unit_name, unit_info in sorted_units:
@@ -460,7 +484,11 @@ def start_army_mode(faction, game_area, class_faction, conn):
         card.bind(pos=update_bg, size=update_bg)
 
         # Заголовок
-        header = BoxLayout(size_hint=(1, 0.12), orientation='horizontal', padding=dp(5))
+        header = BoxLayout(
+            size_hint=(1, 0.12),
+            orientation='horizontal',
+            padding=[dp(140), dp(5), dp(5), dp(5)],  # слева — 40dp
+        )
         title = Label(
             text=unit_name,
             font_size='18sp',
@@ -472,18 +500,55 @@ def start_army_mode(faction, game_area, class_faction, conn):
             size_hint=(None, None),
             width=dp(1)
         )
-
-        def update_title_width(instance, texture_size):
-            instance.width = texture_size[0] + dp(10)
-
-        title.bind(texture_size=update_title_width)
+        title.bind(texture_size=lambda inst, ts: setattr(inst, 'width', ts[0] + dp(10)))
         header.add_widget(title)
 
-        # Тело карточки
-        body = BoxLayout(orientation='horizontal', size_hint=(1, 0.6), spacing=dp(60))
+        # Тело карточки: сначала иконки‑статы, потом изображение
+        body = BoxLayout(orientation='horizontal', size_hint=(1, 0.6), spacing=dp(20))
 
-        # Изображение
-        img_container = BoxLayout(orientation='vertical', size_hint=(0.5, 1), padding=[0, dp(10), 0, 0])
+        # Контейнер для иконок‑стат
+        stats_icons = {
+            'Урон': 'files/pict/hire/sword.png',
+            'Защита': 'files/pict/hire/shield.png',
+            'Живучесть': 'files/pict/hire/health.png',
+            'Класс': 'files/pict/hire/class.png',
+            'Потребление': 'files/pict/hire/consumption.png',
+        }
+        stats_container = BoxLayout(orientation='vertical', size_hint=(0.4, 1), spacing=dp(10))
+        for stat_name, icon_src in stats_icons.items():
+            stat_line = BoxLayout(orientation='horizontal', size_hint=(1, None), height=dp(30), spacing=dp(5))
+            stat_line.add_widget(Image(
+                source=icon_src,
+                size_hint=(None, None),
+                size=(dp(24), dp(24)),
+                allow_stretch=True,
+                keep_ratio=True
+            ))
+
+            # выбираем правильный ключ в unit_info['stats']
+            if stat_name == 'Класс':
+                key = 'Класс юнита'
+            elif stat_name == 'Потребление':
+                key = 'Потребление сырья'
+            else:
+                key = stat_name
+
+            value = unit_info['stats'].get(key, '')
+            if key in ('Урон', 'Защита', 'Живучесть', 'Потребление сырья'):
+                value = format_number(value)
+
+            stat_line.add_widget(Label(
+                text=str(value),
+                font_size='16sp',
+                bold=True,
+                color=TEXT_COLOR,
+                halign='left',
+                valign='middle'
+            ))
+            stats_container.add_widget(stat_line)
+
+        # Контейнер для изображения
+        img_container = BoxLayout(orientation='vertical', size_hint=(0.6, 1), padding=[0, dp(10), 0, 0])
         img = Image(
             source=unit_info['image'],
             size_hint=(1, 1),
@@ -493,39 +558,9 @@ def start_army_mode(faction, game_area, class_faction, conn):
         )
         img_container.add_widget(img)
 
-        # Статистика
-        stats_container = BoxLayout(orientation='vertical', size_hint=(0.5, 1), spacing=dp(-5))
-        main_stats = [
-            ('Урон', format_number(unit_info['stats']['Урон']), '#FFFFFF'),
-            ('Защита', format_number(unit_info['stats']['Защита']), '#FFFFFF'),
-            ('Живучесть', format_number(unit_info['stats']['Живучесть']), '#FFFFFF'),
-            ('Класс', unit_info['stats']['Класс юнита'], '#FFFFFF'),
-            ('Потребление', format_number(unit_info['stats']['Потребление сырья']), '#FFFFFF')
-        ]
-        for name, value, color in main_stats:
-            stat_line = BoxLayout(orientation='horizontal', size_hint=(1, None), height='30sp')
-            lbl_name = Label(
-                text=f"[color={color}]{name}[/color]",
-                markup=True,
-                font_size='14sp',
-                halign='left',
-                size_hint=(0.8, 1),
-                text_size=(None, None)
-            )
-            lbl_value = Label(
-                text=str(value),
-                font_size='16sp',
-                bold=True,
-                color=TEXT_COLOR,
-                size_hint=(0.2, 1),
-                halign='right'
-            )
-            stat_line.add_widget(lbl_name)
-            stat_line.add_widget(lbl_value)
-            stats_container.add_widget(stat_line)
-
-        body.add_widget(img_container)
+        # Добавляем в тело сначала stats, потом картинку
         body.add_widget(stats_container)
+        body.add_widget(img_container)
 
         # Стоимость
         cost_container = BoxLayout(
@@ -585,25 +620,16 @@ def start_army_mode(faction, game_area, class_faction, conn):
 
         cost_values.add_widget(money_stat)
         cost_values.add_widget(time_stat)
-
         cost_container.add_widget(price_label)
         cost_container.add_widget(cost_values)
 
         # Контроллеры найма
+        unit_class = int(unit_info['stats']['Класс юнита'].split()[0])
         control_panel = BoxLayout(
             size_hint=(1, 0.18),
             orientation='horizontal',
             spacing=dp(10),
             padding=[dp(5), dp(10), dp(5), dp(5)]
-        )
-        input_qty = TextInput(
-            hint_text='Количество',
-            input_filter='int',
-            font_size='14sp',
-            size_hint=(0.6, 1),
-            background_color=INPUT_BACKGROUND,
-            halign='center',
-            multiline=False
         )
         btn_hire = Button(
             text='НАБРАТЬ',
@@ -613,25 +639,51 @@ def start_army_mode(faction, game_area, class_faction, conn):
             color=TEXT_COLOR,
             size_hint=(0.4, 1)
         )
-        btn_hire.bind(
-            on_release=lambda inst, name=unit_name, cost=unit_info['cost'],
-                              input_box=input_qty, stats=unit_info['stats'], image=unit_info["image"]:
-            broadcast_units(name, cost, input_box, army_hire, image, stats)
-        )
-        control_panel.add_widget(input_qty)
+
+        # Если первый класс — добавляем поле ввода
+        if unit_class == 1:
+            input_qty = TextInput(
+                hint_text='Количество',
+                input_filter='int',
+                font_size='14sp',
+                size_hint=(0.6, 1),
+                background_color=INPUT_BACKGROUND,
+                halign='center',
+                multiline=False
+            )
+            btn_hire.bind(
+                on_release=lambda inst, name=unit_name, cost=unit_info['cost'],
+                                  input_box=input_qty, stats=unit_info['stats'], image=unit_info["image"]:
+                broadcast_units(name, cost, input_box, army_hire, image, stats)
+            )
+            control_panel.add_widget(input_qty)
+        else:
+            btn_hire = Button(
+                text='НАНЯТЬ',
+                font_size='16sp',
+                bold=True,
+                background_color=PRIMARY_COLOR,
+                color=TEXT_COLOR,
+                size_hint=(0.4,1)
+            )
+            btn_hire.bind(
+                on_release=lambda inst, name=unit_name, cost=unit_info['cost'],
+                                  stats=unit_info['stats'], image=unit_info["image"]:
+                broadcast_units(name, cost, None, army_hire, image, stats)
+            )
+
         control_panel.add_widget(btn_hire)
 
-        # Сборка карточки
+        # Вставляем контроллеры в карточку и в карусель
         card.add_widget(control_panel)
+        carousel.add_widget(slide)
         card.add_widget(body)
         card.add_widget(header)
         card.add_widget(cost_container)
         slide.add_widget(card)
-        carousel.add_widget(slide)
 
     # Добавляем стрелки прокрутки
     arrow_size = dp(60)
-
     arrow_right = Image(
         source='files/pict/right.png',
         size_hint=(None, None),
@@ -698,21 +750,18 @@ def start_army_mode(faction, game_area, class_faction, conn):
     game_area.add_widget(float_layout)
 
 
-
-
-def set_font_size(relative_size):
-    """Вычисляет размер шрифта относительно размера окна"""
-    from kivy.core.window import Window
-    return Window.width * relative_size
-
-
 def broadcast_units(unit_name, unit_cost, quantity_input, army_hire, image, unit_stats):
     try:
-        quantity = int(quantity_input.text) if quantity_input.text else 0
+        # Если input передан — берём оттуда, иначе — один юнит
+        if quantity_input is not None:
+            qty_text = quantity_input.text.strip()
+            quantity = int(qty_text) if qty_text else 0
+        else:
+            quantity = 1
+
         if quantity <= 0:
             raise ValueError("Количество должно быть положительным числом")
 
-        # Вызываем метод найма с передачей всех необходимых параметров
         army_hire.hire_unit(
             unit_name=unit_name,
             unit_cost=unit_cost,
@@ -740,6 +789,10 @@ def show_army_message(title, message):
         background_color=BACKGROUND_COLOR)
     popup.open()
 
+def set_font_size(relative_size):
+    """Вычисляет размер шрифта относительно размера окна"""
+    from kivy.core.window import Window
+    return Window.width * relative_size
 
 #---------------------------------------------------------------
 class StyledButton(Button):
