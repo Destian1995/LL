@@ -315,26 +315,29 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
     def calculate_bonuses(hero_list):
         bonus_attack = 0
         bonus_defense = 0
+        bonus_health = 0
         for hero in hero_list:
             stats = hero.get('units_stats', {})
             bonus_attack += stats.get('Урон', 0)
             bonus_defense += stats.get('Защита', 0)
-        return bonus_attack, bonus_defense
+            bonus_health += stats.get('Живучесть', 0)
+        return bonus_attack, bonus_defense, bonus_health
 
     # Применение бонусов к базовым юнитам
-    def apply_bonus(base_units, attack_bonus, defense_bonus):
+    def apply_bonus(base_units, attack_bonus, defense_bonus, bonus_health):
         for u in base_units:
             u['units_stats']['Урон'] += attack_bonus
             u['units_stats']['Защита'] += defense_bonus
+            u['units_stats']['Живучесть'] += bonus_health
         return base_units
 
     # Расчет бонусов от героев
-    atk_attack_bonus, atk_defense_bonus = calculate_bonuses(atk_hero_2 + atk_hero_3)
-    def_attack_bonus, def_defense_bonus = calculate_bonuses(def_hero_2 + def_hero_3)
+    atk_attack_bonus, atk_defense_bonus, atk_health_bonus = calculate_bonuses(atk_hero_2 + atk_hero_3)
+    def_attack_bonus, def_defense_bonus, def_health_bonus = calculate_bonuses(def_hero_2 + def_hero_3)
 
     # Накладываем бонусы на базовые юниты
-    modified_atk_base = apply_bonus(atk_base, atk_attack_bonus, atk_defense_bonus)
-    modified_def_base = apply_bonus(def_base, def_attack_bonus, def_defense_bonus)
+    modified_atk_base = apply_bonus(atk_base, atk_attack_bonus, atk_defense_bonus, atk_health_bonus)
+    modified_def_base = apply_bonus(def_base, def_attack_bonus, def_defense_bonus, def_health_bonus)
 
     # Объединяем обратно
     modified_attacking = modified_atk_base + atk_hero_2 + atk_hero_3 + atk_legendary
@@ -343,7 +346,7 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
     # Сортировка по классу и урону
     def priority(u):
         stats = u.get('units_stats', {})
-        unit_class = int(stats.get('Класс юнита', 0))
+        unit_class = int(stats.get('Класс юнита', '1 класс').split()[0])
         attack = int(stats.get('Урон', 0))
         return (unit_class, -attack)
 
