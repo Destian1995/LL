@@ -1,80 +1,110 @@
 [app]
 
-# Название моего тайтла
-title = Лэрдон
+# ---------------------------------
+# Основные параметры приложения
+# ---------------------------------
 
-# Package name (без пробелов и спецсимволов)
-package.name = lerdon
+# Название (отображаемое в лаунчере)
+title = Лэрдон-Легенды
 
-# Domain (должен быть уникальным)
-package.domain = com.lerdon
+# Уникальное имя пакета (без пробелов)
+package.name = lerdonlegends
 
-# Source code directory
-source.dir = .
+# Уникальный домен (обычно в обратном порядке)
+package.domain = com.lerdonlegends
 
-# Include files (расширения файлов для включения)
-source.include_exts = py,png,jpg,ttf,mp3,mp4,db,sqlite3,json,txt
-
-android.add_assets = files/menu/dossier
-# Include patterns (шаблоны для включения файлов)
-source.include_patterns = \
-    assets/*, \
-    files/*, \
-    files/menu/dossier/*.png, \
-    game_data.db, \
-    *.py
-
-# Main source file
+# Основная точка входа вашего приложения
 source.main = main.py
 
-# Requirements (зависимости)
-requirements = python3==3.11.0,kivy==2.1.0,pyjnius==1.5.0,cython==0.29.33,android,ffpyplayer,ffmpeg
-p4a.python_version = 3.11
-p4a.whitelist = python3.11
+# Директория с исходниками (обычно корневая папка проекта)
+source.dir = .
 
+# Расширения файлов, которые нужно включать в сборку
+# (чтобы рядом с .py попадали .png, .jpg, .ttf и т.д.)
+source.include_exts = py,png,jpg,ttf,mp3,mp4,db,sqlite3,json,txt
 
-# Application version
-version = 0.99.70
+# Паттерны (шаблоны) для включения файлов в APK
+# (можно прописать дополнительные папки, например game_data.db или assets)
+source.include_patterns = assets/*, files/*, game_data.db, *.py
 
-# Application author
-author = Vladislav Lerdon Team
-
-# Image file
+# Картинка-иконка приложения и presplash
 icon.filename = %(source.dir)s/assets/icon.png
 presplash.filename = %(source.dir)s/assets/splash.png
 
-orientation = landscape
-
-# Application description
+# Короткое текстовое описание
 description = Стратегическая игра Lerdon с элементами экономики и политики.
 
-# Android permissions
-android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
+# Версия приложения (формат X.Y.Z)
+version = 1.0.0
 
-# Android API level
-android.api = 34
+# Автор(ы)
+author = Vladislav Lerdon Team
 
-# Minimum Android API level
+# ---------------------------------
+# Python / Kivy / зависимости
+# ---------------------------------
+
+# Основные зависимости, которые будут установлены внутри APK.
+# Указываем без пробелов, разделяя запятой:
+requirements = python3==3.11.0, kivy==2.1.0, pyjnius==1.5.0, cython==0.29.33, ffpyplayer, ffmpeg, sdl2, sdl2_image, sdl2_mixer, sdl2_ttf
+
+# Ядро Python-for-Android:
+p4a.python_version = 3.11.0
+p4a.whitelist = python3.11.0
+
+# ---------------------------------
+# Параметры Android
+# ---------------------------------
+
+# Версии SDK/NDK/API (Android)
+android.api = 33
 android.minapi = 21
-
-# NDK API level
+android.ndk = 25b
 android.ndk_api = 21
 
-# Версия NDK
-android.ndk = 25b
+# Сборка через конкретный SDK и Build Tools (опционально, Buildozer сам его подтянет)
+android.sdk = 33
+android.build_tools = 33.0.0
 
-# Использовать конкретную версию SDK
-android.sdk = 34
-android.build_tools = 34
+# Архитектуры, которые должна поддерживать сборка.
+# Если не указать какую-либо, библиотеки туда не попадут.
+android.archs = arm64-v8a, armeabi-v7a
 
-# Fullscreen mode
+# Если нужно собирать «bundle» (AAB) вместо «apk», переключите в True
+android.bundle = False
+
+# Полностью прозрачное приложение (полноэкранное)
 fullscreen = 1
 
-# Log уровень
-log_level = 2
+# Перечисляем разрешения, которые запрашиваем у пользователя
+android.permissions = INTERNET, WRITE_EXTERNAL_STORAGE, READ_EXTERNAL_STORAGE
 
-# Не очищать сборку при каждом запуске (позволит быстрее отлаживать)
+# Уровень логов (0–verbosity: debug, 1: info, 2: warning, 3: error)
+log_level = 0
+
+# ---------------------------------
+# Release-подпись
+# ---------------------------------
+
+# Включаем режим «release» и указываем keystore для автоподписи
+# Формат: <keystore-файл>|<alias>|<пароль keystore>|<пароль ключа>
+android.release = True
+#android.release_signature = /home/vagrant/Lerdon/signkey.keystore|lerdon-release|mypassword|mypassword
+
+# Если вы хотите явно задать, что артефакт — только .apk (не AAB), указываем:
+android.release_artifact = apk
+
+# ---------------------------------
+# Прочие параметры сборки
+# ---------------------------------
+
+# Если собрать «не очищая» предыдущие артефакты, ускоряется отладка
 buildozer.build_logfile = buildozer.log
 
-# Архитектура Android
-android.archs = x86, arm64-v8a, armeabi-v7a, x86_64
+# Пакетировать дополнительные ресурсы (например, папки внутри assets)
+android.add_assets = files
+
+# Ориентация экрана (portrait или landscape)
+orientation = landscape
+
+#p4a.bootstrap = sdl2
