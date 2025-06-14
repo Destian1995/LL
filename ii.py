@@ -1772,28 +1772,34 @@ class AIController:
             print(f"[ERROR] Ошибка при атаке города: {e}")
 
     def capture_city(self, city_name):
-        """
-        Захватывает город под контроль текущей фракции.
-        :param city_name: Название захваченного города
-        """
-        print("---------------------------------")
-        print("city_name", city_name)
-        print("---------------------------------")
+        """Захватывает город под контроль текущей фракции."""
         try:
             with self.db_connection:
+                cursor = self.db_connection.cursor()
+
+                # Получаем текущее имя города
+                cursor.execute("SELECT name FROM cities WHERE name = ?", (city_name,))
+                result = cursor.fetchone()
+                if not result:
+                    print(f"[ERROR] Город {city_name} не найден.")
+                    return
+
+                old_city_name = result[0]
+
+                # Формируем новое имя
+                new_city_name = self.update_city_name_with_faction(old_city_name, self.faction)
+
                 # Удаляем гарнизон противника
-                self.cursor.execute("""
-                    DELETE FROM garrisons WHERE city_id = ?
-                """, (city_name,))
+                cursor.execute("DELETE FROM garrisons WHERE city_id = ?", (city_name,))
 
                 # Перемещаем атакующую армию в захваченный город
                 for unit in self.attacking_army:
-                    self.cursor.execute("""
+                    cursor.execute("""
                         INSERT INTO garrisons (city_id, unit_name, unit_count, unit_image)
                         VALUES (?, ?, ?, ?)
                         ON CONFLICT(city_id, unit_name) DO UPDATE SET
-                        unit_count = excluded.unit_count,
-                        unit_image = excluded.unit_image
+                            unit_count = excluded.unit_count,
+                            unit_image = excluded.unit_image
                     """, (
                         city_name,
                         unit['unit_name'],
@@ -1801,29 +1807,18 @@ class AIController:
                         self.get_unit_image(unit['unit_name'])
                     ))
 
-                # Обновляем принадлежность города в таблице cities
-                self.cursor.execute("""
-                    UPDATE cities
-                    SET faction = ?
-                    WHERE name = ?
-                """, (self.faction, city_name))
+                # Обновляем данные о городе
+                cursor.execute("UPDATE cities SET name = ?, faction = ? WHERE name = ?",
+                               (new_city_name, self.faction, old_city_name))
+                cursor.execute("UPDATE city SET kingdom = ? WHERE fortress_name = ?",
+                               (self.faction, new_city_name))
+                cursor.execute("UPDATE buildings SET faction = ? WHERE city_name = ?",
+                               (self.faction, new_city_name))
 
-                self.cursor.execute("""
-                    UPDATE city
-                    SET kingdom = ?
-                    WHERE fortress_name = ?
-                """, (self.faction, city_name))
+                print(f"Город {old_city_name} захвачен и переименован в {new_city_name}.")
 
-                # Обновляем принадлежность зданий
-                self.cursor.execute("""
-                    UPDATE buildings
-                    SET faction = ?
-                    WHERE city_id = ?
-                """, (self.faction, city_name))
-
-                print(f"Город {city_name} успешно захвачен фракцией {self.faction}.")
         except sqlite3.Error as e:
-            print(f"Ошибка при захвате города: {e}")
+            print(f"[ERROR] Ошибка при захвате города: {e}")
 
     def update_buildings_for_current_cities(self):
         """
@@ -1952,6 +1947,11 @@ class AIController:
                     else:
                         print(f"Отношения с фракцией {faction} упали ниже 12%, "
                               f"но сила противника слишком велика. Война не объявлена.")
+            if our_strength > 0:
+                target_city = self.find_nearest_neutral_city()
+                if target_city:
+                    print(f"Обнаружен нейтральный город: {target_city}. Начинаем захват.")
+                    self.attack_city(target_city, "Нейтралитет")
         except Exception as e:
             print(f"Ошибка при проверке и объявлении войны: {e}")
 
@@ -2283,7 +2283,43 @@ class AIController:
         except sqlite3.Error as e:
             print(f"Ошибка сохранения результатов: {e}")
 
+    def find_nearest_neutral_city(self):
+        """
+        Находит ближайший нейтральный город для атаки.
+        :return: Имя ближайшего нейтрального города или None
+        """
+        try:
+            # Получаем координаты всех своих городов
+            query = "SELECT fortress_name, coordinates FROM city WHERE kingdom = ?"
+            self.cursor.execute(query, (self.faction,))
+            our_cities = self.cursor.fetchall()
 
+            # Получаем все нейтральные города
+            query = "SELECT fortress_name, coordinates FROM city WHERE kingdom = 'Нейтралитет'"
+            self.cursor.execute(query)
+            neutral_cities = self.cursor.fetchall()
+
+            for our_city_name, our_coords in our_cities:
+                our_coords = our_coords.strip("[]")
+                our_x, our_y = map(int, our_coords.split(','))
+                for city_name, city_coords in neutral_cities:
+                    city_coords = city_coords.strip("[]")
+                    enemy_x, enemy_y = map(int, city_coords.split(','))
+                    distance = abs(our_x - enemy_x) + abs(our_y - enemy_y)
+                    if distance < 225:
+                        return city_name
+            return None
+        except sqlite3.Error as e:
+            print(f"Ошибка при поиске нейтрального города: {e}")
+            return None
+
+    def update_city_name_with_faction(self, city_name, new_faction):
+        """
+        Удаляет всё, что находится в скобках (включая сами скобки),
+        и возвращает новое имя в формате: "base_name (new_faction)".
+        """
+        base_name = city_name.split('(')[0].strip()
+        return f"{base_name} ({new_faction})"
     # ---------------------------------------------------------------------
 
     # Основная логика хода ИИ

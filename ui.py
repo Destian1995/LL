@@ -134,9 +134,8 @@ class FortressInfoPopup(Popup):
         send_troops_button = create_styled_button("Ввести войска", (0.2, 0.8, 0.2, 1),
                                                   height=dp(40) if is_android else 30)
         send_troops_button.size_hint_x = 1
-        send_troops_button.bind(on_release=self.select_troop_type)
+        send_troops_button.bind(on_release=lambda btn: self.load_troops_by_type("Любые", None))
         button_layout.add_widget(send_troops_button)
-
         # Разместить армию
         place_army_button = create_styled_button("Разместить армию", (0.2, 0.6, 0.9, 1),
                                                  height=dp(40) if is_android else 30)
@@ -160,6 +159,16 @@ class FortressInfoPopup(Popup):
 
         # Ссылки на виджеты гарнизона
         self.garrison_widgets = {}  # Словарь для хранения ссылок на виджеты гарнизона
+
+    def update_city_name_with_faction(self, city_name, new_faction):
+        """
+        Удаляет всё, что находится в скобках (включая сами скобки),
+        и возвращает новое имя в формате: "base_name (new_faction)".
+        """
+        # Способ 2 (альтернатива без regex):
+        base_name = city_name.split('(')[0].strip()
+
+        return f"{base_name} ({new_faction})"
 
     def load_buildings(self):
         """Загружает здания в интерфейс."""
@@ -308,33 +317,6 @@ class FortressInfoPopup(Popup):
             print(f"Ошибка при получении данных о зданиях: {e}")
             return []
 
-    def select_troop_type(self, instance=None):
-        """
-        Открывает окно для выбора типа войск: Защитные, Атакующие, Любые.
-        :param instance: Экземпляр виджета, который вызвал метод (не используется).
-        """
-        popup = Popup(title="Выберите тип войск", size_hint=(0.6, 0.4))
-        layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
-
-        # Кнопки для выбора типа войск
-        defensive_button = Button(text="Защитные", background_color=(0.6, 0.8, 0.6, 1))
-        offensive_button = Button(text="Атакующие", background_color=(0.8, 0.6, 0.6, 1))
-        any_button = Button(text="Любые", background_color=(0.6, 0.6, 0.8, 1))
-
-        # Привязка действий к кнопкам
-        defensive_button.bind(on_release=lambda btn: self.load_troops_by_type("Защитных", popup))
-        offensive_button.bind(on_release=lambda btn: self.load_troops_by_type("Атакующих", popup))
-        any_button.bind(on_release=lambda btn: self.load_troops_by_type("Любых", popup))
-
-        # Добавляем кнопки в макет
-        layout.add_widget(defensive_button)
-        layout.add_widget(offensive_button)
-        layout.add_widget(any_button)
-
-        # Устанавливаем содержимое окна и открываем его
-        popup.content = layout
-        popup.open()
-
     def load_troops_by_type(self, troop_type, previous_popup):
         """
         Загружает войска из гарнизонов в зависимости от выбранного типа.
@@ -343,7 +325,8 @@ class FortressInfoPopup(Popup):
         """
         try:
             # Закрываем предыдущее окно
-            previous_popup.dismiss()
+            if previous_popup is not None:
+                previous_popup.dismiss()
             cursor = self.conn.cursor()
             # Шаг 1: Получаем все юниты из таблицы garrisons
             cursor.execute("""
@@ -1203,7 +1186,13 @@ class FortressInfoPopup(Popup):
             cursor = self.conn.cursor()
             # Получаем владельцев городов
             source_owner = self.get_city_owner(source_fortress_name)
+            # Получаем владельца целевого города
             destination_owner = self.get_city_owner(destination_fortress_name)
+
+            # Проверяем, является ли город нейтральным
+            cursor.execute("SELECT kingdom FROM city WHERE fortress_name = ?", (destination_fortress_name,))
+            dest_kingdom_result = cursor.fetchone()
+            dest_kingdom = dest_kingdom_result[0] if dest_kingdom_result else None
             if not source_owner or not destination_owner:
                 show_popup_message("Ошибка", "Один из городов не существует.")
                 return False
@@ -1241,6 +1230,18 @@ class FortressInfoPopup(Popup):
                         show_popup_message("Логистика не выдержит",
                                            "Слишком далеко. Найдите ближайший населенный пункт")
                         return False
+                # ── ДОБАВЛЕНО: если город Нетралитет ───────────────────────
+                elif dest_kingdom == "Нейтралитет":
+                    if total_diff < 225:
+                        if not dry_run:
+                            # Вызываем захват без боя
+                            self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
+                        return True
+                    else:
+                        show_popup_message("Логистика не выдержит",
+                                           "Слишком далеко. Найдите ближайший населенный пункт")
+                        return False
+
 
                 # — если цель враг, проверяем total_diff < 225 и флаги атаки;
                 elif self.is_enemy(current_player_kingdom, destination_owner):
@@ -1465,7 +1466,6 @@ class FortressInfoPopup(Popup):
         try:
             with self.conn:
                 cursor = self.conn.cursor()
-
                 # 1. Обновляем владельца города
                 cursor.execute("""
                     UPDATE city 
@@ -1473,13 +1473,22 @@ class FortressInfoPopup(Popup):
                     WHERE fortress_name = ?
                 """, (new_owner, fortress_name))
 
+                # 2. Обновляем название города, меняя значение в скобках
                 cursor.execute("""
-                    UPDATE cities 
-                    SET faction = ? 
+                    SELECT name FROM cities 
                     WHERE name = ?
-                """, (new_owner, fortress_name))
+                """, (fortress_name,))
+                result = cursor.fetchone()
+                if result:
+                    old_city_name = result[0]
+                    new_city_name = self.update_city_name_with_faction(old_city_name, new_owner)
+                    cursor.execute("""
+                        UPDATE cities 
+                        SET name = ?, faction = ? 
+                        WHERE name = ?
+                    """, (new_city_name, new_owner, old_city_name))
 
-                # 2. Переносим только атакующие юниты
+                # 3. Переносим только атакующие юниты
                 for unit in attacking_units:
                     # Удаляем из исходного города
                     cursor.execute("""
@@ -1487,13 +1496,11 @@ class FortressInfoPopup(Popup):
                         SET unit_count = unit_count - ? 
                         WHERE city_id = ? AND unit_name = ?
                     """, (unit["unit_count"], unit["city_id"], unit["unit_name"]))
-
                     # Удаляем запись, если юнитов больше нет
                     cursor.execute("""
                         DELETE FROM garrisons 
                         WHERE city_id = ? AND unit_name = ? AND unit_count <= 0
                     """, (unit["city_id"], unit["unit_name"]))
-
                     # Добавляем в захваченный город
                     cursor.execute("""
                         INSERT INTO garrisons 
@@ -1504,7 +1511,7 @@ class FortressInfoPopup(Popup):
                     """, (fortress_name, unit["unit_name"], unit["unit_count"],
                           unit["unit_image"], unit["unit_count"]))
 
-                # 3. Передаем здания новому владельцу
+                # 4. Передаем здания новому владельцу
                 cursor.execute("""
                     UPDATE buildings 
                     SET faction = ? 
@@ -1513,7 +1520,6 @@ class FortressInfoPopup(Popup):
 
             show_popup_message("Успех", f"Город {fortress_name} захвачен!")
             self.update_garrison()
-
         except sqlite3.Error as e:
             show_popup_message("Ошибка", f"Ошибка при захвате города: {e}")
 

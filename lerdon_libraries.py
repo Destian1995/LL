@@ -1,6 +1,7 @@
 # all libraries
 import math
 import os
+import re
 import shutil
 import random
 import ast
@@ -15,6 +16,7 @@ import webbrowser
 from collections import defaultdict
 from PIL import Image
 import heapq
+import itertools
 
 # kivy libraries
 from kivy.animation import Animation

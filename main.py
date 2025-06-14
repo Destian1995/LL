@@ -379,8 +379,8 @@ class MapWidget(Widget):
         self.selected_map = generate_map_and_cities(self.conn)
         print('Инициализация карты. self.selected_map  = ', self.selected_map)
         # Настройки карты
-        self.base_map_width = 1200  # Исходная ширина карты (px)
-        self.base_map_height = 800  # Исходная высота карты (px)
+        self.base_map_width = 900  # Исходная ширина карты (px)
+        self.base_map_height = 700  # Исходная высота карты (px)
         self.map_scale = self.calculate_scale()  # Масштаб под текущий экран
         self.map_pos = self.calculate_centered_position()  # Центрированная позиция
 
@@ -414,36 +414,46 @@ class MapWidget(Widget):
         return [x, y]
 
     def draw_roads(self):
-        """Рисует дороги между городами из таблицы cities"""
-        MIN_DISTANCE = 224
+        """Рисует дороги между ближайшими городами"""
         self.canvas.after.clear()
+
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT icon_coordinates FROM cities")
-            raw = cursor.fetchall()
+            cursor.execute("SELECT fortress_name, coordinates FROM city")
+            fortresses_data = cursor.fetchall()
         except sqlite3.Error as e:
-            print(f"[ERROR] Не удалось загрузить координаты для дорог: {e}")
+            print(f"Ошибка при загрузке данных о городах: {e}")
             return
-        finally:
-            cursor.close()
 
-        points = []
-        for (coords_str,) in raw:
+        cities = []
+        for fortress_name, coords_str in fortresses_data:
             try:
-                points.append(ast.literal_eval(coords_str))
-            except:
+                coords = ast.literal_eval(coords_str)
+                if len(coords) == 2:
+                    cities.append((fortress_name, coords))
+            except (ValueError, SyntaxError) as e:
+                print(f"Ошибка при разборе координат города '{fortress_name}': {e}")
                 continue
 
         with self.canvas.after:
-            Color(0.5, 0.5, 0.5, 1)
-            for i in range(len(points)):
-                for j in range(i + 1, len(points)):
-                    if self.calculate_manhattan_distance(points[i], points[j]) <= MIN_DISTANCE:
-                        x1 = points[i][0] * self.map_scale + self.map_pos[0]
-                        y1 = points[i][1] * self.map_scale + self.map_pos[1]
-                        x2 = points[j][0] * self.map_scale + self.map_pos[0]
-                        y2 = points[j][1] * self.map_scale + self.map_pos[1]
-                        Line(points=[x1, y1, x2, y2], width=1)
+            Color(0.5, 0.5, 0.5, 1)  # Серый цвет для дорог
+
+            for i in range(len(cities)):
+                for j in range(i + 1, len(cities)):
+                    source_name, source_coords = cities[i]
+                    dest_name, dest_coords = cities[j]
+
+                    # Вычисляем расстояние
+                    total_diff = self.calculate_manhattan_distance(source_coords, dest_coords)
+
+                    if total_diff < 150:  # Рисуем дорогу, если расстояние ≤ 220
+                        # Вычисляем координаты с учётом масштаба и позиции
+                        drawn_x1 = source_coords[0] * self.map_scale + self.map_pos[0]
+                        drawn_y1 = source_coords[1] * self.map_scale + self.map_pos[1]
+                        drawn_x2 = dest_coords[0] * self.map_scale + self.map_pos[0]
+                        drawn_y2 = dest_coords[1] * self.map_scale + self.map_pos[1]
+
+                        Line(points=[drawn_x1, drawn_y1, drawn_x2, drawn_y2], width=1)
 
     def calculate_manhattan_distance(self, source_coords, destination_coords):
         """Вычисляет манхэттенское расстояние между точками"""
