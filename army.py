@@ -487,7 +487,7 @@ def start_army_mode(faction, game_area, class_faction, conn):
         header = BoxLayout(
             size_hint=(1, 0.12),
             orientation='horizontal',
-            padding=[dp(140), dp(5), dp(5), dp(5)],  # слева — 40dp
+            padding=[dp(150), dp(5), dp(5), dp(5)],
         )
         title = Label(
             text=unit_name,
@@ -500,11 +500,11 @@ def start_army_mode(faction, game_area, class_faction, conn):
             size_hint=(None, None),
             width=dp(1)
         )
-        title.bind(texture_size=lambda inst, ts: setattr(inst, 'width', ts[0] + dp(10)))
+        title.bind(texture_size=lambda inst, ts: setattr(inst, 'width', ts[0] + dp(5)))
         header.add_widget(title)
 
         # Тело карточки: сначала иконки‑статы, потом изображение
-        body = BoxLayout(orientation='horizontal', size_hint=(1, 0.6), spacing=dp(20))
+        body = BoxLayout(orientation='horizontal', size_hint=(1, 0.6), spacing=dp(1))
 
         # Контейнер для иконок‑стат
         stats_icons = {
@@ -514,9 +514,9 @@ def start_army_mode(faction, game_area, class_faction, conn):
             'Класс': 'files/pict/hire/class.png',
             'Потребление': 'files/pict/hire/consumption.png',
         }
-        stats_container = BoxLayout(orientation='vertical', size_hint=(0.4, 1), spacing=dp(5))
+        stats_container = BoxLayout(orientation='vertical', size_hint=(0.4, 1), spacing=dp(2))
         for stat_name, icon_src in stats_icons.items():
-            stat_line = BoxLayout(orientation='horizontal', size_hint=(1, None), height=dp(30), spacing=dp(5))
+            stat_line = BoxLayout(orientation='horizontal', size_hint=(1, None), height=dp(20), spacing=dp(2))
             stat_line.add_widget(Image(
                 source=icon_src,
                 size_hint=(None, None),
