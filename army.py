@@ -514,7 +514,7 @@ def start_army_mode(faction, game_area, class_faction, conn):
             'Класс': 'files/pict/hire/class.png',
             'Потребление': 'files/pict/hire/consumption.png',
         }
-        stats_container = BoxLayout(orientation='vertical', size_hint=(0.4, 1), spacing=dp(10))
+        stats_container = BoxLayout(orientation='vertical', size_hint=(0.4, 1), spacing=dp(5))
         for stat_name, icon_src in stats_icons.items():
             stat_line = BoxLayout(orientation='horizontal', size_hint=(1, None), height=dp(30), spacing=dp(5))
             stat_line.add_widget(Image(
