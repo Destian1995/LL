@@ -153,7 +153,7 @@ class AdvisorView(FloatLayout):
 
     def show_political_systems(self):
         political_systems = self.load_political_systems()
-        print("Загруженные данные о политических системах:", political_systems)  # Отладочный вывод
+        print("Загруженные данные о политических системах:", political_systems)
 
         if not political_systems:
             print(f"Нет данных о политических системах для фракции {self.faction}.")
@@ -161,60 +161,59 @@ class AdvisorView(FloatLayout):
 
         main_layout = BoxLayout(
             orientation='vertical',
-            spacing=dp(10),
+            spacing=dp(8),
             padding=dp(10),
             size_hint=(1, 1)
         )
 
         header = Label(
-            text=f"Политические системы ({self.faction})",
-            font_size=calculate_font_size() * 0.75,
+            text=f"Идеология ({self.faction})",
+            font_size='16sp',
             bold=True,
             size_hint_y=None,
-            height=Window.height * 0.06,
-            color=(0.15, 0.15, 0.15, 1)
+            height=dp(40),
+            color=(0.15, 0.15, 0.15, 1),
+            halign='center',
+            valign='middle'
         )
+        header.bind(size=header.setter('text_size'))
         main_layout.add_widget(header)
 
         table = GridLayout(
             cols=3,
             size_hint_y=None,
-            spacing=dp(5),
-            row_default_height=Window.height * 0.06
+            spacing=dp(4),
+            row_default_height=dp(40)
         )
         table.bind(minimum_height=table.setter('height'))
 
-        table.add_widget(self.create_header("Фракция"))
-        table.add_widget(self.create_header("Идеология"))
-        table.add_widget(self.create_header("Отношения"))
+        for title in ["Фракция", "Идеология", "Отношения"]:
+            table.add_widget(self.create_header(title))
 
-        print("Загруженные политические системы:", political_systems)  # Отладочный вывод
+        print("Загруженные политические системы:", political_systems)
 
         for faction, data in political_systems.items():
             system = data["system"]
             highlight = faction == self.faction
 
-            print(f"Обработка фракции: {faction}, Система: {system}, Выделение: {highlight}")  # Отладочный вывод
+            print(f"Обработка фракции: {faction}, Система: {system}, Выделение: {highlight}")
 
-            # Определяем, какая стрелочка будет отображена
-            if system == self.load_political_system():
-                influence_widget = self.create_arrow_icon("up")  # Зеленая стрелка вверх
-            else:
-                influence_widget = self.create_arrow_icon("down")  # Красная стрелка вниз
+            influence_widget = self.create_arrow_icon(
+                "up") if system == self.load_political_system() else self.create_arrow_icon("down")
 
-            # Создаем ячейки с возможным выделением
             faction_widget = self._create_cell(faction, highlight=highlight)
             system_widget = self._create_cell(system, highlight=highlight)
 
-            # Добавляем данные в таблицу
             table.add_widget(faction_widget)
             table.add_widget(system_widget)
             table.add_widget(influence_widget)
 
         scroll = ScrollView(
             size_hint=(1, 1),
-            bar_width=dp(8),
-            bar_color=(0.4, 0.4, 0.4, 0.6)
+            bar_width=dp(6),
+            bar_color=(0.5, 0.5, 0.5, 0.6),
+            scroll_type=['bars', 'content'],
+            bar_margin=-dp(2)
         )
         scroll.add_widget(table)
         main_layout.add_widget(scroll)
@@ -222,19 +221,29 @@ class AdvisorView(FloatLayout):
         system_layout = BoxLayout(
             orientation='horizontal',
             size_hint=(1, None),
-            height=Window.height * 0.1,
+            height=dp(60),
             spacing=dp(10)
         )
 
         capitalism_button = Button(
             text="Смирение",
             background_color=(0.2, 0.7, 0.3, 1),
-            size_hint=(0.5, 1)
+            font_size='18sp',
+            size_hint=(0.5, None),
+            height=dp(50),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            background_down=''
         )
         communism_button = Button(
             text="Борьба",
             background_color=(0.8, 0.2, 0.2, 1),
-            size_hint=(0.5, 1)
+            font_size='18sp',
+            size_hint=(0.5, None),
+            height=dp(50),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            background_down=''
         )
 
         capitalism_button.bind(on_release=lambda x: self.update_political_system("Смирение"))
@@ -247,52 +256,60 @@ class AdvisorView(FloatLayout):
         popup = Popup(
             title='',
             content=main_layout,
-            size_hint=(0.8, 0.8),
+            size_hint=(0.9, 0.85),
+            separator_height=0,
             background_color=(0.96, 0.96, 0.96, 1),
-            overlay_color=(0, 0, 0, 0.2)
+            overlay_color=(0, 0, 0, 0.3)
         )
         popup.open()
 
         self.popup = popup
 
-    # Дополнительный метод для создания ячеек с поддержкой выделения
     def _create_cell(self, text, highlight=False):
         text_color = self.colors['accent'] if highlight else (1, 1, 1, 1)
         return Label(
             text=f"[b]{text}[/b]" if highlight else text,
             markup=True,
-            font_size=calculate_font_size(),
+            font_size='14sp',
             bold=True,
             color=text_color,
-            halign='center',  # Горизонтальное центрирование
-            valign='middle',  # Вертикальное центрирование
+            halign='center',
+            valign='middle',
             size_hint_y=None,
-            height=Window.height * 0.06,
-            padding_x=dp(15)
+            height=dp(40),
+            text_size=(None, None)
         )
 
     def create_arrow_icon(self, direction):
-        """
-        Создает виджет с изображением стрелки.
-        :param direction: "up" или "down" (направление стрелки)
-        :return: виджет с изображением
-        """
-        # Определяем путь к изображению
         if direction == "up":
             source = 'files/pict/up.png'
         else:
             source = 'files/pict/down.png'
 
-        # Создаем и возвращаем виджет с изображением
         return Image(
             source=source,
-            size_hint_y=None,
-            height=Window.height * 0.04,  # Адаптивная высота
-            size_hint_x=None,
-            width=Window.height * 0.04,  # Ширина равна высоте
-            allow_stretch=True,  # Растягиваем изображение
-            keep_ratio=False  # Не сохраняем пропорции
+            size_hint=(None, None),
+            size=(dp(24), dp(24)),
+            allow_stretch=True,
+            keep_ratio=True
         )
+
+    def create_header(self, text):
+        label = Label(
+            text=f"[b]{text}[/b]",
+            markup=True,
+            font_size='14sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40),
+            text_size=(None, None)
+        )
+        label.bind(size=label.setter('text_size'))
+        return label
+
 
     def load_political_system(self):
         """
@@ -674,64 +691,57 @@ class AdvisorView(FloatLayout):
         except sqlite3.Error as e:
             print(f"Ошибка при сохранении отношений в базе данных: {e}")
 
+    def create_value_cell(self, value):
+        color = self.get_relation_color(value)
+        return Label(
+            text=str(value),
+            font_size='14sp',
+            bold=True,
+            color=color,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40)
+        )
+
+    def create_value_trade_cell(self, coefficient):
+        color = self.get_relation_trade_color(coefficient)
+        return Label(
+            text=f"{coefficient:.1f}x",
+            font_size='14sp',
+            bold=True,
+            color=color,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40)
+        )
+
     def create_status_cell(self, status):
         color = self.get_status_color(status)
         return Label(
-            text=status.capitalize(),
-            font_size=calculate_font_size(),
+            text=status,
+            font_size='14sp',
             bold=True,
             color=color,
-            halign='center',  # Центрирование
+            halign='center',
             valign='middle',
             size_hint_y=None,
-            height=Window.height * 0.06
+            height=dp(40)
         )
 
-    def get_status_color(self, status):
-        """Определяет цвет на основе статуса отношений."""
-        if status == "война":
-            return (1, 0, 0, 1)  # Красный
-        elif status == "нейтралитет":
-            return (1, 1, 1, 1)  # Белый
-        elif status == "союз":
-            return (0, 0.75, 0.8, 1)  # Синий
-        else:
-            return (0.5, 0.5, 0.5, 1)  # Серый (для неизвестного статуса)
-
-    def create_header(self, text):
-        lbl = Label(
-            text=text,
-            bold=True,
-            font_size=calculate_font_size(),
-            color=(1, 1, 1, 1),
+    def create_cell(self, text, status="нейтралитет"):
+        color = self.get_status_color(status)  # Цвет зависит от статуса
+        label = Label(
+            text=str(text),
             size_hint_y=None,
-            height=Window.height * 0.06,
-            halign="center",  # Горизонтальное центрирование
-            valign="middle"  # Вертикальное центрирование
+            height=dp(40),
+            color=color,
+            halign='center',
+            valign='middle'
         )
-        lbl.bind(size=lambda instance, value: setattr(lbl, 'text_size', value))  # Автоматический перенос текста
-        with lbl.canvas.before:
-            Color(0.15, 0.24, 0.35, 1)
-            rect = Rectangle(size=lbl.size, pos=lbl.pos)
-        lbl.bind(pos=lambda instance, value: setattr(rect, 'pos', value))
-        lbl.bind(size=lambda instance, value: setattr(rect, 'size', value))
-        return lbl
-
-    def create_cell(self, text):
-        """Создает ячейку с названием фракции (белый цвет и жирный шрифт)"""
-        lbl = Label(
-            text=text,
-            font_size=calculate_font_size(),  # Адаптивный размер шрифта
-            bold=True,
-            color=(1, 1, 1, 1),  # Белый цвет текста
-            halign='left',
-            valign='middle',
-            padding_x=dp(15),
-            size_hint_y=None,
-            height=Window.height * 0.06  # Адаптивная высота
-        )
-        lbl.bind(size=lbl.setter('text_size'))  # Автоматический перенос текста
-        return lbl
+        label.bind(size=label.setter('text_size'))
+        return label
 
     def create_text_cell(self, text):
         """
@@ -748,32 +758,17 @@ class AdvisorView(FloatLayout):
             height=Window.height * 0.06  # Адаптивная высота
         )
         return lbl
+    def get_status_color(self, status):
+        """Определяет цвет на основе статуса отношений."""
+        if status == "война":
+            return (1, 0, 0, 1)  # Красный
+        elif status == "нейтралитет":
+            return (1, 1, 1, 1)  # Белый
+        elif status == "союз":
+            return (0, 0.75, 0.8, 1)  # Синий
+        else:
+            return (0.5, 0.5, 0.5, 1)  # Серый (для неизвестного статуса)
 
-    def create_value_cell(self, value):
-        color = self.get_relation_color(value)
-        return Label(
-            text=f"{value}%",
-            font_size=calculate_font_size(),
-            bold=True,
-            color=color,
-            halign='center',  # Центрирование
-            valign='middle',
-            size_hint_y=None,
-            height=Window.height * 0.06
-        )
-
-    def create_value_trade_cell(self, value):
-        color = self.get_relation_trade_color(value)
-        return Label(
-            text=f"{value:.2f}",
-            font_size=calculate_font_size(),
-            bold=True,
-            color=color,
-            halign='center',  # Центрирование
-            valign='middle',
-            size_hint_y=None,
-            height=Window.height * 0.06
-        )
 
     def get_relation_trade_color(self, value):
         """Возвращает цвет в зависимости от значения коэффициента"""
@@ -794,10 +789,6 @@ class AdvisorView(FloatLayout):
         else:
             return (1, 1, 1, 1)  # Белый
 
-    def update_rect(self, instance, value):
-        """Обновляет позицию и размер прямоугольника фона"""
-        self.rect.pos = instance.pos
-        self.rect.size = instance.size
 
     def get_relation_color(self, value):
         """Возвращает цвет в зависимости от значения"""
@@ -818,3 +809,8 @@ class AdvisorView(FloatLayout):
             return (0.1, 0.3, 0.9, 1)
         else:
             return (1, 1, 1, 1)
+
+    def update_rect(self, instance, value):
+        """Обновляет позицию и размер прямоугольника фона"""
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size

@@ -3,6 +3,7 @@ from game_process import GameScreen
 from ui import *
 from db_lerdon_connect import *
 from db_manager import DBManager
+from generate_map import generate_map_and_cities
 
 class AuthorScreen(Screen):
     def __init__(self, conn, **kwargs):
@@ -95,9 +96,10 @@ class AuthorScreen(Screen):
 
 
 class LoadingScreen(FloatLayout):
-    def __init__(self, conn, **kwargs):
+    def __init__(self, conn,  selected_map=None, **kwargs):
         super(LoadingScreen, self).__init__(**kwargs)
         self.conn = conn
+        self.selected_map = selected_map
         # === Фон через Canvas ===
         with self.canvas.before:
             self.bg_rect = Rectangle(
@@ -197,7 +199,8 @@ class LoadingScreen(FloatLayout):
         Clock.schedule_once(self.run_next_step, 0.3)
 
     def step_cleanup_cache(self):
-        print("Шаг 2: Очистка кэша...")
+        print("Шаг 2: Очистка кэша и временных данных...")
+        clear_tables(self.conn)
         self.update_progress(20)
         Clock.schedule_once(self.run_next_step, 0)
 
@@ -229,7 +232,7 @@ class LoadingScreen(FloatLayout):
 
         # --- Убираем все дочерние виджеты (прогресс-бар, подпись и т.д.) ---
         self.clear_widgets()
-        self.add_widget(MenuWidget(self.conn))
+        self.add_widget(MenuWidget(self.conn, self.selected_map))
 
 
 RANK_TO_FILENAME = {
@@ -302,11 +305,11 @@ def restore_from_backup(conn):
     """
     cursor = conn.cursor()
     tables_to_restore = [
-        ("city_default", "city"),
+        #("city_default", "city"),
+        #("cities_default", "cities"),
         ("diplomacies_default", "diplomacies"),
         ("relations_default", "relations"),
         ("resources_default", "resources"),
-        ("cities_default", "cities"),
         ("units_default", "units")
     ]
 
@@ -331,7 +334,8 @@ def clear_tables(conn):
     """
     tables_to_clear = [
         "buildings",
-        "city",
+        #"city",
+        #"cities",
         "diplomacies",
         "garrisons",
         "resources",
@@ -365,13 +369,15 @@ def clear_tables(conn):
 
 
 class MapWidget(Widget):
+
     def __init__(self, selected_kingdom=None, player_kingdom=None, conn=None, **kwargs):
         super(MapWidget, self).__init__(**kwargs)
         self.is_drawing = None
         self.conn = conn
         self.fortress_rectangles = []  # Список для хранения крепостей
         self.current_player_kingdom = player_kingdom  # Текущее королевство игрока
-
+        self.selected_map = generate_map_and_cities(self.conn)
+        print('Инициализация карты. self.selected_map  = ', self.selected_map)
         # Настройки карты
         self.base_map_width = 1200  # Исходная ширина карты (px)
         self.base_map_height = 800  # Исходная высота карты (px)
@@ -381,7 +387,7 @@ class MapWidget(Widget):
         # Отрисовка карты
         with self.canvas:
             self.map_image = Rectangle(
-                source='files/map/map.png',
+                source=self.selected_map,
                 pos=self.map_pos,
                 size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
             )
@@ -408,166 +414,111 @@ class MapWidget(Widget):
         return [x, y]
 
     def draw_roads(self):
-        """Рисует дороги между ближайшими городами"""
+        """Рисует дороги между городами из таблицы cities"""
+        MIN_DISTANCE = 224
         self.canvas.after.clear()
-
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT fortress_name, coordinates FROM city")
-            fortresses_data = cursor.fetchall()
+            cursor.execute("SELECT icon_coordinates FROM cities")
+            raw = cursor.fetchall()
         except sqlite3.Error as e:
-            print(f"Ошибка при загрузке данных о городах: {e}")
+            print(f"[ERROR] Не удалось загрузить координаты для дорог: {e}")
             return
+        finally:
+            cursor.close()
 
-        cities = []
-        for fortress_name, coords_str in fortresses_data:
+        points = []
+        for (coords_str,) in raw:
             try:
-                coords = ast.literal_eval(coords_str)
-                if len(coords) == 2:
-                    cities.append((fortress_name, coords))
-            except (ValueError, SyntaxError) as e:
-                print(f"Ошибка при разборе координат города '{fortress_name}': {e}")
+                points.append(ast.literal_eval(coords_str))
+            except:
                 continue
 
         with self.canvas.after:
-            Color(0.5, 0.5, 0.5, 1)  # Серый цвет для дорог
-
-            for i in range(len(cities)):
-                for j in range(i + 1, len(cities)):
-                    source_name, source_coords = cities[i]
-                    dest_name, dest_coords = cities[j]
-
-                    # Вычисляем расстояние
-                    total_diff = self.calculate_manhattan_distance(source_coords, dest_coords)
-
-                    if total_diff < 224:  # Рисуем дорогу, если расстояние ≤ 220
-                        # Вычисляем координаты с учётом масштаба и позиции
-                        drawn_x1 = source_coords[0] * self.map_scale + self.map_pos[0]
-                        drawn_y1 = source_coords[1] * self.map_scale + self.map_pos[1]
-                        drawn_x2 = dest_coords[0] * self.map_scale + self.map_pos[0]
-                        drawn_y2 = dest_coords[1] * self.map_scale + self.map_pos[1]
-
-                        Line(points=[drawn_x1, drawn_y1, drawn_x2, drawn_y2], width=1)
+            Color(0.5, 0.5, 0.5, 1)
+            for i in range(len(points)):
+                for j in range(i + 1, len(points)):
+                    if self.calculate_manhattan_distance(points[i], points[j]) <= MIN_DISTANCE:
+                        x1 = points[i][0] * self.map_scale + self.map_pos[0]
+                        y1 = points[i][1] * self.map_scale + self.map_pos[1]
+                        x2 = points[j][0] * self.map_scale + self.map_pos[0]
+                        y2 = points[j][1] * self.map_scale + self.map_pos[1]
+                        Line(points=[x1, y1, x2, y2], width=1)
 
     def calculate_manhattan_distance(self, source_coords, destination_coords):
         """Вычисляет манхэттенское расстояние между точками"""
         return abs(source_coords[0] - destination_coords[0]) + abs(source_coords[1] - destination_coords[1])
 
     def draw_fortresses(self):
-        """Рисует крепости на карте и обновляет координаты иконок и названий в базе данных"""
+        """Рисует крепости на карте из таблицы cities"""
         if getattr(self, 'is_drawing', False):
-            return  # Защита от повторного вызова
-
+            return
         self.is_drawing = True
-
         try:
             self.fortress_rectangles.clear()
             self.canvas.clear()
 
+            # Сначала рисуем фон
             with self.canvas:
-                self.map_image = Rectangle(
-                    source='files/map/map.png',
+                Rectangle(
+                    source=self.selected_map,
                     pos=self.map_pos,
                     size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
                 )
 
-                faction_images = {
+            # Загрузка из таблицы cities
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT name, faction, icon_coordinates FROM cities")
+                cities_data = cursor.fetchall()
+            except sqlite3.Error as e:
+                print(f"[ERROR] Не удалось загрузить города из cities: {e}")
+                return
+            finally:
+                cursor.close()
+
+            if not cities_data:
+                print("[DEBUG] Нет записей в таблице cities.")
+                return
+
+            # Отрисовываем каждую крепость
+            for name, faction, coords_str in cities_data:
+                # разбираем ранее сохранённые экранные координаты
+                try:
+                    x_screen, y_screen = ast.literal_eval(coords_str)
+                except Exception as e:
+                    print(f"[WARNING] Неправильный формат icon_coordinates для '{name}': {coords_str}")
+                    continue
+
+                # выбираем картинку
+                image_path = {
                     'Вампиры': 'files/buildings/giperion.png',
                     'Люди': 'files/buildings/arkadia.png',
                     'Эльфы': 'files/buildings/celestia.png',
                     'Адепты': 'files/buildings/eteria.png',
                     'Полукровки': 'files/buildings/halidon.png'
-                }
+                }.get(faction, 'files/buildings/default.png')
+                if not os.path.exists(image_path):
+                    image_path = 'files/buildings/default.png'
 
-                try:
-                    with self.conn:  # <-- Начало транзакции
-                        cursor = self.conn.cursor()
-                        cursor.execute("SELECT fortress_name, kingdom, coordinates FROM city")
-                        fortresses_data = cursor.fetchall()
-                except sqlite3.Error as e:
-                    print(f"[ERROR] Ошибка при загрузке данных о городах: {e}")
-                    return
-                finally:
-                    cursor.close()
+                # сохраняем область нажатия
+                rect = (x_screen, y_screen, 77, 77)
+                self.fortress_rectangles.append(
+                    (rect, {"coordinates": (x_screen, y_screen), "name": name}, faction)
+                )
 
-                if not fortresses_data:
-                    print("[DEBUG] Нет данных о крепостях в базе данных.")
-                    return
+                # рисуем иконку
+                with self.canvas:
+                    Rectangle(source=image_path, pos=(x_screen, y_screen), size=(77, 77))
 
-                update_data = []
-
-                for row in fortresses_data:
-                    # --- Получаем значения, совместимые и с Row, и с tuple ---
-                    if isinstance(row, sqlite3.Row):
-                        fortress_name = row['fortress_name']
-                        kingdom = row['kingdom']
-                        coords_str = row['coordinates']
-                    elif isinstance(row, (list, tuple)):
-                        fortress_name = row[0]
-                        kingdom = row[1]
-                        coords_str = row[2]
-                    else:
-                        print(f"[WARNING] Неизвестный тип данных: {type(row)}")
-                        continue
-
-                    # --- Парсим координаты ---
-                    if not coords_str or not isinstance(coords_str, str):
-                        print(f"[WARNING] Координаты пустые или не являются строкой: {coords_str}")
-                        continue
-
-                    try:
-                        coords = ast.literal_eval(coords_str)
-                        if len(coords) != 2:
-                            raise ValueError(f"Координаты должны быть в формате [x, y], получено: {coords}")
-                    except Exception as e:
-                        print(f"[ERROR] Ошибка разбора координат для '{fortress_name}': {e}")
-                        continue
-
-                    fort_x, fort_y = coords
-                    drawn_x = fort_x * self.map_scale + self.map_pos[0]
-                    drawn_y = fort_y * self.map_scale + self.map_pos[1]
-
-                    # --- Получаем путь к изображению ---
-                    image_path = faction_images.get(kingdom, 'files/buildings/default.png')
-                    if not os.path.exists(image_path):
-                        image_path = 'files/buildings/default.png'
-
-                    # --- Сохраняем данные для кликов ---
-                    fort_rect = (drawn_x, drawn_y, 77, 77)
-                    self.fortress_rectangles.append(
-                        (fort_rect, {"coordinates": (fort_x, fort_y), "name": fortress_name}, kingdom))
-
-                    # --- Рисуем крепость ---
-                    Rectangle(source=image_path, pos=(drawn_x, drawn_y), size=(77, 77))
-
-                    # --- Добавляем название города ---
-                    display_name = fortress_name[:20] + "..." if len(fortress_name) > 20 else fortress_name
-                    label = CoreLabel(text=display_name, font_size=25, color=(0, 0, 0, 1))
+                    # рисуем подпись
+                    label = CoreLabel(text=name, font_size=20, color=(0, 0, 0, 1))
                     label.refresh()
-                    text_texture = label.texture
-                    text_width, text_height = text_texture.size
-                    text_x = drawn_x + (40 - text_width) / 2
-                    text_y = drawn_y - text_height - 5
-
+                    tx, ty = label.texture.size
+                    text_x = x_screen + (77 - tx) / 2
+                    text_y = y_screen - ty - 5
                     Color(1, 1, 1, 1)
-                    Rectangle(texture=text_texture, pos=(text_x, text_y), size=(text_width, text_height))
-
-                    # --- Подготавливаем данные для БД ---
-                    icon_coords = f"({drawn_x}, {drawn_y})"
-                    label_coords = f"({text_x}, {text_y})"
-                    update_data.append((icon_coords, label_coords, fortress_name))
-
-                # --- Обновляем координаты в базе данных ---
-                try:
-                    with self.conn:
-                        cursor_update = self.conn.cursor()
-                        cursor_update.executemany("""
-                            UPDATE cities 
-                            SET icon_coordinates = ?, label_coordinates = ?
-                            WHERE name = ?
-                        """, update_data)
-                except sqlite3.Error as e:
-                    print(f"[ERROR] Не удалось обновить координаты в cities: {e}")
+                    Rectangle(texture=label.texture, pos=(text_x, text_y), size=(tx, ty))
 
         finally:
             self.is_drawing = False
@@ -706,10 +657,10 @@ class RectangularButton(Button):
 
 
 class KingdomSelectionWidget(FloatLayout):
-    def __init__(self, conn, **kwargs):
+    def __init__(self, conn, selected_map=None, **kwargs):
         super(KingdomSelectionWidget, self).__init__(**kwargs)
         is_android = platform == 'android'
-
+        self.selected_map = selected_map
         # Инициализируем selected_button
         self.selected_button = None
 
@@ -1089,9 +1040,9 @@ class KingdomSelectionWidget(FloatLayout):
 
         try:
             app = App.get_running_app()
-            clear_tables(self.conn)
             restore_from_backup(self.conn)
             selected_kingdom = app.selected_kingdom
+            map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom, conn=self.conn)
             cities = load_cities_from_db(self.conn, selected_kingdom)
             if not cities:
                 print("Города не найдены.")
@@ -1099,7 +1050,6 @@ class KingdomSelectionWidget(FloatLayout):
 
             game_screen = GameScreen(selected_kingdom, cities, conn=self.conn)
             app.root.clear_widgets()
-            map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom, conn=self.conn)
             app.root.add_widget(map_widget)
             app.root.add_widget(game_screen)
         except Exception as e:
@@ -1112,7 +1062,7 @@ class KingdomSelectionWidget(FloatLayout):
 
 
 class MenuWidget(FloatLayout):
-    def __init__(self, conn, **kwargs):
+    def __init__(self, conn, selected_map=None,**kwargs):
         super(MenuWidget, self).__init__(**kwargs)
         self.conn = conn
         # ======== Фоновые изображения (попеременно сменяются) ========
@@ -1993,7 +1943,8 @@ class Lerdon(App):
 
     def build(self):
         """Создает начальный интерфейс приложения."""
-        return LoadingScreen(self.conn)  # Возвращаем виджет загрузочного экрана
+
+        return LoadingScreen(self.conn)
 
     def restart_app(self):
         """Перезапуск игры — очистка БД, восстановление бэкапа, пересоздание интерфейса."""
