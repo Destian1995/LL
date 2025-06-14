@@ -23,8 +23,8 @@ FACTION_CITIES = 5
 NEUTRAL_CITIES = TOTAL_CITIES - FACTION_CITIES
 ALL_CITIES = FACTION_CITIES + TOTAL_CITIES
 MAX_NEIGHBOURS = 3  # Максимум 3 соседа
-MIN_DISTANCE_PX = 80   # Минимальное расстояние между двумя городами
-MAX_DISTANCE_PX = 170  # Максимальное расстояние для возможности взаимодействия
+MIN_DISTANCE_PX = 60   # Минимальное расстояние между двумя городами
+MAX_DISTANCE_PX = 160  # Максимальное расстояние для возможности взаимодействия
 MAP_SIZE = (700, 400)  # размер карты в пикселях
 
 
