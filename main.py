@@ -379,8 +379,8 @@ class MapWidget(Widget):
         self.selected_map = generate_map_and_cities(self.conn)
         print('Инициализация карты. self.selected_map  = ', self.selected_map)
         # Настройки карты
-        self.base_map_width = 900  # Исходная ширина карты (px)
-        self.base_map_height = 700  # Исходная высота карты (px)
+        self.base_map_width = 1200  # Исходная ширина карты (px)
+        self.base_map_height = 800  # Исходная высота карты (px)
         self.map_scale = self.calculate_scale()  # Масштаб под текущий экран
         self.map_pos = self.calculate_centered_position()  # Центрированная позиция
 

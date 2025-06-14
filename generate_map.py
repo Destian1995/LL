@@ -25,7 +25,7 @@ ALL_CITIES = FACTION_CITIES + TOTAL_CITIES
 MAX_NEIGHBOURS = 3  # Максимум 3 соседа
 MIN_DISTANCE_PX = 60   # Минимальное расстояние между двумя городами
 MAX_DISTANCE_PX = 160  # Максимальное расстояние для возможности взаимодействия
-MAP_SIZE = (700, 400)  # размер карты в пикселях
+MAP_SIZE = (1200, 800)  # размер карты в пикселях
 
 
 def generate_city_coords(prev_point=None):
