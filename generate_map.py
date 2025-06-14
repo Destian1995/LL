@@ -34,44 +34,42 @@ def generate_random_position():
 def distance(p1, p2):
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
-
-def is_valid_position(pos, positions):
-    for other in positions:
-        d = distance(pos, other)
-        if d < MIN_DISTANCE or d > MAX_DISTANCE:
-            return False
-    return True
-
-
-def find_closest_neighbors(positions):
-    neighbors = [[] for _ in positions]
-    for i, pos in enumerate(positions):
-        nearby = []
-        for j, other in enumerate(positions):
-            if i == j:
-                continue
-            d = distance(pos, other)
-            if d <= MIN_DISTANCE or d > MAX_DISTANCE:
-                nearby.append((j, d))
-        # Сортируем по расстоянию и оставляем максимум MAX_NEIGHBOURS
-        nearby.sort(key=lambda x: x[1])
-        neighbors[i] = [idx for idx, dist in nearby[:MAX_NEIGHBOURS]]
-    return neighbors
-
-
 def generate_cities():
-    """Генерируем TOTAL_CITIES точек, просто соблюдая мин. расстояние."""
+    """Генерируем TOTAL_CITIES точек, соблюдая мин. расстояние и наличие хотя бы одного соседа."""
     positions = []
     attempts = 0
-    max_attempts = TOTAL_CITIES * 50  # чтобы не зациклиться
+    max_attempts = TOTAL_CITIES * 200  # Увеличили число попыток
+
     while len(positions) < TOTAL_CITIES and attempts < max_attempts:
         attempts += 1
-        pos = (random.randint(0, MAP_SIZE[0]), random.randint(0, MAP_SIZE[1]))
-        if all(distance(pos, p) >= MIN_DISTANCE for p in positions):
+        pos = generate_random_position()
+
+        # Проверяем минимальное расстояние до всех уже существующих
+        if any(distance(pos, p) < MIN_DISTANCE for p in positions):
+            continue
+
+        # Проверяем, есть ли хотя бы один сосед в пределах MAX_DISTANCE
+        has_neighbor = False
+        for p in positions:
+            d = distance(pos, p)
+            if d <= MAX_DISTANCE:
+                has_neighbor = True
+                break
+
+        # Если нет позиций или есть подходящий сосед — добавляем
+        if not positions or has_neighbor:
             positions.append(pos)
 
-    if len(positions) < TOTAL_CITIES:
-        raise RuntimeError("Не удалось быстро сгенерировать позиции; попробуйте MIN_DISTANCE поменьше.")
+    # Если не уложились в попытки — делаем понижение требований
+    while len(positions) < TOTAL_CITIES:
+        print(f"[WARNING] Не удалось сгенерировать все города. Пытаемся понизить MIN_DISTANCE...")
+        new_min_distance = max(MIN_DISTANCE - 1, 2)  # не меньше 2
+        # Перегенерация с новым MIN_DISTANCE
+        pos = generate_random_position()
+        if all(distance(pos, p) >= new_min_distance for p in positions):
+            positions.append(pos)
+
+    print(f"[SUCCESS] Сгенерировано {len(positions)} городов.")
     return positions
 
 def assign_factions_to_cities(positions):
