@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 import unicodedata
 import webbrowser
 from collections import defaultdict
-from PIL import Image
 import heapq
 import itertools
 
