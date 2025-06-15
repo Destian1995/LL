@@ -1227,6 +1227,7 @@ class FortressInfoPopup(Popup):
                                              taken_count)
                         return True
                     else:
+
                         show_popup_message("Логистика не выдержит",
                                            "Слишком далеко. Найдите ближайший населенный пункт")
                         return False
@@ -1238,6 +1239,7 @@ class FortressInfoPopup(Popup):
                             self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
                         return True
                     else:
+                        print('Расстоние между городами: ', total_diff)
                         show_popup_message("Логистика не выдержит",
                                            "Слишком далеко. Найдите ближайший населенный пункт")
                         return False
@@ -1466,66 +1468,74 @@ class FortressInfoPopup(Popup):
         try:
             with self.conn:
                 cursor = self.conn.cursor()
-                # 1. Обновляем владельца города
+
+                # 1. Получаем старое имя города из таблицы cities
+                cursor.execute("SELECT name FROM cities WHERE name = ?", (fortress_name,))
+                result = cursor.fetchone()
+                if not result:
+                    raise ValueError(f"Город '{fortress_name}' не найден в таблице cities")
+                old_city_name = result[0]
+
+                # 2. Формируем новое имя города
+                new_city_name = self.update_city_name_with_faction(old_city_name, new_owner)
+
+                # 3. Обновляем данные о городе
                 cursor.execute("""
                     UPDATE city 
-                    SET kingdom = ? 
+                    SET kingdom = ?, fortress_name = ? 
                     WHERE fortress_name = ?
-                """, (new_owner, fortress_name))
+                """, (new_owner, new_city_name, fortress_name))
 
-                # 2. Обновляем название города, меняя значение в скобках
                 cursor.execute("""
-                    SELECT name FROM cities 
+                    UPDATE cities 
+                    SET name = ?, faction = ? 
                     WHERE name = ?
-                """, (fortress_name,))
-                result = cursor.fetchone()
-                if result:
-                    old_city_name = result[0]
-                    new_city_name = self.update_city_name_with_faction(old_city_name, new_owner)
-                    cursor.execute("""
-                        UPDATE cities 
-                        SET name = ?, faction = ? 
-                        WHERE name = ?
-                    """, (new_city_name, new_owner, old_city_name))
+                """, (new_city_name, new_owner, old_city_name))
+
+                # 4. Обновляем ссылки на город во всех таблицах
                 cursor.execute("""
-                    UPDATE garrisons
-                    SET city_id = ?
+                    UPDATE garrisons 
+                    SET city_id = ? 
                     WHERE city_id = ?
                 """, (new_city_name, old_city_name))
 
-                # 3. Переносим только атакующие юниты
+                cursor.execute("""
+                    UPDATE buildings 
+                    SET city_name = ? 
+                    WHERE city_name = ?
+                """, (new_city_name, old_city_name))
+
+                # 5. Перемещаем войска атакующего отряда
                 for unit in attacking_units:
-                    # Удаляем из исходного города
                     cursor.execute("""
                         UPDATE garrisons 
                         SET unit_count = unit_count - ? 
                         WHERE city_id = ? AND unit_name = ?
                     """, (unit["unit_count"], unit["city_id"], unit["unit_name"]))
-                    # Удаляем запись, если юнитов больше нет
                     cursor.execute("""
                         DELETE FROM garrisons 
                         WHERE city_id = ? AND unit_name = ? AND unit_count <= 0
                     """, (unit["city_id"], unit["unit_name"]))
-                    # Добавляем в захваченный город
                     cursor.execute("""
-                        INSERT INTO garrisons 
-                        (city_id, unit_name, unit_count, unit_image) 
+                        INSERT INTO garrisons (city_id, unit_name, unit_count, unit_image)
                         VALUES (?, ?, ?, ?)
-                        ON CONFLICT(city_id, unit_name) DO UPDATE 
-                        SET unit_count = unit_count + ?
-                    """, (fortress_name, unit["unit_name"], unit["unit_count"],
-                          unit["unit_image"], unit["unit_count"]))
+                        ON CONFLICT(city_id, unit_name) DO UPDATE SET
+                            unit_count = unit_count + excluded.unit_count,
+                            unit_image = excluded.unit_image
+                    """, (new_city_name, unit["unit_name"], unit["unit_count"], unit["unit_image"]))
 
-                # 4. Передаем здания новому владельцу
+                # 6. Обновляем принадлежность зданий
                 cursor.execute("""
                     UPDATE buildings 
                     SET faction = ? 
                     WHERE city_name = ?
-                """, (new_owner, fortress_name))
+                """, (new_owner, new_city_name))
 
-            show_popup_message("Успех", f"Город {fortress_name} захвачен!")
-            self.update_garrison()
+                self.conn.commit()
+                show_popup_message("Успех", f"Город {new_city_name} захвачен!")
+
         except sqlite3.Error as e:
+            self.conn.rollback()
             show_popup_message("Ошибка", f"Ошибка при захвате города: {e}")
 
     def get_city_coordinates(self, city_name):

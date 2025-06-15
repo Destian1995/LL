@@ -666,6 +666,15 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
     except sqlite3.Error as e:
         print(f"Ошибка при обновлении гарнизонов: {e}")
 
+def update_city_name_with_faction(city_name, new_faction):
+    """
+        Удаляет всё, что находится в скобках (включая сами скобки),
+        и возвращает новое имя в формате: "base_name (new_faction)".
+        """
+    # Способ 2 (альтернатива без regex):
+    base_name = city_name.split('(')[0].strip()
+
+    return f"{base_name} ({new_faction})"
 
 #------------------------------------
 
@@ -840,12 +849,4 @@ def update_dossier_battle_stats(conn, user_faction, is_victory):
         print(f"[Ошибка] Не удалось обновить досье: {e}")
 
 
-def update_city_name_with_faction(city_name, new_faction):
-    """
-        Удаляет всё, что находится в скобках (включая сами скобки),
-        и возвращает новое имя в формате: "base_name (new_faction)".
-        """
-    # Способ 2 (альтернатива без regex):
-    base_name = city_name.split('(')[0].strip()
 
-    return f"{base_name} ({new_faction})"

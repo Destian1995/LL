@@ -13,7 +13,7 @@ import threading
 from datetime import datetime, timedelta
 import unicodedata
 import webbrowser
-from collections import defaultdict
+from collections import defaultdict, deque
 import heapq
 import itertools
 

@@ -334,8 +334,8 @@ def clear_tables(conn):
     """
     tables_to_clear = [
         "buildings",
-        #"city",
-        #"cities",
+        "city",
+        "cities",
         "diplomacies",
         "garrisons",
         "resources",
@@ -369,25 +369,25 @@ def clear_tables(conn):
 
 
 class MapWidget(Widget):
-
     def __init__(self, selected_kingdom=None, player_kingdom=None, conn=None, **kwargs):
         super(MapWidget, self).__init__(**kwargs)
-        self.is_drawing = None
         self.conn = conn
         self.fortress_rectangles = []  # Список для хранения крепостей
         self.current_player_kingdom = player_kingdom  # Текущее королевство игрока
-        self.selected_map = generate_map_and_cities(self.conn)
-        print('Инициализация карты. self.selected_map  = ', self.selected_map)
+
         # Настройки карты
         self.base_map_width = 1200  # Исходная ширина карты (px)
         self.base_map_height = 800  # Исходная высота карты (px)
         self.map_scale = self.calculate_scale()  # Масштаб под текущий экран
         self.map_pos = self.calculate_centered_position()  # Центрированная позиция
+        generate_map_and_cities(self.conn)
+        # Получаем случайную карту
+        self.random_map_source = self.get_random_map_source()
 
         # Отрисовка карты
         with self.canvas:
             self.map_image = Rectangle(
-                source=self.selected_map,
+                source=self.random_map_source,
                 pos=self.map_pos,
                 size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
             )
@@ -398,6 +398,14 @@ class MapWidget(Widget):
 
         # Обновление каждую секунду
         Clock.schedule_interval(lambda dt: self.update_cities(), 1)
+
+    def get_random_map_source(self):
+        """Выбирает случайную карту из папки files/map/generate"""
+        map_dir = 'files/map/generate'
+        map_files = [f for f in os.listdir(map_dir) if f.startswith('map_') and f.endswith('.png')]
+        if not map_files:
+            raise FileNotFoundError("Не найдено файлов с картами в директории.")
+        return os.path.join(map_dir, random.choice(map_files))
 
     def calculate_scale(self):
         """Рассчитывает масштаб карты под текущий экран"""
@@ -446,7 +454,7 @@ class MapWidget(Widget):
                     # Вычисляем расстояние
                     total_diff = self.calculate_manhattan_distance(source_coords, dest_coords)
 
-                    if total_diff < 150:  # Рисуем дорогу, если расстояние ≤ 220
+                    if total_diff < 224:  # Рисуем дорогу, если расстояние ≤ 224
                         # Вычисляем координаты с учётом масштаба и позиции
                         drawn_x1 = source_coords[0] * self.map_scale + self.map_pos[0]
                         drawn_y1 = source_coords[1] * self.map_scale + self.map_pos[1]
@@ -460,78 +468,113 @@ class MapWidget(Widget):
         return abs(source_coords[0] - destination_coords[0]) + abs(source_coords[1] - destination_coords[1])
 
     def draw_fortresses(self):
-        """Рисует крепости на карте из таблицы cities"""
-        if getattr(self, 'is_drawing', False):
-            return
-        self.is_drawing = True
-        try:
-            self.fortress_rectangles.clear()
-            self.canvas.clear()
+        """Рисует крепости на карте и обновляет координаты иконок и названий в базе данных"""
+        self.fortress_rectangles.clear()
+        self.canvas.clear()
 
-            # Сначала рисуем фон
-            with self.canvas:
-                Rectangle(
-                    source=self.selected_map,
-                    pos=self.map_pos,
-                    size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
-                )
+        with self.canvas:
+            self.map_image = Rectangle(
+                source='files/map/map.png',
+                pos=self.map_pos,
+                size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
+            )
 
-            # Загрузка из таблицы cities
+            faction_images = {
+                'Вампиры': 'files/buildings/giperion.png',
+                'Люди': 'files/buildings/arkadia.png',
+                'Эльфы': 'files/buildings/celestia.png',
+                'Адепты': 'files/buildings/eteria.png',
+                'Полукровки': 'files/buildings/halidon.png'
+            }
+
             try:
                 cursor = self.conn.cursor()
-                cursor.execute("SELECT name, faction, icon_coordinates FROM cities")
-                cities_data = cursor.fetchall()
+                cursor.execute("SELECT fortress_name, kingdom, coordinates FROM city")
+                fortresses_data = cursor.fetchall()
             except sqlite3.Error as e:
-                print(f"[ERROR] Не удалось загрузить города из cities: {e}")
+                print(f"[ERROR] Ошибка при загрузке данных о городах: {e}")
                 return
             finally:
                 cursor.close()
 
-            if not cities_data:
-                print("[DEBUG] Нет записей в таблице cities.")
+            if not fortresses_data:
+                print("[DEBUG] Нет данных о крепостях в базе данных.")
                 return
 
-            # Отрисовываем каждую крепость
-            for name, faction, coords_str in cities_data:
-                # разбираем ранее сохранённые экранные координаты
-                try:
-                    x_screen, y_screen = ast.literal_eval(coords_str)
-                except Exception as e:
-                    print(f"[WARNING] Неправильный формат icon_coordinates для '{name}': {coords_str}")
+            for row in fortresses_data:
+                # --- Получаем значения, совместимые и с Row, и с tuple ---
+                if isinstance(row, sqlite3.Row):
+                    fortress_name = row['fortress_name']
+                    kingdom = row['kingdom']
+                    coords_str = row['coordinates']
+                elif isinstance(row, (list, tuple)):
+                    fortress_name = row[0]
+                    kingdom = row[1]
+                    coords_str = row[2]
+                else:
+                    print(f"[WARNING] Неизвестный тип данных: {type(row)}")
                     continue
 
-                # выбираем картинку
-                image_path = {
-                    'Вампиры': 'files/buildings/giperion.png',
-                    'Люди': 'files/buildings/arkadia.png',
-                    'Эльфы': 'files/buildings/celestia.png',
-                    'Адепты': 'files/buildings/eteria.png',
-                    'Полукровки': 'files/buildings/halidon.png'
-                }.get(faction, 'files/buildings/default.png')
+                # --- Парсим координаты ---
+                if not coords_str or not isinstance(coords_str, str):
+                    print(f"[WARNING] Координаты пустые или не являются строкой: {coords_str}")
+                    continue
+
+                try:
+                    coords = ast.literal_eval(coords_str)
+                    if len(coords) != 2:
+                        raise ValueError(f"Координаты должны быть в формате [x, y], получено: {coords}")
+                except Exception as e:
+                    print(f"[ERROR] Ошибка разбора координат для '{fortress_name}': {e}")
+                    continue
+
+                fort_x, fort_y = coords
+                drawn_x = fort_x * self.map_scale + self.map_pos[0]
+                drawn_y = fort_y * self.map_scale + self.map_pos[1]
+
+                # --- Получаем путь к изображению ---
+                image_path = faction_images.get(kingdom, 'files/buildings/default.png')
                 if not os.path.exists(image_path):
                     image_path = 'files/buildings/default.png'
 
-                # сохраняем область нажатия
-                rect = (x_screen, y_screen, 77, 77)
+                # --- Сохраняем данные для кликов ---
+                fort_rect = (drawn_x, drawn_y, 77, 77)
                 self.fortress_rectangles.append(
-                    (rect, {"coordinates": (x_screen, y_screen), "name": name}, faction)
-                )
+                    (fort_rect, {"coordinates": (fort_x, fort_y), "name": fortress_name}, kingdom))
 
-                # рисуем иконку
-                with self.canvas:
-                    Rectangle(source=image_path, pos=(x_screen, y_screen), size=(77, 77))
+                # --- Рисуем крепость ---
+                Rectangle(source=image_path, pos=(drawn_x, drawn_y), size=(77, 77))
 
-                    # рисуем подпись
-                    label = CoreLabel(text=name, font_size=20, color=(0, 0, 0, 1))
-                    label.refresh()
-                    tx, ty = label.texture.size
-                    text_x = x_screen + (77 - tx) / 2
-                    text_y = y_screen - ty - 5
-                    Color(1, 1, 1, 1)
-                    Rectangle(texture=label.texture, pos=(text_x, text_y), size=(tx, ty))
+                # --- Добавляем название города ---
+                display_name = fortress_name[:20] + "..." if len(fortress_name) > 20 else fortress_name
+                label = CoreLabel(text=display_name, font_size=25, color=(0, 0, 0, 1))
+                label.refresh()
+                text_texture = label.texture
+                text_width, text_height = text_texture.size
+                text_x = drawn_x + (40 - text_width) / 2
+                text_y = drawn_y - text_height - 5
 
-        finally:
-            self.is_drawing = False
+                Color(1, 1, 1, 1)
+                Rectangle(texture=text_texture, pos=(text_x, text_y), size=(text_width, text_height))
+
+                # --- Обновляем icon_coordinates и label_coordinates ---
+                try:
+                    cursor_update = self.conn.cursor()
+                    cursor_update.execute("""
+                        UPDATE cities 
+                        SET icon_coordinates = ?, label_coordinates = ?
+                        WHERE name = ?
+                    """, (
+                        f"({drawn_x}, {drawn_y})",
+                        f"({text_x}, {text_y})",
+                        fortress_name
+                    ))
+                    self.conn.commit()
+                except sqlite3.Error as e:
+                    self.conn.rollback()
+                    print(f"[ERROR] Не удалось обновить координаты в cities для {fortress_name}: {e}")
+                finally:
+                    cursor_update.close()
 
     def check_fortress_click(self, touch):
         """Проверяет нажатие на крепость"""

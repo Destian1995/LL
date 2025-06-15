@@ -18,107 +18,85 @@ FACTION_COLORS = {
 }
 
 # Константы
-BUFFER = 30
 TOTAL_CITIES = 17
 FACTION_CITIES = 5
 NEUTRAL_CITIES = TOTAL_CITIES - FACTION_CITIES
 ALL_CITIES = FACTION_CITIES + TOTAL_CITIES
 MAX_NEIGHBOURS = 3  # Максимум 3 соседа
-MIN_DISTANCE_PX = 60   # Минимальное расстояние между двумя городами
-MAX_DISTANCE_PX = 160  # Максимальное расстояние для возможности взаимодействия
-
-MAP_SIZE = (700, 500)  # размер карты в пикселях
-
+MIN_DISTANCE_PX = 90   # Минимальное расстояние между двумя городами
+MAX_DISTANCE_PX = 170  # Максимальное расстояние для возможности взаимодействия
+MAP_SIZE = (1200, 800)  # размер карты в пикселях
+MARGIN = 90
+MANHATTAN_THRESHOLD = 200
 
 def generate_city_coords(prev_point=None):
-    """
-    Генерирует координаты следующего города.
-    При prev_point=None — полностью случайные в пределах карты с буфером.
-    Иначе — случайная точка на расстоянии [MIN_DISTANCE_PX, MAX_DISTANCE_PX]
-    от prev_point, но при необходимости повторяем до тех пор,
-    пока не попадём внутрь безопасной зоны.
-    """
-    width, height = MAP_SIZE
-
+    """Генерирует координаты следующего города относительно предыдущего"""
     if prev_point is None:
-        # Первая точка — чисто случайная внутри буферной зоны
+        # Первая точка — случайная, но с отступом от края
+        x = random.randint(MARGIN, MAP_SIZE[0] - MARGIN)
+        y = random.randint(MARGIN, MAP_SIZE[1] - MARGIN)
+        return x, y
+    else:
+        x_prev, y_prev = prev_point
+        attempts = 0
+        while attempts < 100:
+            distance = random.randint(MIN_DISTANCE_PX, MAX_DISTANCE_PX)
+            angle = random.uniform(0, 2 * math.pi)
+            dx = distance * math.cos(angle)
+            dy = distance * math.sin(angle)
+            x = x_prev + dx
+            y = y_prev + dy
+            if MARGIN <= x <= MAP_SIZE[0] - MARGIN and MARGIN <= y <= MAP_SIZE[1] - MARGIN:
+                return int(x), int(y)
+            attempts += 1
+        # Если не получилось — возвращаем случайную точку с отступом
         return (
-            random.randint(BUFFER, width  - BUFFER),
-            random.randint(BUFFER, height - BUFFER)
+            random.randint(MARGIN, MAP_SIZE[0] - MARGIN),
+            random.randint(MARGIN, MAP_SIZE[1] - MARGIN)
         )
 
-    x_prev, y_prev = prev_point
-    for _ in range(200):
-        # выбираем случайное направление full circle
-        angle = random.uniform(0, 2 * math.pi)
-        dist  = random.uniform(MIN_DISTANCE_PX, MAX_DISTANCE_PX)
-
-        x = int(x_prev + dist * math.cos(angle))
-        y = int(y_prev + dist * math.sin(angle))
-
-        # проверяем буфер
-        if BUFFER <= x <= width - BUFFER and BUFFER <= y <= height - BUFFER:
-            return x, y
-
-    # если не получилось в разумное число попыток — возвращаем случайную точку
-    return (
-        random.randint(BUFFER, width  - BUFFER),
-        random.randint(BUFFER, height - BUFFER)
-    )
-
 def generate_all_cities():
-    """
-    Генерирует TOTAL_CITIES точек в порядке:
-    фракционный, нейтральный, нейтральный, нейтральный, фракционный, ...
-    """
-    # 1) Формируем шаблон типов
-    city_types = []
-    f, n = 0, 0
-    while len(city_types) < TOTAL_CITIES:
-        # один фракционный, если ещё есть
-        if f < FACTION_CITIES:
-            city_types.append("faction")
-            f += 1
-        # три нейтральных или пока есть
-        for _ in range(3):
-            if len(city_types) >= TOTAL_CITIES:
-                break
-            if n < NEUTRAL_CITIES:
-                city_types.append("neutral")
-                n += 1
-    # 2) Генерим точки подряд, следуя шаблону
-    positions = []
-    used = set()
-    for city_type in city_types:
-        prev = positions[-1] if positions else None
-        for _ in range(200):
-            pt = generate_city_coords(prev)
-            # проверяем минимальное расстояние
-            if pt in used:
-                continue
-            if any(math.hypot(pt[0]-q[0], pt[1]-q[1]) < MIN_DISTANCE_PX for q in positions):
-                continue
-            positions.append(pt)
-            used.add(pt)
-            break
-        else:
-            # при неудаче — произвольная точка в буфере
-            fallback = (
-                random.randint(BUFFER, MAP_SIZE[0] - BUFFER),
-                random.randint(BUFFER, MAP_SIZE[1] - BUFFER)
-            )
-            positions.append(fallback)
-            used.add(fallback)
-
-    # 3) Собираем итоговый список городов
+    """Генерирует города сразу с гарантией манхэттен-связности"""
     cities = []
-    for idx, (ctype, pos) in enumerate(zip(city_types, positions)):
-        cities.append({"type": ctype, "position": pos})
+    used_positions = set()
 
-    print(f"[SUCCESS] Сгенерировано {len(cities)} городов: "
-          f"{city_types.count('faction')} фракционных и {city_types.count('neutral')} нейтральных.")
-    return cities
+    while True:
+        cities = []
+        used_positions = set()
+        first_point = generate_city_coords()
+        cities.append(first_point)
+        used_positions.add(first_point)
 
+        attempts = 0
+        while len(cities) < TOTAL_CITIES and attempts < 1000:
+            base_point = random.choice(cities)
+            new_point = generate_city_coords(base_point)
+
+            if new_point in used_positions:
+                attempts += 1
+                continue
+
+            too_close = any(
+                math.hypot(new_point[0] - p[0], new_point[1] - p[1]) < MIN_DISTANCE_PX
+                for p in cities
+            )
+            if too_close:
+                attempts += 1
+                continue
+
+            # Проверяем, есть ли хотя бы одна связь по Манхэттену
+            if any(manhattan(new_point, p) <= MANHATTAN_THRESHOLD for p in cities):
+                cities.append(new_point)
+                used_positions.add(new_point)
+                attempts = 0  # сбрасываем попытки
+            else:
+                attempts += 1
+
+        if len(cities) == TOTAL_CITIES:
+            print(f"[SUCCESS] Сгенерировано {TOTAL_CITIES} уникальных городов.")
+            return cities
+        else:
+            print("[WARN] Не удалось сгенерировать все города, пробуем заново...")
 
 
 def build_city_graph(cities):
@@ -207,49 +185,41 @@ CITY_NAMES_POOL = [
 ]
 
 
-def assign_factions_to_cities(cities_with_types):
-    """
-    Назначает фракции первым 5 фракционным городам,
-    остальным — нейтралитет
-    """
-    faction_indices = [i for i, c in enumerate(cities_with_types) if c["type"] == "faction"]
-    random.shuffle(faction_indices)  # перемешиваем позиции фракций
-
+def assign_factions_to_cities(positions):
+    """Назначает фракции первым 5 городам и нейтралитет остальным"""
     cities = []
     available_names = CITY_NAMES_POOL.copy()
     random.shuffle(available_names)
 
-    faction_assignments = FACTIONS[:FACTION_CITIES]
-    random.shuffle(faction_assignments)
-
-    faction_count = 0
-    for idx, city_info in enumerate(cities_with_types):
-        if city_info["type"] == "faction":
-            faction = faction_assignments[faction_count % len(FACTIONS)]
-            faction_count += 1
-            name = available_names.pop() if available_names else f"Город {idx + 1}"
-            city = {
-                "type": "faction",
-                "name": f"{name} ({faction})",
-                "position": city_info["position"],
-                "faction": faction,
-                "color": FACTION_COLORS[faction],
-                "fortress_name": f"{name} ({faction})"
-            }
-        else:
-            name = available_names.pop() if available_names else f"Нейтрал Город {idx + 1}"
-            city = {
-                "type": "neutral",
-                "name": f"{name} (Нейтралитет)",
-                "position": city_info["position"],
-                "faction": None,
-                "color": "#AAAAAA",
-                "fortress_name": f"{name} (Нейтралитет)"
-            }
+    # Фракционные города
+    for i in range(FACTION_CITIES):
+        faction = FACTIONS[i % len(FACTIONS)]
+        name = available_names.pop() if available_names else f"Город {i + 1}"
+        city = {
+            "type": "faction",
+            "name": f"{name} ({faction})",
+            "position": positions[i],
+            "faction": faction,
+            "color": FACTION_COLORS[faction],
+            "fortress_name": f"{name} ({faction})"
+        }
         cities.append(city)
 
-    print("[INFO] Фракции успешно назначены.")
+    # Нейтральные города
+    for i in range(FACTION_CITIES, TOTAL_CITIES):
+        name = available_names.pop() if available_names else f"Нейтрал Город {i + 1}"
+        city = {
+            "type": "neutral",
+            "name": f"{name} (Нейтралитет)",
+            "position": positions[i],
+            "faction": None,
+            "color": "#AAAAAA",
+            "fortress_name": f"{name} (Нейтралитет)"
+        }
+        cities.append(city)
+
     return cities
+
 
 def save_to_database(conn, cities, graph):
     """Сохраняет данные о городах и дорогах в базу данных"""
@@ -291,29 +261,47 @@ def save_to_database(conn, cities, graph):
     print(f"[INFO] Сохранено {len(cities)} городов и {road_id - 1} дорог.")
 
 
-def select_random_map_image():
-    """Выбирает случайную карту из доступных"""
-    selected_map = random.choice(AVAILABLE_MAPS)
-    map_path = os.path.join(MAP_IMAGES_DIR, selected_map)
-    print(f"[INFO] Выбрана карта: {selected_map}")
-    return map_path
+def manhattan(a, b):
+    """Манхэттенское расстояние между точками a и b."""
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+def is_connected(positions):
+    """
+    Проверяет, что граф, где ребро между i и j есть если
+    manhattan(positions[i], positions[j]) <= MANHATTAN_THRESHOLD,
+    связен (от любой вершины достижимы все).
+    """
+    n = len(positions)
+    visited = [False] * n
+    queue = deque([0])
+    visited[0] = True
+
+    while queue:
+        u = queue.popleft()
+        for v in range(n):
+            if not visited[v] and manhattan(positions[u], positions[v]) <= MANHATTAN_THRESHOLD:
+                visited[v] = True
+                queue.append(v)
+
+    return all(visited)
 
 
 def generate_map_and_cities(conn):
-    print("[INFO] Начинается генерация карты...")
+    """Основная функция: генерация связного набора городов → остальное."""
 
-    selected_map = select_random_map_image()
+    # Шаг 1: Генерация координат городов с гарантией связности по манхэттену
+    print("[INFO] Генерация координат городов с гарантией связности...")
+    positions = generate_all_cities()
 
-    print("[INFO] Генерация координат городов...")
-    cities_with_types = generate_all_cities()  # теперь содержит типы
+    # Шаг 2: Назначаем фракции и остальные параметры
+    cities = assign_factions_to_cities(positions)
 
-    print("[INFO] Назначение фракций и параметров городов...")
-    cities = assign_factions_to_cities(cities_with_types)
-
+    # Шаг 3: Строим граф дорог (можно оставить старый Kruskal‑подход или переделать под манхэттен)
     print("[INFO] Построение графа связей между городами...")
     graph = build_city_graph(cities)
 
+    # Шаг 4: Сохраняем всё в БД
     save_to_database(conn, cities, graph)
 
-    print("[SUCCESS] Карта, города и дороги успешно сгенерированы!")
-    return selected_map
+    print("[SUCCESS] Координаты для городов успешно сгенерированы!")
+
