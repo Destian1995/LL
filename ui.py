@@ -1487,6 +1487,11 @@ class FortressInfoPopup(Popup):
                         SET name = ?, faction = ? 
                         WHERE name = ?
                     """, (new_city_name, new_owner, old_city_name))
+                cursor.execute("""
+                    UPDATE garrisons
+                    SET city_id = ?
+                    WHERE city_id = ?
+                """, (new_city_name, old_city_name))
 
                 # 3. Переносим только атакующие юниты
                 for unit in attacking_units:
