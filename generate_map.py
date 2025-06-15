@@ -27,7 +27,7 @@ MIN_DISTANCE_PX = 90   # Минимальное расстояние между 
 MAX_DISTANCE_PX = 170  # Максимальное расстояние для возможности взаимодействия
 MAP_SIZE = (1200, 800)  # размер карты в пикселях
 MARGIN = 90
-MANHATTAN_THRESHOLD = 200
+MANHATTAN_THRESHOLD = 220
 
 def generate_city_coords(prev_point=None):
     """Генерирует координаты следующего города относительно предыдущего"""
