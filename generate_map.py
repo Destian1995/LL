@@ -7,6 +7,17 @@ AVAILABLE_MAPS = [f for f in os.listdir(MAP_IMAGES_DIR) if f.startswith("map_") 
 
 # Фракции
 FACTIONS = ["Люди", "Эльфы", "Вампиры", "Адепты", "Элины"]
+# Пул имён для городов
+CITY_NAMES_POOL = [
+    "Аргенвилль", "Партон", "Миргород", "Владонск", "Эледрин",
+    "Селария", "Миреллия", "Каландор", "Валориан", "Гилион",
+    "Штормград", "Тарпин", "Бастария", "Дарриан", "Арданис",
+    "Ауренбург", "Феррадан", "Бальтарис", "Терра", "Каларин",
+    "Хантир", "Лоредо", "Гарбор", "Новакар", "Сантигон",
+    "Ривелло", "Остмара", "Замфир", "Индария", "Талисса",
+    "Гельмут", "Виндгар", "Фениксия", "Этернис", "Лирандор",
+    "Кальдира", "Солмера", "Ундрия", "Мардрак", "Ориона"
+]
 
 # Цвета для фракций
 FACTION_COLORS = {
@@ -18,16 +29,17 @@ FACTION_COLORS = {
 }
 
 # Константы
-TOTAL_CITIES = 17
+TOTAL_CITIES = 23
 FACTION_CITIES = 5
 NEUTRAL_CITIES = TOTAL_CITIES - FACTION_CITIES
 ALL_CITIES = FACTION_CITIES + TOTAL_CITIES
+# Константы
 MAX_NEIGHBOURS = 3  # Максимум 3 соседа
-MIN_DISTANCE_PX = 90   # Минимальное расстояние между двумя городами
-MAX_DISTANCE_PX = 170  # Максимальное расстояние для возможности взаимодействия
-MAP_SIZE = (1200, 800)  # размер карты в пикселях
-MARGIN = 90
-MANHATTAN_THRESHOLD = 220
+MIN_DISTANCE_PX = 120   # <-- Увеличиваем до расстояния между Штормградом и Ферраданом
+MAX_DISTANCE_PX = 220   # Можно немного увеличить для большей гибкости
+MAP_SIZE = (1200, 800)
+MARGIN = 100            # Лучше тоже чуть увеличить, чтобы города не прилипали к краям
+MANHATTAN_THRESHOLD = 250  # Синхронизируем с новым масштабом
 
 def generate_city_coords(prev_point=None):
     """Генерирует координаты следующего города относительно предыдущего"""
@@ -54,6 +66,38 @@ def generate_city_coords(prev_point=None):
             random.randint(MARGIN, MAP_SIZE[0] - MARGIN),
             random.randint(MARGIN, MAP_SIZE[1] - MARGIN)
         )
+
+def select_faction_cities(positions):
+    """Выбирает 5 наиболее удалённых друг от друга городов"""
+    n = len(positions)
+    # Считаем все возможные пары и их расстояния
+    distances = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = math.hypot(positions[i][0] - positions[j][0], positions[i][1] - positions[j][1])
+            distances.append((d, i, j))
+
+    # Сортируем по убыванию расстояния
+    distances.sort(reverse=True)
+
+    selected = set()
+    # Берём топ-5 самых дальних пар (всего 10 индексов), затем выбираем из них 5 уникальных
+    top_pairs = [pair[1:] for pair in distances[:5]]
+    candidate_indices = set()
+    for i, j in top_pairs:
+        candidate_indices.add(i)
+        candidate_indices.add(j)
+
+    # Если в кандидатах меньше 5 уникальных, добавляем остальные из списка
+    while len(candidate_indices) < 5:
+        for i in range(n):
+            if i not in candidate_indices:
+                candidate_indices.add(i)
+                break
+
+    # Выбираем ровно 5 случайных из кандидатов
+    faction_indices = random.sample(list(candidate_indices), 5)
+    return faction_indices
 
 def generate_all_cities():
     """Генерирует города сразу с гарантией манхэттен-связности"""
@@ -175,50 +219,79 @@ def build_city_graph(cities):
 
     return graph
 
-
-# Пул имён для городов
-CITY_NAMES_POOL = [
-    "Аргенвилль", "Партон", "Миргород", "Владонск", "Эледрин",
-    "Селария", "Миреллия", "Каландор", "Валориан", "Гилион",
-    "Штормград", "Тарпин", "Бастария", "Дарриан", "Арданис",
-    "Ауренбург", "Феррадан", "Бальтарис", "Терра", "Каларин", "Хантир", "Лоредо"
-]
-
-
 def assign_factions_to_cities(positions):
-    """Назначает фракции первым 5 городам и нейтралитет остальным"""
+    """Назначает фракции 5 наиболее удалённым городам, остальным — нейтралитет"""
     cities = []
     available_names = CITY_NAMES_POOL.copy()
     random.shuffle(available_names)
 
-    # Фракционные города
-    for i in range(FACTION_CITIES):
-        faction = FACTIONS[i % len(FACTIONS)]
-        name = available_names.pop() if available_names else f"Город {i + 1}"
+    # Шаг 1: Выбираем 5 наиболее удалённых городов
+    faction_indices = select_faction_cities(positions)
+
+    # Шаг 2: Назначаем им фракции
+    assigned = 0
+    used_names = set()
+    faction_assignments = {}
+
+    # Создаём список фракций в случайном порядке
+    shuffled_factions = random.sample(FACTIONS, len(FACTIONS))
+
+    for idx in faction_indices:
+        faction = shuffled_factions[assigned % len(FACTIONS)]
+        name = None
+        while available_names:
+            name = available_names.pop()
+            if name not in used_names:
+                used_names.add(name)
+                break
+        if not name:
+            name = f"Город {idx + 1}"
+
         city = {
             "type": "faction",
             "name": f"{name} ({faction})",
-            "position": positions[i],
+            "position": positions[idx],
             "faction": faction,
             "color": FACTION_COLORS[faction],
             "fortress_name": f"{name} ({faction})"
         }
         cities.append(city)
+        faction_assignments[idx] = city
+        assigned += 1
 
-    # Нейтральные города
-    for i in range(FACTION_CITIES, TOTAL_CITIES):
-        name = available_names.pop() if available_names else f"Нейтрал Город {i + 1}"
+    # Шаг 3: Добавляем оставшиеся города как нейтралы
+    neutral_cities = []
+    for idx in range(len(positions)):
+        if idx in faction_assignments:
+            continue
+        name = None
+        while available_names:
+            name = available_names.pop()
+            if name not in used_names:
+                used_names.add(name)
+                break
+        if not name:
+            name = f"Нейтрал Город {idx + 1}"
+
         city = {
             "type": "neutral",
             "name": f"{name} (Нейтрал)",
-            "position": positions[i],
+            "position": positions[idx],
             "faction": None,
             "color": "#AAAAAA",
             "fortress_name": f"{name} (Нейтрал)"
         }
         cities.append(city)
 
-    return cities
+    # Возвращаем список в том же порядке, что и positions
+    result = [None] * len(positions)
+    for idx in faction_assignments:
+        result[idx] = faction_assignments[idx]
+    for city in cities:
+        if city["position"] in positions and result[positions.index(city["position"])] is None:
+            result[positions.index(city["position"])] = city
+
+    return result
 
 def save_to_database(conn, cities, graph):
     """Сохраняет данные о городах и дорогах в базу данных"""
