@@ -6,7 +6,7 @@ MAP_IMAGES_DIR = "files/map/generate"
 AVAILABLE_MAPS = [f for f in os.listdir(MAP_IMAGES_DIR) if f.startswith("map_") and f.endswith(".png")]
 
 # Фракции
-FACTIONS = ["Люди", "Эльфы", "Вампиры", "Адепты", "Полукровки"]
+FACTIONS = ["Люди", "Эльфы", "Вампиры", "Адепты", "Элины"]
 
 # Цвета для фракций
 FACTION_COLORS = {
@@ -14,7 +14,7 @@ FACTION_COLORS = {
     'Люди': 'files/buildings/arkadia.png',
     'Эльфы': 'files/buildings/celestia.png',
     'Адепты': 'files/buildings/eteria.png',
-    'Полукровки': 'files/buildings/halidon.png'
+    'Элины': 'files/buildings/halidon.png'
 }
 
 # Константы
@@ -210,16 +210,15 @@ def assign_factions_to_cities(positions):
         name = available_names.pop() if available_names else f"Нейтрал Город {i + 1}"
         city = {
             "type": "neutral",
-            "name": f"{name} (Нейтралитет)",
+            "name": f"{name} (Нейтрал)",
             "position": positions[i],
             "faction": None,
             "color": "#AAAAAA",
-            "fortress_name": f"{name} (Нейтралитет)"
+            "fortress_name": f"{name} (Нейтрал)"
         }
         cities.append(city)
 
     return cities
-
 
 def save_to_database(conn, cities, graph):
     """Сохраняет данные о городах и дорогах в базу данных"""
@@ -230,7 +229,7 @@ def save_to_database(conn, cities, graph):
 
     # Сохраняем города
     for i, city in enumerate(cities):
-        kingdom = city["faction"] if city["faction"] else "Нейтралитет"
+        kingdom = city["faction"] if city["faction"] else "Нейтрал"
         coords = str(list(city["position"]))
         cursor.execute(
             "INSERT INTO city (id, kingdom, color, fortress_name, coordinates) VALUES (?, ?, ?, ?, ?)",

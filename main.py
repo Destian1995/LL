@@ -484,7 +484,7 @@ class MapWidget(Widget):
                 'Люди': 'files/buildings/arkadia.png',
                 'Эльфы': 'files/buildings/celestia.png',
                 'Адепты': 'files/buildings/eteria.png',
-                'Полукровки': 'files/buildings/halidon.png'
+                'Элины': 'files/buildings/halidon.png'
             }
 
             try:
@@ -945,7 +945,7 @@ class KingdomSelectionWidget(FloatLayout):
             "Эльфы": "elfs",
             "Адепты": "adept",
             "Вампиры": "vampire",
-            "Полукровки": "poly"
+            "Элины": "poly"
         }
         app = App.get_running_app()
         app.selected_kingdom = kingdom_name
@@ -1016,7 +1016,7 @@ class KingdomSelectionWidget(FloatLayout):
             "Люди": {"Доход крон": 3, "Доход сырья": 1, "Армия": 2},
             "Эльфы": {"Доход крон": 2, "Доход сырья": 2, "Армия": 2},
             "Вампиры": {"Доход крон": 2, "Доход сырья": 2, "Армия": 3},
-            "Полукровки": {"Доход крон": 1, "Доход сырья": 3, "Армия": 1},
+            "Элины": {"Доход крон": 1, "Доход сырья": 3, "Армия": 1},
             "Адепты": {"Доход крон": 1, "Доход сырья": 2, "Армия": 2}
         }
         data = stats.get(kingdom)

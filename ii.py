@@ -876,7 +876,7 @@ class AIController:
                 'Эльфы': {'money_loss': 10, 'food_loss': 0.04},
                 'Вампиры': {'money_loss': 5, 'food_loss': 0.03},
                 'Адепты': {'money_loss': 100, 'food_loss': 0.07},
-                'Полукровки': {'money_loss': 100, 'food_loss': 0.06},
+                'Элины': {'money_loss': 100, 'food_loss': 0.06},
             }
 
             # Получение коэффициентов для текущей фракции
@@ -1951,7 +1951,7 @@ class AIController:
                 target_city = self.find_nearest_neutral_city()
                 if target_city:
                     print(f"Обнаружен нейтральный город: {target_city}. Начинаем захват.")
-                    self.attack_city(target_city, "Нейтралитет")
+                    self.attack_city(target_city, "Нейтрал")
         except Exception as e:
             print(f"Ошибка при проверке и объявлении войны: {e}")
 
@@ -2295,7 +2295,7 @@ class AIController:
             our_cities = self.cursor.fetchall()
 
             # Получаем все нейтральные города
-            query = "SELECT fortress_name, coordinates FROM city WHERE kingdom = 'Нейтралитет'"
+            query = "SELECT fortress_name, coordinates FROM city WHERE kingdom = 'Нейтрал'"
             self.cursor.execute(query)
             neutral_cities = self.cursor.fetchall()
 

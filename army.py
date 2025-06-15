@@ -425,7 +425,7 @@ def start_army_mode(faction, game_area, class_faction, conn):
         "Эльфы": (0.2, 0.7, 0.3, 0.8),
         "Вампиры": (0.5, 0.2, 0.6, 0.8),
         "Адепты": (0, 0, 0, 0.8),
-        "Полукровки": (0.6, 0.5, 0.1, 0.8),
+        "Элины": (0.6, 0.5, 0.1, 0.8),
     }
     bg_color = faction_colors.get(faction, (0.15, 0.15, 0.15, 1))
     main_box = BoxLayout(

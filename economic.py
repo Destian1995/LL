@@ -128,7 +128,7 @@ class Faction:
             "Эльфы": {"tax_rate": 0.015},
             "Вампиры": {"tax_rate": 0.02},
             "Адепты": {"tax_rate": 0.012},
-            "Полукровки": {"tax_rate": 0.01},
+            "Элины": {"tax_rate": 0.01},
         }
 
         self.is_first_run = True  # Флаг для первого запуска
@@ -1032,7 +1032,7 @@ class Faction:
             'Эльфы': {'money_loss': 180, 'food_loss': 0.1},
             'Вампиры': {'money_loss': 210, 'food_loss': 0.09},
             'Адепты': {'money_loss': 240, 'food_loss': 0.05},
-            'Полукровки': {'money_loss': 270, 'food_loss': 0.04},
+            'Элины': {'money_loss': 270, 'food_loss': 0.04},
         }
 
         # Получение коэффициентов для текущей фракции
@@ -1275,7 +1275,7 @@ class Faction:
             return 210
         if self.faction == 'Адепты':
             return 240
-        if self.faction == 'Полукровки':
+        if self.faction == 'Элины':
             return 270
 
     def update_economic_efficiency(self, efficiency_value):
