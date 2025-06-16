@@ -1,8 +1,7 @@
-from lerdon_libraries import *
 from game_process import GameScreen
 from ui import *
 from db_lerdon_connect import *
-from db_manager import DBManager
+
 from generate_map import generate_map_and_cities
 
 class AuthorScreen(Screen):
@@ -278,20 +277,21 @@ def load_cities_from_db(conn, selected_kingdom):
     """
     cursor = conn.cursor()
     try:
-        query = "SELECT id, kingdom, color, fortress_name, coordinates FROM city WHERE kingdom = ?"
+        query = ("SELECT id, name, coordinates, faction, icon_coordinates, label_coordinates, color_faction FROM cities "
+                 "WHERE faction = ?")
         cursor.execute(query, (selected_kingdom,))
         rows = cursor.fetchall()
-
         cities = []
         for row in rows:
             cities.append({
                 'id': row[0],
-                'kingdom': row[1],
-                'color': row[2],
-                'fortress_name': row[3],
-                'coordinates': row[4]
+                'name': row[1],
+                'coordinates': row[2],
+                'faction': row[3],
+                'icon_coordinates': row[4],
+                'label_coordinates': row[5],
+                'color_faction': row[6]
             })
-
         return cities
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке данных о городах: {e}")
@@ -305,8 +305,6 @@ def restore_from_backup(conn):
     """
     cursor = conn.cursor()
     tables_to_restore = [
-        #("city_default", "city"),
-        #("cities_default", "cities"),
         ("diplomacies_default", "diplomacies"),
         ("relations_default", "relations"),
         ("resources_default", "resources"),
@@ -334,7 +332,6 @@ def clear_tables(conn):
     """
     tables_to_clear = [
         "buildings",
-        "city",
         "cities",
         "diplomacies",
         "garrisons",
@@ -427,7 +424,7 @@ class MapWidget(Widget):
 
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT fortress_name, coordinates FROM city")
+            cursor.execute("SELECT name, coordinates FROM cities")
             fortresses_data = cursor.fetchall()
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке данных о городах: {e}")
@@ -489,7 +486,7 @@ class MapWidget(Widget):
 
             try:
                 cursor = self.conn.cursor()
-                cursor.execute("SELECT fortress_name, kingdom, coordinates FROM city")
+                cursor.execute("SELECT name, faction, coordinates FROM cities")
                 fortresses_data = cursor.fetchall()
             except sqlite3.Error as e:
                 print(f"[ERROR] Ошибка при загрузке данных о городах: {e}")
@@ -504,8 +501,8 @@ class MapWidget(Widget):
             for row in fortresses_data:
                 # --- Получаем значения, совместимые и с Row, и с tuple ---
                 if isinstance(row, sqlite3.Row):
-                    fortress_name = row['fortress_name']
-                    kingdom = row['kingdom']
+                    fortress_name = row['name']
+                    kingdom = row['faction']
                     coords_str = row['coordinates']
                 elif isinstance(row, (list, tuple)):
                     fortress_name = row[0]
@@ -915,13 +912,13 @@ class KingdomSelectionWidget(FloatLayout):
         kingdoms = {}
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT kingdom, fortress_name, coordinates, color FROM city_default")
+            cursor.execute("SELECT faction, name, coordinates, color_faction FROM cities_default")
             rows = cursor.fetchall()
             for row in rows:
                 kingdom, fortress_name, coordinates, color = row
                 if kingdom not in kingdoms:
-                    kingdoms[kingdom] = {"fortresses": [], "color": color}
-                kingdoms[kingdom]["fortresses"].append({"name": fortress_name, "coordinates": coordinates})
+                    kingdoms[kingdom] = {"name": [], "color_faction": color}
+                kingdoms[kingdom]["name"].append({"name": fortress_name, "coordinates": coordinates})
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке данных из базы данных: {e}")
         return kingdoms

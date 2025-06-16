@@ -866,13 +866,13 @@ class Faction:
         try:
             self.current_consumption = 0
             # Шаг 1: Выгрузка всех гарнизонов
-            self.cursor.execute("SELECT city_id, unit_name, unit_count FROM garrisons")
+            self.cursor.execute("SELECT city_name, unit_name, unit_count FROM garrisons")
             garrisons = self.cursor.fetchall()
 
             # Шаг 2: Для каждого гарнизона получаем данные юнита
             faction_units = {}
             for garrison in garrisons:
-                city_id, unit_name, unit_count = garrison
+                city_name, unit_name, unit_count = garrison
 
                 if unit_name not in faction_units:
                     self.cursor.execute("SELECT consumption, faction FROM units WHERE unit_name = ?", (unit_name,))
@@ -891,7 +891,7 @@ class Faction:
                 excess_consumption = self.current_consumption - self.max_army_limit
 
                 for garrison in garrisons:
-                    city_id, unit_name, unit_count = garrison
+                    city_name, unit_name, unit_count = garrison
 
                     if unit_count <= 0 or faction_units[unit_name]['faction'] != self.faction:
                         continue
@@ -901,15 +901,15 @@ class Faction:
                     self.cursor.execute("""
                         UPDATE garrisons
                         SET unit_count = unit_count - ?
-                        WHERE city_id = ? AND unit_name = ?
-                    """, (reduction, city_id, unit_name))
+                        WHERE city_name = ? AND unit_name = ?
+                    """, (reduction, city_name, unit_name))
 
                     new_unit_count = unit_count - reduction
                     starving_units.append((unit_name, reduction))
 
                     if new_unit_count <= 0:
-                        self.cursor.execute("DELETE FROM garrisons WHERE city_id = ? AND unit_name = ?",
-                                            (city_id, unit_name))
+                        self.cursor.execute("DELETE FROM garrisons WHERE city_name = ? AND unit_name = ?",
+                                            (city_name, unit_name))
                     else:
                         self.current_consumption -= faction_units[unit_name]['consumption'] * reduction
                         excess_consumption -= faction_units[unit_name]['consumption'] * reduction

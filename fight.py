@@ -594,15 +594,15 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
             new_city_name = update_city_name_with_faction(old_city_name, attacking_fraction)  # <-- здесь self!
 
             # Удаляем гарнизон обороняющейся стороны
-            cursor.execute("DELETE FROM garrisons WHERE city_id = ?", (defending_city,))
+            cursor.execute("DELETE FROM garrisons WHERE city_name = ?", (defending_city,))
 
             # Перемещаем оставшиеся атакующие войска в захваченный город
             for unit in attacking_army:
                 if unit['unit_count'] > 0:
                     cursor.execute("""
-                        INSERT INTO garrisons (city_id, unit_name, unit_count, unit_image)
+                        INSERT INTO garrisons (city_name, unit_name, unit_count, unit_image)
                         VALUES (?, ?, ?, ?)
-                        ON CONFLICT(city_id, unit_name) DO UPDATE SET
+                        ON CONFLICT(city_name, unit_name) DO UPDATE SET
                             unit_count = excluded.unit_count,
                             unit_image = excluded.unit_image
                     """, (
@@ -611,9 +611,6 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
                         unit['unit_count'],
                         unit.get('unit_image', '')
                     ))
-
-            # Обновляем принадлежность города
-            cursor.execute("UPDATE city SET kingdom = ? WHERE fortress_name = ?", (attacking_fraction, defending_city))
 
             # Сначала обновляем имя города, до других изменений
             cursor.execute("UPDATE cities SET name = ? WHERE name = ?", (new_city_name, old_city_name))
@@ -627,13 +624,13 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
         else:
             # Если победила обороняющаяся сторона
             # Очищаем гарнизон и восстанавливаем оставшихся юнитов
-            cursor.execute("DELETE FROM garrisons WHERE city_id = ?", (defending_city,))
+            cursor.execute("DELETE FROM garrisons WHERE city_name = ?", (defending_city,))
             for unit in defending_army:
                 if unit['unit_count'] > 0:
                     cursor.execute("""
-                        INSERT INTO garrisons (city_id, unit_name, unit_count, unit_image)
+                        INSERT INTO garrisons (city_name, unit_name, unit_count, unit_image)
                         VALUES (?, ?, ?, ?)
-                        ON CONFLICT(city_id, unit_name) DO UPDATE SET
+                        ON CONFLICT(city_name, unit_name) DO UPDATE SET
                             unit_count = excluded.unit_count,
                             unit_image = excluded.unit_image
                     """, (
@@ -645,7 +642,7 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
 
         # Обновляем гарнизон атакующего города (общий блок для обоих случаев)
         original_counts = {}
-        cursor.execute("SELECT unit_name, unit_count FROM garrisons WHERE city_id = ?", (attacking_city,))
+        cursor.execute("SELECT unit_name, unit_count FROM garrisons WHERE city_name = ?", (attacking_city,))
         for row in cursor.fetchall():
             original_counts[row['unit_name']] = row['unit_count']
 
@@ -655,12 +652,12 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
                 cursor.execute("""
                     UPDATE garrisons 
                     SET unit_count = ? 
-                    WHERE city_id = ? AND unit_name = ?
+                    WHERE city_name = ? AND unit_name = ?
                 """, (remaining_in_source, attacking_city, unit['unit_name']))
             else:
                 cursor.execute("""
                     DELETE FROM garrisons 
-                    WHERE city_id = ? AND unit_name = ?
+                    WHERE city_name = ? AND unit_name = ?
                 """, (attacking_city, unit['unit_name']))
 
     except sqlite3.Error as e:

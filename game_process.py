@@ -1234,15 +1234,15 @@ class GameScreen(Screen):
     def update_destroyed_factions(self):
         """
         Обновляет статус фракций в таблице diplomacies.
-        Если у фракции нет ни одного города в таблице city,
+        Если у фракции нет ни одного города в таблице cities,
         все записи для этой фракции в таблице diplomacies помечаются как "уничтожена".
         """
         cursor = self.conn.cursor()
         try:
             # Шаг 1: Получаем список всех фракций, у которых есть города
             cursor.execute("""
-                SELECT DISTINCT kingdom
-                FROM city
+                SELECT DISTINCT faction
+                FROM cities
             """)
             factions_with_cities = {row[0] for row in cursor.fetchall()}
 
@@ -1320,7 +1320,7 @@ class GameScreen(Screen):
         self.game_area.canvas.before.clear()
 
         with self.game_area.canvas.before:
-            for city_id, data in self.city_star_levels.items():
+            for city_name, data in self.city_star_levels.items():
                 star_level, icon_x, icon_y, city_name = data
                 if star_level <= 0:
                     continue
@@ -1362,7 +1362,7 @@ class GameScreen(Screen):
                 FROM garrisons g
                 JOIN units u ON g.unit_name = u.unit_name
                 WHERE u.faction = ?
-                  AND g.city_id IN (SELECT name FROM cities WHERE faction = ?)
+                  AND g.city_name IN (SELECT name FROM cities WHERE faction = ?)
             """, (faction, faction))
             rows = cursor.fetchall()
             total_strength = 0
@@ -1376,7 +1376,7 @@ class GameScreen(Screen):
             print(f"Ошибка при подсчёте общей мощи армии: {e}")
             return 0
 
-    def get_city_army_strength_by_faction(self, city_id, faction):
+    def get_city_army_strength_by_faction(self, city_name, faction):
         """Возвращает мощь армии фракции в конкретном городе."""
         cursor = self.conn.cursor()
         class_coefficients = {
@@ -1391,8 +1391,8 @@ class GameScreen(Screen):
                 SELECT g.unit_name, g.unit_count, u.attack, u.defense, u.durability, u.unit_class
                 FROM garrisons g
                 JOIN units u ON g.unit_name = u.unit_name
-                WHERE g.city_id = ? AND u.faction = ?
-            """, (city_id, faction))
+                WHERE g.city_name = ? AND u.faction = ?
+            """, (city_name, faction))
             rows = cursor.fetchall()
             city_strength = 0
             for row in rows:
@@ -1402,7 +1402,7 @@ class GameScreen(Screen):
                 city_strength += unit_strength * count
             return city_strength
         except sqlite3.Error as e:
-            print(f"Ошибка при подсчёте мощи города {city_id}: {e}")
+            print(f"Ошибка при подсчёте мощи города {city_name}: {e}")
             return 0
 
     def calculate_star_level(self, total_strength, city_strength):

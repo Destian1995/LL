@@ -273,8 +273,7 @@ def assign_factions_to_cities(positions):
             "name": f"{name} ({faction})",
             "position": positions[idx],
             "faction": faction,
-            "color": FACTION_COLORS[faction],
-            "fortress_name": f"{name} ({faction})"
+            "color_faction": FACTION_COLORS[faction]
         }
         cities.append(city)
         faction_assignments[idx] = city
@@ -299,8 +298,7 @@ def assign_factions_to_cities(positions):
             "name": f"{name} (Нейтрал)",
             "position": positions[idx],
             "faction": None,
-            "color": "#AAAAAA",
-            "fortress_name": f"{name} (Нейтрал)"
+            "color_faction": "#AAAAAA"
         }
         cities.append(city)
 
@@ -317,37 +315,32 @@ def assign_factions_to_cities(positions):
 def save_to_database(conn, cities, graph):
     """Сохраняет данные о городах и дорогах в базу данных"""
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM city")
     cursor.execute("DELETE FROM cities")
     cursor.execute("DELETE FROM roads")
 
     # Сохраняем города
     for i, city in enumerate(cities):
-        kingdom = city["faction"] if city["faction"] else "Нейтрал"
+        faction = city["faction"] if city["faction"] else "Нейтрал"
         coords = str(list(city["position"]))
-        cursor.execute(
-            "INSERT INTO city (id, kingdom, color, fortress_name, coordinates) VALUES (?, ?, ?, ?, ?)",
-            (i + 1, kingdom, city["color"], city["fortress_name"], coords)
-        )
         icon_coords = str([city["position"][0], city["position"][1]])
         label_coords = str([city["position"][0], city["position"][1] - 30])
         cursor.execute(
-            "INSERT INTO cities (id, name, coordinates, faction, icon_coordinates, label_coordinates) VALUES (?, ?, ?, ?, ?, ?)",
-            (i + 1, city["name"], coords, city["faction"], icon_coords, label_coords)
+            "INSERT INTO cities (id, name, coordinates, faction, icon_coordinates, label_coordinates, color_faction) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (i + 1, city["name"], coords, faction, icon_coords, label_coords, city["color_faction"])
         )
 
     # Сохраняем дороги
     road_id = 1
     added_roads = set()
-    for city_idx, neighbors in graph.items():
+    for city_namex, neighbors in graph.items():
         for neighbor_idx in neighbors:
-            if (city_idx, neighbor_idx) in added_roads or (neighbor_idx, city_idx) in added_roads:
+            if (city_namex, neighbor_idx) in added_roads or (neighbor_idx, city_namex) in added_roads:
                 continue
-            added_roads.add((city_idx, neighbor_idx))
-            added_roads.add((neighbor_idx, city_idx))
+            added_roads.add((city_namex, neighbor_idx))
+            added_roads.add((neighbor_idx, city_namex))
             cursor.execute(
                 "INSERT INTO roads (id, city1, city2) VALUES (?, ?, ?)",
-                (road_id, city_idx + 1, neighbor_idx + 1)
+                (road_id, city_namex + 1, neighbor_idx + 1)
             )
             road_id += 1
     conn.commit()
@@ -397,4 +390,4 @@ def generate_map_and_cities(conn):
     save_to_database(conn, cities, graph)
 
     print("[SUCCESS] Координаты для городов успешно сгенерированы!")
-
+    print("[SUCCESS] GENERATE MAP COMPLETE!")
