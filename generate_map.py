@@ -36,7 +36,7 @@ ALL_CITIES = FACTION_CITIES + TOTAL_CITIES
 # Константы
 MAX_NEIGHBOURS = 3  # Максимум 3 соседа
 MIN_DISTANCE_PX = 120   # <-- Увеличиваем до расстояния между Штормградом и Ферраданом
-MAX_DISTANCE_PX = 220   # Можно немного увеличить для большей гибкости
+MAX_DISTANCE_PX = 230   # Можно немного увеличить для большей гибкости
 MAP_SIZE = (1200, 800)
 MARGIN = 100            # Лучше тоже чуть увеличить, чтобы города не прилипали к краям
 MANHATTAN_THRESHOLD = 250  # Синхронизируем с новым масштабом
@@ -179,10 +179,10 @@ def build_city_graph(cities):
             mst_edges.add((v, u))
 
     # Убираем связи между фракционными городами
-    faction_indices = [i for i in range(FACTION_CITIES)]
+    faction_indices = [i for i, city in enumerate(cities) if city["type"] == "faction"]
     for i in faction_indices:
         for j in faction_indices:
-            if j in graph[i]:
+            if i != j and j in graph[i]:
                 graph[i].remove(j)
                 graph[j].remove(i)
 
@@ -193,8 +193,8 @@ def build_city_graph(cities):
         if needed == 0:
             continue
         nearby = sorted(
-            [(j, math.hypot(positions[i][0] - positions[j][0], positions[i][1] - positions[j][1])) for j in range(TOTAL_CITIES)
-             if j != i and j not in current_neighbors],
+            [(j, math.hypot(positions[i][0] - positions[j][0], positions[i][1] - positions[j][1]))
+             for j in range(TOTAL_CITIES) if j != i and j not in current_neighbors],
             key=lambda x: x[1]
         )
         added = 0
@@ -205,12 +205,33 @@ def build_city_graph(cities):
                 continue
             if j in current_neighbors:
                 continue
+            # Если это фракционный город — нельзя добавлять других фракционных
+            if cities[i]["type"] == "faction" and cities[j]["type"] == "faction":
+                continue
             graph[i].append(j)
             graph[j].append(i)
             current_neighbors.add(j)
             added += 1
             if added >= needed:
                 break
+
+    # Проверяем, что у каждого фракционного города есть минимум 2 нейтральных соседа
+    for idx in faction_indices:
+        faction_neighbors = [n for n in graph[idx] if cities[n]["type"] == "neutral"]
+        if len(faction_neighbors) < 2:
+            missing = 2 - len(faction_neighbors)
+            candidates = []
+            for i in range(TOTAL_CITIES):
+                if i == idx or cities[i]["type"] != "neutral" or i in graph[idx]:
+                    continue
+                d = math.hypot(positions[idx][0] - positions[i][0], positions[idx][1] - positions[i][1])
+                if d <= MAX_DISTANCE_PX:
+                    candidates.append((d, i))
+            candidates.sort()
+            for _, i in candidates[:missing]:
+                graph[idx].append(i)
+                graph[i].append(idx)
+                faction_neighbors.append(i)
 
     # Ограничиваем максимальное число соседей
     for i in range(TOTAL_CITIES):

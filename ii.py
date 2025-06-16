@@ -1279,7 +1279,7 @@ class AIController:
                     allied_coords = allied_coords.strip("[]")  # Убираем [ и ]
                     allied_x, allied_y = map(int, allied_coords.split(','))
                     distance = ((our_x - allied_x) ** 2 + (our_y - allied_y) ** 2) ** 0.5
-                    if distance <= 225:
+                    if distance <= 280:
                         nearest_city = allied_city_name
             return nearest_city
         except sqlite3.Error as e:
@@ -1314,7 +1314,7 @@ class AIController:
                     # Новый расчет расстояния
                     distance = abs(our_x - enemy_x) + abs(our_y - enemy_y)
 
-                    if distance < 225:
+                    if distance < 280:
                         nearest_city = enemy_city_name
                         return nearest_city
 
@@ -2306,7 +2306,7 @@ class AIController:
                     city_coords = city_coords.strip("[]")
                     enemy_x, enemy_y = map(int, city_coords.split(','))
                     distance = abs(our_x - enemy_x) + abs(our_y - enemy_y)
-                    if distance < 225:
+                    if distance < 280:
                         return city_name
             return None
         except sqlite3.Error as e:

@@ -631,10 +631,7 @@ class FortressInfoPopup(Popup):
         popup.open()
 
     def move_selected_group_to_city(self, instance=None):
-        """
-        Перемещает выбранную группу юнитов в город.
-        :param instance: Экземпляр кнопки (не используется).
-        """
+        """Перемещает выбранную группу юнитов в город."""
         if not self.selected_group:
             show_popup_message("Ошибка", "Группа пуста. Добавьте юниты перед перемещением.")
             return
@@ -643,15 +640,13 @@ class FortressInfoPopup(Popup):
             current_player_kingdom = self.player_fraction
             cursor = self.cursor
 
-            # Проверка возможности перемещения (один раз на группу)
+            # Проверка возможности перемещения
             cursor.execute("SELECT can_move FROM turn_check_move WHERE faction = ?", (current_player_kingdom,))
             move_data = cursor.fetchone()
 
             if not move_data:
-                cursor.execute("""
-                    INSERT INTO turn_check_move (faction, can_move)
-                    VALUES (?, ?)
-                """, (current_player_kingdom, True))
+                cursor.execute("""INSERT INTO turn_check_move (faction, can_move) VALUES (?, ?)""",
+                               (current_player_kingdom, True))
                 self.conn.commit()
                 move_data = (True,)
             elif not move_data[0]:
@@ -659,25 +654,24 @@ class FortressInfoPopup(Popup):
                 return
 
             # === НОВАЯ ЛОГИКА: сначала проверяем возможность, потом выполняем ===
-            from collections import defaultdict
+            grouped_units = {}
+            for troop in self.selected_group:
+                city_id = troop["city_id"]
+                if city_id not in grouped_units:
+                    grouped_units[city_id] = []
+                grouped_units[city_id].append(troop)
 
-            # Группируем юниты по исходным городам для проверки
-            grouped_units = defaultdict(list)
-            for unit in self.selected_group:
-                grouped_units[unit["city_id"]].append(unit)
-
-            # Проверяем каждую группу
+            # Проверяем возможность для всей группы
             for source_city, units in grouped_units.items():
                 for unit in units:
-                    result = self.transfer_troops_between_cities(
+                    success = self.transfer_troops_between_cities(
                         source_fortress_name=source_city,
                         destination_fortress_name=self.city_name,
                         unit_name=unit["unit_name"],
                         taken_count=unit["unit_count"],
-                        dry_run=True  # Только проверка, без изменений в БД
+                        dry_run=True
                     )
-                    if not result:
-                        # Если хотя бы одна проверка провалена — отменяем всё
+                    if not success:
                         return
 
             # Если все проверки пройдены — начинаем реальное выполнение
@@ -692,16 +686,21 @@ class FortressInfoPopup(Popup):
                     )
 
             # Теперь тратим право на перемещение
-            cursor.execute("""
-                UPDATE turn_check_move 
-                SET can_move = ? 
-                WHERE faction = ?
-            """, (False, current_player_kingdom))
+            cursor.execute("""UPDATE turn_check_move SET can_move = ? WHERE faction = ?""",
+                           (False, current_player_kingdom))
             self.conn.commit()
 
-            # Очищаем группу после перемещения
+            # === ЗАКРЫТИЕ ОКОН ===
+            if hasattr(self, 'current_popup') and self.current_popup:
+                self.current_popup.dismiss()  # Закрываем окно выбора войск
+                self.current_popup = None
+
+            if hasattr(self, 'dismiss'):
+                self.dismiss()  # Закрываем текущий экран гарнизона/города
+
+            # Очищаем группу и обновляем интерфейс
             self.selected_group.clear()
-            self.update_garrison()  # Обновляем интерфейс гарнизона
+            self.update_garrison()
 
         except Exception as e:
             show_popup_message("Ошибка", f"Произошла ошибка при перемещении группы: {e}")
@@ -1169,7 +1168,7 @@ class FortressInfoPopup(Popup):
         1) Если войска в своём городе:
            — в свой город — без ограничений;
            — в союзный город — логистика < 300;
-           — в вражеский город — логистика < 225 + проверка флага атаки;
+           — в вражеский город — логистика < 280 + проверка флага атаки;
            — в нейтральный город — запрещено.
         2) Если войска в городе союзника:
            — в любой город, принадлежащий текущему игроку или другим его союзникам — логистика < 300;
@@ -1233,7 +1232,7 @@ class FortressInfoPopup(Popup):
                         return False
                 # ── ДОБАВЛЕНО: если город Нетрал ───────────────────────
                 elif dest_kingdom == "Нейтрал":
-                    if total_diff < 225:
+                    if total_diff < 280:
                         if not dry_run:
                             # Вызываем захват без боя
                             self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
@@ -1245,9 +1244,9 @@ class FortressInfoPopup(Popup):
                         return False
 
 
-                # — если цель враг, проверяем total_diff < 225 и флаги атаки;
+                # — если цель враг, проверяем total_diff < 280 и флаги атаки;
                 elif self.is_enemy(current_player_kingdom, destination_owner):
-                    if total_diff < 225:
+                    if total_diff < 280:
                         cursor.execute(
                             "SELECT check_attack FROM turn_check_attack_faction WHERE faction = ?",
                             (destination_owner,)

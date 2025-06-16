@@ -454,7 +454,7 @@ class MapWidget(Widget):
                     # Вычисляем расстояние
                     total_diff = self.calculate_manhattan_distance(source_coords, dest_coords)
 
-                    if total_diff < 224:  # Рисуем дорогу, если расстояние ≤ 224
+                    if total_diff < 280:  # Рисуем дорогу, если расстояние ≤ 280
                         # Вычисляем координаты с учётом масштаба и позиции
                         drawn_x1 = source_coords[0] * self.map_scale + self.map_pos[0]
                         drawn_y1 = source_coords[1] * self.map_scale + self.map_pos[1]
@@ -547,7 +547,7 @@ class MapWidget(Widget):
 
                 # --- Добавляем название города ---
                 display_name = fortress_name[:20] + "..." if len(fortress_name) > 20 else fortress_name
-                label = CoreLabel(text=display_name, font_size=25, color=(0, 0, 0, 1))
+                label = CoreLabel(text=display_name, font_size=23, color=(0, 0, 0, 1))
                 label.refresh()
                 text_texture = label.texture
                 text_width, text_height = text_texture.size
