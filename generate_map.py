@@ -68,58 +68,57 @@ def generate_city_coords(prev_point=None):
         )
 
 def select_faction_cities(positions):
-    """Выбирает 5 наиболее удалённых друг от друга городов"""
+    """Выбирает 5 городов, все пары которых находятся на расстоянии >= 300 px друг от друга."""
     n = len(positions)
-    # Считаем все возможные пары и их расстояния
-    distances = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            d = math.hypot(positions[i][0] - positions[j][0], positions[i][1] - positions[j][1])
-            distances.append((d, i, j))
+    min_required_distance = 200  # Минимальное расстояние между фракционными городами
+    attempts = 0
+    max_attempts = 100  # Максимум попыток подбора
 
-    # Сортируем по убыванию расстояния
-    distances.sort(reverse=True)
+    while attempts < max_attempts:
+        # Случайно выбираем 5 индексов
+        candidate_indices = random.sample(range(n), 5)
+        valid = True
 
-    selected = set()
-    # Берём топ-5 самых дальних пар (всего 10 индексов), затем выбираем из них 5 уникальных
-    top_pairs = [pair[1:] for pair in distances[:5]]
-    candidate_indices = set()
-    for i, j in top_pairs:
-        candidate_indices.add(i)
-        candidate_indices.add(j)
-
-    # Если в кандидатах меньше 5 уникальных, добавляем остальные из списка
-    while len(candidate_indices) < 5:
-        for i in range(n):
-            if i not in candidate_indices:
-                candidate_indices.add(i)
+        # Проверяем каждую пару
+        for i in range(5):
+            for j in range(i + 1, 5):
+                idx1 = candidate_indices[i]
+                idx2 = candidate_indices[j]
+                x1, y1 = positions[idx1]
+                x2, y2 = positions[idx2]
+                dist = math.hypot(x2 - x1, y2 - y1)
+                if dist < min_required_distance:
+                    valid = False
+                    break
+            if not valid:
                 break
 
-    # Выбираем ровно 5 случайных из кандидатов
-    faction_indices = random.sample(list(candidate_indices), 5)
-    return faction_indices
+        if valid:
+            print(f"[INFO] Найдены 5 фракционных городов, все на расстоянии ≥ {min_required_distance} px.")
+            return candidate_indices
+
+        attempts += 1
+
+    # Если за max_attempts не нашлось подходящих — выбрасываем исключение
+    raise RuntimeError(
+        f"Не удалось найти 5 городов, удовлетворяющих условию минимального расстояния {min_required_distance}px"
+    )
 
 def generate_all_cities():
-    """Генерирует города сразу с гарантией манхэттен-связности"""
-    cities = []
-    used_positions = set()
-
+    """Генерирует города с гарантией связности и возможности выбрать 5 фракционных с расстоянием > 300px"""
     while True:
         cities = []
         used_positions = set()
         first_point = generate_city_coords()
         cities.append(first_point)
         used_positions.add(first_point)
-
         attempts = 0
         while len(cities) < TOTAL_CITIES and attempts < 1000:
             base_point = random.choice(cities)
             new_point = generate_city_coords(base_point)
-
             if new_point in used_positions:
                 attempts += 1
                 continue
-
             too_close = any(
                 math.hypot(new_point[0] - p[0], new_point[1] - p[1]) < MIN_DISTANCE_PX
                 for p in cities
@@ -127,7 +126,6 @@ def generate_all_cities():
             if too_close:
                 attempts += 1
                 continue
-
             # Проверяем, есть ли хотя бы одна связь по Манхэттену
             if any(manhattan(new_point, p) <= MANHATTAN_THRESHOLD for p in cities):
                 cities.append(new_point)
@@ -135,10 +133,14 @@ def generate_all_cities():
                 attempts = 0  # сбрасываем попытки
             else:
                 attempts += 1
-
         if len(cities) == TOTAL_CITIES:
             print(f"[SUCCESS] Сгенерировано {TOTAL_CITIES} уникальных городов.")
-            return cities
+            # Проверяем, можно ли выбрать 5 фракционных с нужным расстоянием
+            try:
+                select_faction_cities(cities)
+                return cities
+            except RuntimeError as e:
+                print(f"[WARN] Не удалось подобрать фракционные города: {e}. Перегенерация карты...")
         else:
             print("[WARN] Не удалось сгенерировать все города, пробуем заново...")
 

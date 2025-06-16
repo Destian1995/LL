@@ -547,7 +547,7 @@ class MapWidget(Widget):
                 display_name = full_name[:25] + "..." if len(full_name) > 25 else full_name
 
                 # --- Добавляем название города с фракцией ---
-                label = CoreLabel(text=display_name, font_size=23, color=(0, 0, 0, 1))
+                label = CoreLabel(text=display_name, font_size=21, color=(0, 0, 0, 1))
                 label.refresh()
                 text_texture = label.texture
                 text_width, text_height = text_texture.size
