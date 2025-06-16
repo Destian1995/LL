@@ -542,8 +542,11 @@ class MapWidget(Widget):
                 # --- Рисуем крепость ---
                 Rectangle(source=image_path, pos=(drawn_x, drawn_y), size=(77, 77))
 
-                # --- Добавляем название города ---
-                display_name = fortress_name[:20] + "..." if len(fortress_name) > 20 else fortress_name
+                # --- Формируем текст: "Город (Фракция)" ---
+                full_name = f"{fortress_name} ({kingdom})"
+                display_name = full_name[:25] + "..." if len(full_name) > 25 else full_name
+
+                # --- Добавляем название города с фракцией ---
                 label = CoreLabel(text=display_name, font_size=23, color=(0, 0, 0, 1))
                 label.refresh()
                 text_texture = label.texture

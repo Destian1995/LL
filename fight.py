@@ -580,19 +580,6 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
         cursor = conn.cursor()
         if winner == 'attacking':
             # Если победила атакующая сторона
-
-            # Получаем текущее имя обороняющегося города
-            cursor.execute("SELECT name FROM cities WHERE name = ?", (defending_city,))
-            result = cursor.fetchone()
-            if not result:
-                print(f"[ERROR] Город {defending_city} не найден в таблице cities")
-                return
-
-            old_city_name = result[0]
-
-            # Формируем новое имя
-            new_city_name = update_city_name_with_faction(old_city_name, attacking_fraction)  # <-- здесь self!
-
             # Удаляем гарнизон обороняющейся стороны
             cursor.execute("DELETE FROM garrisons WHERE city_name = ?", (defending_city,))
 
@@ -611,15 +598,11 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
                         unit['unit_count'],
                         unit.get('unit_image', '')
                     ))
-
-            # Сначала обновляем имя города, до других изменений
-            cursor.execute("UPDATE cities SET name = ? WHERE name = ?", (new_city_name, old_city_name))
-
-            # Теперь обновляем фракцию (уже с новым именем)
-            cursor.execute("UPDATE cities SET faction = ? WHERE name = ?", (attacking_fraction, new_city_name))
+            # обновляем фракцию
+            cursor.execute("UPDATE cities SET faction = ? WHERE name = ?", (attacking_fraction, defending_city))
 
             # Обновляем фракцию зданий
-            cursor.execute("UPDATE buildings SET faction = ? WHERE city_name = ?", (attacking_fraction, new_city_name))
+            cursor.execute("UPDATE buildings SET faction = ? WHERE city_name = ?", (attacking_fraction, defending_city))
 
         else:
             # Если победила обороняющаяся сторона

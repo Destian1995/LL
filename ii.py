@@ -1704,30 +1704,7 @@ class AIController:
             # Обработка победы
             if result["winner"] == "attacker":
                 self.army_efficiency_ratio = result["efficiency_ratio"]
-                # 2. Формируем новое имя города
-                cursor = self.db_connection.cursor()
-                new_city_name = self.update_city_name_with_faction(allied_city, self.faction)
-
-                # 3. Обновляем данные о городе
-                cursor.execute("""
-                    UPDATE cities 
-                    SET name = ?, faction = ? 
-                    WHERE name = ?
-                """, (new_city_name, self.faction, allied_city))
-
-                # 4. Обновляем ссылки на город во всех таблицах
-                cursor.execute("""
-                    UPDATE garrisons 
-                    SET city_name = ? 
-                    WHERE city_name = ?
-                """, (new_city_name, allied_city))
-
-                cursor.execute("""
-                    UPDATE buildings 
-                    SET city_name = ? 
-                    WHERE city_name = ?
-                """, (new_city_name, allied_city))
-
+                # Распределяем войска после победы
                 defensive_units = []
                 remaining_units = []
 
@@ -1786,44 +1763,7 @@ class AIController:
         try:
             with self.db_connection:
                 cursor = self.db_connection.cursor()
-
-                # Получаем текущее имя города
-                cursor.execute("SELECT name FROM cities WHERE name = ?", (city_name,))
-                result = cursor.fetchone()
-                if not result:
-                    raise ValueError(f"Город '{city_name}' не найден в таблице cities")
-                old_city_name = result[0]
-                print(f"Старое имя Города {old_city_name}")
-
-                # 2. Формируем новое имя города
-                new_city_name = self.update_city_name_with_faction(old_city_name, new_owner)
-
-                # 3. Обновляем данные о городе
-                cursor.execute("""
-                    UPDATE cities 
-                    SET name = ?, faction = ? 
-                    WHERE name = ?
-                """, (new_city_name, new_owner, old_city_name))
-
-                # 4. Обновляем ссылки на город во всех таблицах
-                cursor.execute("""
-                    UPDATE garrisons
-                    SET city_name = ?
-                    WHERE city_name = ? AND city_name IN (
-                        SELECT g.city_name
-                        FROM garrisons g
-                        JOIN units u ON g.unit_name = u.unit_name
-                        WHERE u.faction = ?
-                    )
-                """, (new_city_name, old_city_name, new_owner))
-
-                cursor.execute("""
-                    UPDATE buildings 
-                    SET city_name = ? 
-                    WHERE city_name = ?
-                """, (new_city_name, old_city_name))
-
-                # 5. Перемещаем войска атакующего отряда
+                # 1. Перемещаем войска атакующего отряда
                 for unit in attacking_units:
                     cursor.execute("""
                         UPDATE garrisons 
@@ -1840,14 +1780,14 @@ class AIController:
                         ON CONFLICT(city_name, unit_name) DO UPDATE SET
                             unit_count = unit_count + excluded.unit_count,
                             unit_image = excluded.unit_image
-                    """, (new_city_name, unit["unit_name"], unit["unit_count"], unit["unit_image"]))
+                    """, (city_name, unit["unit_name"], unit["unit_count"], unit["unit_image"]))
 
-                # 6. Обновляем принадлежность зданий
+                # 2. Обновляем принадлежность зданий
                 cursor.execute("""
                     UPDATE buildings 
                     SET faction = ? 
                     WHERE city_name = ?
-                """, (new_owner, new_city_name))
+                """, (new_owner, city_name))
 
         except sqlite3.Error as e:
             print(f"[ERROR] Ошибка при захвате города: {e}")
@@ -2323,13 +2263,6 @@ class AIController:
             print(f"Ошибка при поиске нейтрального города: {e}")
             return None
 
-    def update_city_name_with_faction(self, city_name, new_faction):
-        """
-        Удаляет всё, что находится в скобках (включая сами скобки),
-        и возвращает новое имя в формате: "base_name (new_faction)".
-        """
-        base_name = city_name.split('(')[0].strip()
-        return f"{base_name} ({new_faction})"
     # ---------------------------------------------------------------------
 
     # Основная логика хода ИИ

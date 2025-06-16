@@ -5,9 +5,6 @@ from fight import fight
 from economic import format_number
 
 
-def get_base_city_name(full_name):
-    """Убирает суффикс в скобках"""
-    return full_name.split(" (")[0]
 
 
 class FortressInfoPopup(Popup):
@@ -29,9 +26,25 @@ class FortressInfoPopup(Popup):
         self.city_coords = city_coords  # Это кортеж (x, y)
         self.current_popup = None  # Ссылка на текущее всплывающее окно
 
-        self.refresh_city_name()
+
+        # Преобразуем координаты в строку для сравнения с БД
+        coords_str = f"[{self.city_coords[0]}, {self.city_coords[1]}]"
+        # Получаем информацию о городе из таблицы cities
+        self.cursor.execute("""
+            SELECT name FROM cities 
+            WHERE coordinates = ?
+        """, (coords_str,))
+
+        city_data = self.cursor.fetchone()
+        if city_data:
+            self.city_name = city_data[0]
+        else:
+            print(f"Город с координатами {self.city_coords} не найден в базе данных")
+            return
+
         self.title = f"Информация о поселении {self.city_name}"
         self.create_ui()
+
 
     def create_ui(self):
         """
@@ -150,16 +163,6 @@ class FortressInfoPopup(Popup):
 
         # Ссылки на виджеты гарнизона
         self.garrison_widgets = {}  # Словарь для хранения ссылок на виджеты гарнизона
-
-    def update_city_name_with_faction(self, city_name, new_faction):
-        """
-        Удаляет всё, что находится в скобках (включая сами скобки),
-        и возвращает новое имя в формате: "base_name (new_faction)".
-        """
-        # Способ 2 (альтернатива без regex):
-        base_name = city_name.split('(')[0].strip()
-
-        return f"{base_name} ({new_faction})"
 
     def load_buildings(self):
         """Загружает здания в интерфейс."""
@@ -1068,61 +1071,23 @@ class FortressInfoPopup(Popup):
         popup.content = layout
         popup.open()
 
-    def get_city_owner(self, base_name):
-        """
-        Возвращает фракцию-владельца города по его базовому имени (без суффикса).
-        Использует SQL LIKE для поиска совпадений.
-        """
-        try:
-            city_name = get_base_city_name(base_name)
-            cursor = self.conn.cursor()
-            # Ищем город, имя которого начинается с base_name
-            query = """
-                SELECT name, faction FROM cities 
-                WHERE name LIKE ? || '%'
-            """
-            cursor.execute(query, (city_name,))
-            result = cursor.fetchone()
 
+    def get_city_owner(self, city_name):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT faction FROM cities 
+                WHERE name = ?
+            """, (city_name,))
+            result = cursor.fetchone()
             if not result:
-                print(f"Город '{base_name}' не найден в таблице cities.")
+                print(f"Город '{city_name}' не найден в таблице cities.")
                 return None
 
-            full_city_name, faction = result
-            print(f"Найден город: {full_city_name}, Владелец: {faction}")
-            return faction
-
+            return result[0]
         except sqlite3.Error as e:
             print(f"Ошибка при получении владельца города: {e}")
             return None
-
-    def refresh_city_name(self):
-        """
-        Обновляет значение self.city_name на основе текущих координат.
-        Используется после операций вроде захвата города, чтобы получить актуальное имя.
-        """
-        try:
-            # Преобразуем координаты в строку для поиска в БД
-            coords_str = f"[{self.city_coords[0]}, {self.city_coords[1]}]"
-
-            # Запрашиваем обновлённое имя города
-            self.cursor.execute("""
-                SELECT name FROM cities WHERE coordinates = ?
-            """, (coords_str,))
-            city_data = self.cursor.fetchone()
-
-            if city_data:
-                old_city_name = self.city_name
-                self.city_name = city_data[0]
-                print(f"Имя города обновлено: {old_city_name} → {self.city_name}")
-            else:
-                print(f"Город с координатами {coords_str} не найден в базе данных.")
-                self.city_name = None
-
-        except sqlite3.Error as e:
-            print(f"[ERROR] Не удалось обновить имя города: {e}")
-            self.city_name = None
-
 
     def initialize_turn_check_attack_faction(self):
         """
@@ -1208,15 +1173,14 @@ class FortressInfoPopup(Popup):
         """
 
         try:
-            self.refresh_city_name()
             cursor = self.conn.cursor()
             # Получаем владельцев городов
             source_owner = self.get_city_owner(source_fortress_name)
             # Получаем владельца целевого города
-            destination_owner = self.get_city_owner(self.city_name)
+            destination_owner = self.get_city_owner(destination_fortress_name)
 
             # Проверяем, является ли город нейтральным
-            cursor.execute("SELECT faction FROM cities WHERE name = ?", (self.city_name,))
+            cursor.execute("SELECT faction FROM cities WHERE name = ?", (destination_fortress_name,))
             dest_kingdom_result = cursor.fetchone()
             dest_kingdom = dest_kingdom_result[0] if dest_kingdom_result else None
             if not source_owner or not destination_owner:
@@ -1227,7 +1191,7 @@ class FortressInfoPopup(Popup):
 
             # Получаем координаты городов и считаем манхэттенское расстояние
             source_coords = self.get_city_coordinates(source_fortress_name)
-            destination_coords = self.get_city_coordinates(self.city_name)
+            destination_coords = self.get_city_coordinates(destination_fortress_name)
             x_diff = abs(source_coords[0] - destination_coords[0])
             y_diff = abs(source_coords[1] - destination_coords[1])
             total_diff = x_diff + y_diff
@@ -1238,7 +1202,7 @@ class FortressInfoPopup(Popup):
                 if destination_owner == current_player_kingdom:
                     if not dry_run:
                         self.move_troops(source_fortress_name,
-                                         self.city_name,
+                                         destination_fortress_name,
                                          unit_name,
                                          taken_count)
                     return True
@@ -1248,7 +1212,7 @@ class FortressInfoPopup(Popup):
                     if total_diff < 300:
                         if not dry_run:
                             self.move_troops(source_fortress_name,
-                                             self.city_name,
+                                             destination_fortress_name,
                                              unit_name,
                                              taken_count)
                         return True
@@ -1262,7 +1226,7 @@ class FortressInfoPopup(Popup):
                     if total_diff < 280:
                         if not dry_run:
                             # Вызываем захват без боя
-                            self.capture_city(self.city_name, current_player_kingdom, self.selected_group)
+                            self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
                         return True
                     else:
                         print('Расстоние между городами: ', total_diff)
@@ -1301,7 +1265,7 @@ class FortressInfoPopup(Popup):
 
                             # Запускаем бой
                             self.start_battle_group(source_fortress_name,
-                                                    self.city_name,
+                                                    destination_fortress_name,
                                                     self.selected_group)
                         return True
                     else:
@@ -1327,7 +1291,7 @@ class FortressInfoPopup(Popup):
                     if total_diff < 300:
                         if not dry_run:
                             self.move_troops(source_fortress_name,
-                                             self.city_name,
+                                             destination_fortress_name,
                                              unit_name,
                                              taken_count)
                         return True
@@ -1352,7 +1316,7 @@ class FortressInfoPopup(Popup):
                                f"Произошла ошибка при работе с базой данных (transfer): {e}")
             return False
         except Exception as e:
-            print(f"[ERROR] Текущее имя города {self.city_name}")
+            print(f"[ERROR] Текущее имя города {destination_fortress_name}")
             show_popup_message("Ошибка",
                                f"Произошла ошибка при переносе войск: {e}")
             return False
@@ -1491,77 +1455,54 @@ class FortressInfoPopup(Popup):
             show_popup_message("Ошибка", f"Неизвестная ошибка: {e}")
             self.close_current_popup()
 
-    def capture_city(self, base_city_name, new_owner, attacking_units):
+    def capture_city(self, city_name, new_owner, attacking_units):
         try:
             with self.conn:
                 cursor = self.conn.cursor()
-                city_name = get_base_city_name(base_city_name)
-                # 1. Получаем старое имя города из таблицы cities
-                cursor.execute("SELECT name FROM cities WHERE name LIKE ? || '%'", (city_name,))
-                result = cursor.fetchone()
-                if not result:
-                    raise ValueError(f"Город '{city_name}' не найден в таблице cities")
-                old_city_name = result[0]
 
-                # 2. Формируем новое имя города
-                new_city_name = self.update_city_name_with_faction(old_city_name, new_owner)
-
-                # 3. Обновляем данные о городе
+                # 1. Обновляем владельца города
                 cursor.execute("""
                     UPDATE cities 
-                    SET name = ?, faction = ? 
+                    SET faction = ? 
                     WHERE name = ?
-                """, (new_city_name, new_owner, old_city_name))
+                """, (new_owner, city_name))
 
-                # 4. Обновляем ссылки на город во всех таблицах
-                cursor.execute("""
-                    UPDATE garrisons
-                    SET city_name = ?
-                    WHERE city_name = ? AND city_name IN (
-                        SELECT g.city_name
-                        FROM garrisons g
-                        JOIN units u ON g.unit_name = u.unit_name
-                        WHERE u.faction = ?
-                    )
-                """, (new_city_name, old_city_name, new_owner))
-
-                cursor.execute("""
-                    UPDATE buildings 
-                    SET city_name = ? 
-                    WHERE city_name = ?
-                """, (new_city_name, old_city_name))
-
-                # 5. Перемещаем войска атакующего отряда
+                # 2. Переносим только атакующие юниты
                 for unit in attacking_units:
+                    # Удаляем из исходного города
                     cursor.execute("""
                         UPDATE garrisons 
                         SET unit_count = unit_count - ? 
                         WHERE city_name = ? AND unit_name = ?
                     """, (unit["unit_count"], unit["city_name"], unit["unit_name"]))
+
+                    # Удаляем запись, если юнитов больше нет
                     cursor.execute("""
                         DELETE FROM garrisons 
                         WHERE city_name = ? AND unit_name = ? AND unit_count <= 0
                     """, (unit["city_name"], unit["unit_name"]))
-                    cursor.execute("""
-                        INSERT INTO garrisons (city_name, unit_name, unit_count, unit_image)
-                        VALUES (?, ?, ?, ?)
-                        ON CONFLICT(city_name, unit_name) DO UPDATE SET
-                            unit_count = unit_count + excluded.unit_count,
-                            unit_image = excluded.unit_image
-                    """, (new_city_name, unit["unit_name"], unit["unit_count"], unit["unit_image"]))
 
-                # 6. Обновляем принадлежность зданий
+                    # Добавляем в захваченный город
+                    cursor.execute("""
+                        INSERT INTO garrisons 
+                        (city_name, unit_name, unit_count, unit_image) 
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(city_name, unit_name) DO UPDATE 
+                        SET unit_count = unit_count + ?
+                    """, (city_name, unit["unit_name"], unit["unit_count"],
+                          unit["unit_image"], unit["unit_count"]))
+
+                # 3. Передаем здания новому владельцу
                 cursor.execute("""
                     UPDATE buildings 
                     SET faction = ? 
                     WHERE city_name = ?
-                """, (new_owner, new_city_name))
+                """, (new_owner, city_name))
 
-                self.conn.commit()
-                show_popup_message("Успех", f"Город {new_city_name} захвачен!")
+            show_popup_message("Успех", f"Город {city_name} захвачен!")
+            self.update_garrison()
 
         except sqlite3.Error as e:
-            self.conn.rollback()
             show_popup_message("Ошибка", f"Ошибка при захвате города: {e}")
 
     def get_city_coordinates(self, city_name):

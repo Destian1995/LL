@@ -270,7 +270,7 @@ def assign_factions_to_cities(positions):
 
         city = {
             "type": "faction",
-            "name": f"{name} ({faction})",
+            "name": f"{name}",
             "position": positions[idx],
             "faction": faction,
             "color_faction": FACTION_COLORS[faction]
@@ -295,7 +295,7 @@ def assign_factions_to_cities(positions):
 
         city = {
             "type": "neutral",
-            "name": f"{name} (Нейтрал)",
+            "name": f"{name}",
             "position": positions[idx],
             "faction": None,
             "color_faction": "#AAAAAA"
