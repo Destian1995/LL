@@ -481,6 +481,8 @@ class MapWidget(Widget):
         map_files = [f for f in os.listdir(map_dir) if f.startswith('map_') and f.endswith('.png')]
         if not map_files:
             raise FileNotFoundError("Не найдено файлов с картами в директории.")
+        print("Выбор случайной карты...")
+        print(f"Карта выбрана: {random.choice(map_files)}")
         return os.path.join(map_dir, random.choice(map_files))
 
     def calculate_scale(self):
