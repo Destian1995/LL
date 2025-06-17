@@ -32,6 +32,7 @@ class AIController:
         self.army_limit = self.calculate_army_limit()
         self.attacking_army = []
         self.average_deal_ratio = 0
+        self.hero_used_in_turn = False
         # Инициализация ресурсов по умолчанию
         self.money = 2000
         self.free_peoples = 0
@@ -365,33 +366,39 @@ class AIController:
             print(f"Ошибка при сохранении гарнизона: {e}")
 
     def manage_buildings(self):
+        """
+        Управляет строительством зданий для ИИ.
+        Теперь ИИ строит 250 больниц и 250 фабрик вместо 500 одного типа.
+        """
         try:
             crowns = self.resources['Кроны']
+            building_budget = int(crowns * 0.90)  # Используем 90% бюджета на строительство
 
-            # Бюджет на строительство (97% от текущих крон)
-            building_budget = int(crowns * 0.97)
-
-            # Проверяем, достаточно ли средств для начала строительства
             if building_budget < 350:
                 print("Недостаточно средств для строительства.")
                 return
 
-            # Вычисляем, сколько зданий каждого типа можно построить
-            result_buildings = building_budget // 350  # Количество пакетов по 350 крон
-            hospitals_to_build = result_buildings - 1
-            factories_to_build = result_buildings
+            # Фиксируем максимальное количество зданий — 500 всего
+            max_hospitals = 250
+            max_factories = 250
 
-            # Строим все больницы сразу
+            # Проверяем, сколько можно построить с учетом денег
+            max_by_money = building_budget // 175  # Каждое здание стоит 175 крон
+            total_possible = min(max_hospitals + max_factories, max_by_money)
+
+            # Пропорционально делим возможное количество
+            hospitals_to_build = int(total_possible * (max_hospitals / (max_hospitals + max_factories)))
+            factories_to_build = total_possible - hospitals_to_build
+
+            # Строим больницы
             if hospitals_to_build > 0:
-                self.build_in_city('Больница', hospitals_to_build)
+                self.build_in_city("Больница", hospitals_to_build)
 
-            # Строим все фабрики сразу
+            # Строим фабрики
             if factories_to_build > 0:
-                self.build_in_city('Фабрика', factories_to_build)
+                self.build_in_city("Фабрика", factories_to_build)
 
-            # Сохраняем данные
             self.save_all_data()
-
         except Exception as e:
             print(f"Ошибка в manage_buildings: {e}")
 
@@ -613,6 +620,16 @@ class AIController:
     def has_hero_of_class(self, class_number):
         """Проверяет, есть ли у фракции хотя бы один юнит указанного класса."""
         try:
+            # Проверка в текущем гарнизоне (в памяти)
+            for units in self.garrison.values():
+                for unit in units:
+                    unit_name = unit["unit_name"]
+                    self.cursor.execute("SELECT unit_class FROM units WHERE unit_name = ?", (unit_name,))
+                    result = self.cursor.fetchone()
+                    if result and result[0] == str(class_number):
+                        return True
+
+            # Проверка в БД (историческая)
             query = """
             SELECT 1
             FROM garrisons g
@@ -620,7 +637,6 @@ class AIController:
             WHERE u.faction = ? AND u.unit_class = ?
             LIMIT 1
             """
-            # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
             self.cursor.execute(query, (self.faction, str(class_number)))
             result = self.cursor.fetchone()
             return bool(result)
@@ -1415,7 +1431,7 @@ class AIController:
                 break
 
         # Если остались места и есть герои — добавляем одного
-        if hero_units and remaining < units_to_take:
+        if hero_units and remaining < units_to_take and not self.hero_used_in_turn:
             chosen_hero = random.choice(hero_units)
             attack_army.append({
                 "city_name": chosen_hero["city_name"],
@@ -1424,6 +1440,7 @@ class AIController:
                 "unit_image": chosen_hero["unit_image"]
             })
             print(f"К атаке присоединён герой: {chosen_hero['unit_name']}")
+            self.hero_used_in_turn = True
 
         # Передислоцируем юниты в ближайший союзный город
         for unit in attack_army:
@@ -2272,6 +2289,8 @@ class AIController:
         """
         print(f'---------ХОДИТ ФРАКЦИЯ: {self.faction}-------------------')
         try:
+            # 0. Обнуляем использование героя на этом ходу
+            self.hero_used_in_turn = False
             # 1. Обновляем ресурсы из базы данных
             self.update_resources()
             self.process_queries()

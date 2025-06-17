@@ -208,7 +208,7 @@ class Faction:
         if self.money < 200:
             print("Недостаточно крон для авто-строительства. Минимум требуется 200 крон.")
             return
-
+        print("Проверка доступных городов перед загрузкой:", self.cities)
         # Загружаем актуальные данные о городах и зданиях
         self.load_cities()
         self.load_buildings()
@@ -235,6 +235,7 @@ class Faction:
 
         # Проверяем доступное место в городах
         available_cities = []
+        print("Проверка доступных городов после загрузки:", self.cities)
         for city in self.cities:
             city_name = city['name']
             current_buildings = self.cities_buildings.get(city_name, {"Больница": 0, "Фабрика": 0})
@@ -359,28 +360,30 @@ class Faction:
     def load_cities(self):
         """
         Загружает список городов для текущей фракции из таблицы cities.
-        Инициализирует self.cities_buildings для каждого города.
-        Также подсчитывает количество городов и сохраняет его в self.city_count.
+        Не перезаписывает существующие данные о зданиях в городах.
         """
+
         rows = self.load_data("cities", ["name", "coordinates"], "faction = ?", (self.faction,))
         cities = []
         self.city_count = 0
-        self.cities_buildings = {}  # Сброс данных о зданиях
+
         for row in rows:
             name, coordinates = row
             try:
-                # Убираем квадратные скобки и преобразуем координаты
                 coordinates = coordinates.strip('[]')
                 x, y = map(int, coordinates.split(','))
             except ValueError:
                 print(f"Ошибка при разборе координат для города {name}: {coordinates}")
-                x, y = 0, 0  # Устанавливаем значения по умолчанию, если координаты некорректны
+                x, y = 0, 0
 
             cities.append({"name": name, "x": x, "y": y})
-            # Инициализируем данные о зданиях для каждого города
-            self.cities_buildings[name] = {'Больница': 0, 'Фабрика': 0}
-            self.city_count += 1  # Увеличиваем счетчик городов
 
+            # Не перезаписываем, если уже есть данные о зданиях
+            if name not in self.cities_buildings:
+                self.cities_buildings[name] = {'Больница': 0, 'Фабрика': 0}
+
+            self.city_count += 1
+        self.cities = cities
         return cities
 
     def build_factory(self, city, quantity=1):
@@ -1015,8 +1018,8 @@ class Faction:
         print('-----------------ХОДИТ ИГРОК-----------', self.faction.upper)
         # Обновляем данные о зданиях из таблицы buildings
         self.turn += 1
-        self.load_buildings()
-        self.load_cities()
+        # Строим
+        self.auto_build()
         # Сохраняем предыдущие значения ресурсов
         previous_money = self.money
         previous_raw_material = self.raw_material
@@ -1024,7 +1027,7 @@ class Faction:
         self.generate_raw_material_price()
         # Обновляем ресурсы на основе торговых соглашений
         self.update_trade_resources_from_db()
-        self.auto_build()
+
 
         # Коэффициенты для каждой фракции
         faction_coefficients = {
@@ -1047,7 +1050,6 @@ class Faction:
         self.clear_up_peoples = self.born_peoples - (self.work_peoples - self.tax_effects*2.5)
         # Загружаем текущие значения ресурсов из базы данных
         self.load_resources_from_db()
-
         # Выполняем расчеты
         self.free_peoples += self.clear_up_peoples
         self.money += int(self.calculate_tax_income() - (self.hospitals * coeffs['money_loss']))
@@ -1090,7 +1092,6 @@ class Faction:
         # Рассчитываем чистую прибыль
         net_profit_coins = round(self.money - previous_money, 2)
         net_profit_raw = round(self.raw_material - previous_raw_material, 2)
-
         # Обновляем средние значения чистой прибыли в таблице results
         self.update_average_net_profit(net_profit_coins, net_profit_raw)
         # Применяем бонусы игроку
@@ -1472,77 +1473,10 @@ def show_error_message(message):
     error_popup.open()
 
 
-def build_structure(building, city, faction, quantity, on_complete):
-    if building == "Здания" or city == "Города":
-        show_error_message("Выберите здание для постройки и город!")
-        return
-
-    # Проверяем, что количество зданий больше 0
-    if quantity <= 0:
-        show_error_message("Количество зданий должно быть больше 0!")
-        return
-
-    # Ищем город в списке городов фракции
-    city_found = next((c for c in faction.cities if c.get('name') == city), None)
-    if city_found is None:
-        show_error_message("Выбранный город не найден!")
-        return
-
-    # Определяем стоимость постройки одного здания
-    building_cost = 200 if building == "Фабрика" else 300 if building == "Больница" else None
-    if building_cost is None:
-        show_error_message("Неизвестный тип здания!")
-        return
-
-    total_cost = building_cost * quantity
-
-    # Проверяем, хватает ли денег на постройку всех зданий
-    if not faction.cash_build(total_cost):
-        show_error_message(f"Недостаточно денег для постройки {quantity} зданий!\nСтоимость: {total_cost} крон")
-        return
-
-    # Загружаем актуальные данные о зданиях в городе из базы данных
-    faction.load_buildings()  # Обновляем данные о зданиях
-    city_buildings = faction.cities_buildings.get(city, {"Больница": 0, "Фабрика": 0})
-
-    # Текущее количество зданий в городе
-    current_factories = city_buildings.get("Фабрика", 0)
-    current_hospitals = city_buildings.get("Больница", 0)
-    total_buildings = current_factories + current_hospitals
-
-    # Максимальное количество зданий в городе
-    max_buildings_per_city = 500
-
-    # Проверяем, не превышает ли новое количество зданий лимит
-    if total_buildings + quantity > max_buildings_per_city:
-        show_error_message(
-            f"Невозможно построить больше зданий!\n"
-            f"Максимум зданий в городе: {max_buildings_per_city}\n"
-            f"Текущее количество зданий: {total_buildings}"
-        )
-        return
-
-    # Строим здания за один вызов
-    if building == "Фабрика":
-        faction.build_factory(city_found['name'], quantity)  # Передаем количество
-    elif building == "Больница":
-        faction.build_hospital(city_found['name'], quantity)  # Передаем количество
-
-    # Выполняем функцию завершения постройки
-    if on_complete:
-        Clock.schedule_once(on_complete, 0.5)  # Задержка 0.5 секунды для отображения сообщений
-
-
 def open_build_popup(faction):
     def rebuild_popup(*args):
         build_popup.dismiss()
         open_build_popup(faction)
-
-    # Проверка наличия городов
-    faction.cities = faction.load_cities()
-    if not faction.cities:
-        show_error_message("Список городов пуст.")
-        return
 
     build_popup = Popup(
         title="Состояние государства",
