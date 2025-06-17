@@ -25,8 +25,10 @@ class FortressInfoPopup(Popup):
         self.file_path1 = None
         self.city_coords = city_coords  # Это кортеж (x, y)
         self.current_popup = None  # Ссылка на текущее всплывающее окно
-
-
+        self.selected_group = []  # Группа для ввода войск
+        self.selected_units_set = set()  # Множество для отслеживания добавленных юнитов
+        self.current_troops_data = []
+        self.table_widgets = {}
         # Преобразуем координаты в строку для сравнения с БД
         coords_str = f"[{self.city_coords[0]}, {self.city_coords[1]}]"
         # Получаем информацию о городе из таблицы cities
@@ -391,6 +393,7 @@ class FortressInfoPopup(Popup):
         Отображает окно с выбором войск.
         :param troops_data: Список войск, полученный из базы данных.
         """
+        self.current_troops_data = troops_data
         popup = Popup(title="Выберите войска для перемещения", size_hint=(0.9, 0.9))
         self.current_popup = popup  # Сохраняем ссылку на текущее окно
 
@@ -412,75 +415,33 @@ class FortressInfoPopup(Popup):
             )
             table_layout.add_widget(label)
 
-        # Инициализация списка для хранения выбранных юнитов
-        self.selected_group = []  # Группа для ввода войск
-        self.selected_units_set = set()  # Множество для отслеживания добавленных юнитов
 
-        # Словарь для хранения ссылок на виджеты строк таблицы
-        self.table_widgets = {}
 
         for city_name, unit_name, unit_count, unit_image in troops_data:
-            # Город
-            city_label = Label(
-                text=city_name,
-                font_size='18sp',
-                size_hint_y=None,
-                height=90,
-                color=(1, 1, 1, 1)  # Черный текст
-            )
-            table_layout.add_widget(city_label)
+            # --- создаём сами виджеты строки ---
+            city_lbl = Label(text=city_name, font_size='18sp', size_hint_y=None, height=90)
+            unit_lbl = Label(text=unit_name, font_size='18sp', size_hint_y=None, height=90)
+            count_lbl = Label(text=str(unit_count), font_size='18sp', size_hint_y=None, height=90)
+            img_box = BoxLayout(size_hint_y=None, height=60)
+            img_box.add_widget(Image(source=unit_image, size=(80, 80), size_hint=(None, None)))
+            btn_add = Button(text="Добавить", font_size='18sp', size_hint_y=None, height=80)
+            btn_add.bind(on_release=lambda btn, data=(city_name, unit_name, unit_count, unit_image):
+            self.create_troop_group(data, btn, city_lbl, unit_lbl, count_lbl, img_box, btn_add))
 
-            # Юнит
-            unit_label = Label(
-                text=unit_name,
-                font_size='18sp',
-                size_hint_y=None,
-                height=90,
-                color=(1, 1, 1, 1)  # Черный текст
-            )
-            table_layout.add_widget(unit_label)
+            # Добавляем их в таблицу
+            for w in (city_lbl, unit_lbl, count_lbl, img_box, btn_add):
+                table_layout.add_widget(w)
 
-            # Количество
-            count_label = Label(
-                text=str(format_number(unit_count)),
-                font_size='18sp',
-                size_hint_y=None,
-                height=90,
-                color=(1, 1, 1, 1)  # Черный текст
-            )
-            table_layout.add_widget(count_label)
-
-            # Изображение
-            image_container = BoxLayout(size_hint_y=None, height=60)
-            unit_image_widget = Image(
-                source=unit_image,
-                size_hint=(None, None),
-                size=(80, 80)
-            )
-            image_container.add_widget(unit_image_widget)
-            table_layout.add_widget(image_container)
-
-            # Кнопка действия
-            action_button = Button(
-                text="Добавить",
-                font_size='18sp',
-                size_hint_y=None,
-                height=80,
-                background_color=(0.6, 0.8, 0.6, 1)
-            )
-            action_button.bind(on_release=lambda btn, data=(city_name, unit_name, unit_count, unit_image):
-            self.create_troop_group(data, btn, city_label, unit_label, count_label, image_container, action_button))
-            table_layout.add_widget(action_button)
-
-            # Сохраняем ссылки на виджеты строки таблицы
-            self.table_widgets[unit_name] = {
-                "city_label": city_label,
-                "unit_label": unit_label,
-                "count_label": count_label,
-                "image_container": image_container,
-                "action_button": action_button
+            # --- сохраняем по ключу из города+юнита ---
+            unique_id = f"{city_name}_{unit_name}"
+            self.table_widgets[unique_id] = {
+                "city_label": city_lbl,
+                "unit_label": unit_lbl,
+                "count_label": count_lbl,
+                "image_container": img_box,
+                "action_button": btn_add
             }
-
+        # сразу после заполнения table_layout
         scroll_view = ScrollView(size_hint=(1, 1))
         scroll_view.add_widget(table_layout)
         main_layout.add_widget(scroll_view)
@@ -571,49 +532,44 @@ class FortressInfoPopup(Popup):
         cancel_button = Button(text="Отмена", background_color=(0.8, 0.6, 0.6, 1))
 
         def confirm_action(btn):
-            try:
-                selected_count = int(slider.value)
-                if 0 < selected_count <= unit_count:
-                    # Добавляем юнит в группу
-                    self.selected_group.append({
-                        "city_name": city_name,
-                        "unit_name": unit_name,
-                        "unit_count": selected_count,
-                        "unit_image": unit_image
-                    })
-                    self.selected_units_set.add(unit_name)  # Отмечаем юнит как добавленный
-                    popup.dismiss()  # Закрываем окно
-                    print(f"Добавлено в группу: {unit_name} x {selected_count}")
+            selected = int(slider.value)
+            if 0 < selected <= unit_count:
+                # 1) Добавляем в группу
+                # Используем кортеж (город, юнит, число)
+                self.selected_group.append({
+                    "city_name": city_name,
+                    "unit_name": unit_name,
+                    "unit_count": selected,
+                    "unit_image": unit_image
+                })
 
-                    # Активируем кнопку отправки группы
-                    if self.selected_group and hasattr(self, "send_group_button") and self.send_group_button:
-                        self.send_group_button.disabled = False
+                # Можно ещё блокировать повторное добавление одного и того же юнита:
+                self.selected_units_set.add((city_name, unit_name))
 
-                    # Удаляем юнит из таблицы
-                    unique_id = f"{city_name}_{unit_name}"
-                    if unique_id in self.table_widgets:
-                        widgets = self.table_widgets[unique_id]
-                        table_layout = city_label.parent
+                # 2) Удаляем из текущего списка данных, чтобы при пересоздании окна строка не вернулась
+                self.current_troops_data = [
+                    d for d in self.current_troops_data
+                    if not (d[0] == city_name and d[1] == unit_name)
+                ]
 
-                        if table_layout and all(widget in table_layout.children for widget in [
-                            widgets["city_label"],
-                            widgets["unit_label"],
-                            widgets["count_label"],
-                            widgets["image_container"],
-                            widgets["action_button"]
-                        ]):
-                            table_layout.remove_widget(widgets["city_label"])
-                            table_layout.remove_widget(widgets["unit_label"])
-                            table_layout.remove_widget(widgets["count_label"])
-                            table_layout.remove_widget(widgets["image_container"])
-                            table_layout.remove_widget(widgets["action_button"])
-                            del self.table_widgets[unique_id]
-                        else:
-                            print("Ошибка: Некоторые виджеты отсутствуют в table_layout.")
-                else:
-                    error_label.text = "Ошибка: некорректное количество."
-            except ValueError:
-                error_label.text = "Ошибка: введите корректное число."
+                # 3) Убираем виджеты строки сразу, если хотите
+                unique_id = f"{city_name}_{unit_name}"
+                if unique_id in self.table_widgets:
+                    widgets = self.table_widgets.pop(unique_id)
+                    layout = widgets["city_label"].parent
+                    for key in ("city_label", "unit_label", "count_label", "image_container", "action_button"):
+                        layout.remove_widget(widgets[key])
+
+                popup.dismiss()
+                # 4) Пересоздаём само окно «Выберите войска…» с уже обновлённым списком
+                self.current_popup.dismiss()
+                self.show_troops_selection(self.current_troops_data)
+
+                # 5) Активируем кнопку «Отправить»
+                self.send_group_button.disabled = False
+
+            else:
+                error_label.text = "Ошибка: некорректное количество."
 
         confirm_button.bind(on_release=confirm_action)
         cancel_button.bind(on_release=popup.dismiss)
@@ -623,6 +579,55 @@ class FortressInfoPopup(Popup):
 
         popup.content = layout
         popup.open()
+
+    def update_troops_table(self):
+        """
+        Обновляет таблицу доступных войск без пересоздания всего popup'а.
+        """
+        # Очищаем текущую таблицу
+        self.attacking_units_box.clear_widgets()
+
+        # Перезапрашиваем данные из БД
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT city_name, unit_name, unit_count, unit_image 
+            FROM garrisons
+        """)
+        all_troops = cursor.fetchall()
+
+        if not all_troops:
+            label = Label(text="Нет доступных войск", size_hint_y=None, height=60)
+            self.attacking_units_box.add_widget(label)
+            return
+
+        # Повторно строим таблицу
+        for city_name, unit_name, unit_count, unit_image in all_troops:
+            city_label = Label(text=city_name, font_size='18sp', size_hint_y=None, height=90)
+            unit_label = Label(text=unit_name, font_size='18sp', size_hint_y=None, height=90)
+            count_label = Label(text=str(unit_count), font_size='18sp', size_hint_y=None, height=90)
+
+            image_container = BoxLayout(size_hint_y=None, height=60)
+            unit_image_widget = Image(source=unit_image, size_hint=(None, None), size=(80, 80))
+            image_container.add_widget(unit_image_widget)
+
+            action_button = Button(
+                text="Добавить",
+                font_size='18sp',
+                size_hint_y=None,
+                height=80,
+                background_color=(0.6, 0.8, 0.6, 1)
+            )
+
+            # Привязка к create_troop_group с передачей всех виджетов
+            action_button.bind(on_release=lambda btn, data=(city_name, unit_name, unit_count, unit_image):
+            self.create_troop_group(data, btn, city_label, unit_label, count_label, image_container, action_button))
+
+            # Добавляем в layout
+            self.attacking_units_box.add_widget(city_label)
+            self.attacking_units_box.add_widget(unit_label)
+            self.attacking_units_box.add_widget(count_label)
+            self.attacking_units_box.add_widget(image_container)
+            self.attacking_units_box.add_widget(action_button)
 
     def move_selected_group_to_city(self, instance=None):
         """Перемещает выбранную группу юнитов в город."""
