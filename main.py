@@ -1631,7 +1631,7 @@ class DossierScreen(Screen):
         card.bind(pos=_update_card_canvas, size=_update_card_canvas)
 
         # === 2. Собираем "сырой" rank и нормализуем только для отладки/поиска файла ===
-        raw_rank = data.get('military_rank') or "Без ранга"
+        raw_rank = data.get('military_rank') or "Еще не признан своим..."
         rank = raw_rank.strip()
         rank = unicodedata.normalize("NFC", rank)
         # Заменяем все возможные тире/дефисы на обычный ASCII-дефис,
