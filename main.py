@@ -552,7 +552,7 @@ class MapWidget(Widget):
 
         with self.canvas:
             self.map_image = Rectangle(
-                source='files/map/map.png',
+                source=self.random_map_source,
                 pos=self.map_pos,
                 size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
             )
