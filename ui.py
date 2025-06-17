@@ -675,11 +675,6 @@ class FortressInfoPopup(Popup):
                     dry_run=False
                 )
 
-            # Тратим право на перемещение только один раз
-            cursor.execute(
-                "UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
-                (False, current_player_kingdom)
-            )
             self.conn.commit()
 
             # Закрытие окон и обновление интерфейса
@@ -1205,6 +1200,8 @@ class FortressInfoPopup(Popup):
                                          destination_fortress_name,
                                          unit_name,
                                          taken_count)
+                        cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?", (False, current_player_kingdom))
+                        self.conn.commit()
                     return True
 
                 # — если цель союзник, проверяем total_diff < 300;
@@ -1215,6 +1212,8 @@ class FortressInfoPopup(Popup):
                                              destination_fortress_name,
                                              unit_name,
                                              taken_count)
+                            cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?", (False, current_player_kingdom))
+                            self.conn.commit()
                         return True
                     else:
 
@@ -1227,6 +1226,8 @@ class FortressInfoPopup(Popup):
                         if not dry_run:
                             # Вызываем захват без боя
                             self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
+                            cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?", (False, current_player_kingdom))
+                            self.conn.commit()
                         return True
                     else:
                         print('Расстоние между городами: ', total_diff)

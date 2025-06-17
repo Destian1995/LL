@@ -254,6 +254,86 @@ RANK_TO_FILENAME = {
     "Сержант": "sergeant.png",
     "Прапорщик": "warrant_officer.png",
     "Рядовой": "private.png",
+
+    "Владыка ночи": "night_lord.png",
+    "Вечный граф": "eternal_count.png",
+    "Темный лорд": "dark_lord.png",
+    "Князь тьмы": "prince_of_darkness.png",
+    "Старший вампир": "senior_vampire.png",
+    "Ночной страж": "night_watcher.png",
+    "Теневой охотник": "shadow_hunter.png",
+    "Призрачный убийца": "phantom_killer.png",
+    "Темный воитель": "dark_warrior.png",
+    "Ночной рейнджер": "night_ranger.png",
+    "Младший вампир": "junior_vampire.png",
+    "Темный слуга": "dark_servant.png",
+    "Младший слуга вампира": "junior_vampire_servant.png",
+    "Ночная тень": "night_shadow.png",
+    "Плутонический следопыт": "plutonic_trailblazer.png",
+    "Серебряный следопыт": "silver_trailblazer.png",
+    "Вестник смерти": "messenger_of_death.png",
+    "Пепел прошлого": "ashes_of_the_past.png",
+    "Укушенный": "bitten_one.png",
+
+    "Верховный правитель": "sovereign_ruler.png",
+    "Лесной повелитель": "forest_sovereign.png",
+    "Вечный страж": "eternal_guardian.png",
+    "Магистр природы": "nature_magistrate.png",
+    "Лесной воевода": "forest_warlord.png",
+    "Хранитель лесов": "guardian_of_forests.png",
+    "Мастер стрелы": "arrow_master.png",
+    "Лесной командир": "forest_commander.png",
+    "Древесный защитник": "arboreal_defender.png",
+    "Мастер лука": "experienced_archer.png",
+    "Ловкий стрелок": "nimble_shooter.png",
+    "Юркий воин": "agile_warrior.png",
+    "Стремительный охотник": "swift_hunter.png",
+    "Зеленый страж": "green_sentinel.png",
+    "Природный следопыт": "natural_trailblazer.png",
+    "Ученик жрицы": "priestess_apprentice.png",
+    "Начинающий охотник": "beginner_hunter.png",
+    "Молодой эльф": "young_elf.png",
+    "Младший ученик эльфа": "junior_elf_apprentice.png",
+
+    "Верховный Инквизитор": "grand_inquisitor.png",
+    "Великий Охотник на Еретиков": "great_heretic_hunter.png",
+    "Магистр Святого Огня": "magister_of_holy_fire.png",
+    "Гранд-Инквизитор": "grand_inquisitor.png",
+    "Судья Правой Руки": "judge_of_the_right_hand.png",
+    "Главный Следователь": "chief_investigator.png",
+    "Огонь Вердикта": "fire_of_verdict.png",
+    "Страж Чистоты": "keeper_of_purity.png",
+    "Палач Ереси": "heresy_executioner.png",
+    "Исполнитель Клятвы": "oath_enforcer.png",
+    "Сержант Ордена": "order_sergeant.png",
+    "Офицер Инквизиции": "inquisition_officer.png",
+    "Кандидат Света": "candidate_of_light.png",
+    "Новичок Клятвы": "novice_of_the_oath.png",
+    "Причастный Костра": "participant_of_the_pyre.png",
+    "Ученик Веры": "faith_apprentice.png",
+    "Искренний": "sincere_one.png",
+    "Слушающий Слово": "word_listener.png",
+    "Пепел Греха": "ash_of_sin.png",
+
+    "Повелитель Огня и Пустыни": "desert_fire_lord.png",
+    "Око Бури": "eye_of_the_storm.png",
+    "Хранитель Песков": "sand_keeper.png",
+    "Гнев Ветров": "wrath_of_the_winds.png",
+    "Тень Дракона": "dragon_shadow.png",
+    "Жар Пустыни": "desert_blaze.png",
+    "Клинок Вечного Солнца": "sword_of_the_eternal_sun.png",
+    "Степной Судья": "steppe_judge.png",
+    "Мастер Ярости": "master_of_fury.png",
+    "Искра Пламени": "spark_of_flame.png",
+    "Бегущий по Пескам": "runner_on_the_sands.png",
+    "Вестник Жара": "messenger_of_heat.png",
+    "Порождение Торнадо": "tornado_spawn.png",
+    "Песчаный Странник": "sand_traveler.png",
+    "Пыль Гривы": "mane_dust.png",
+    "Песчинка": "grain_of_sand.png",
+    "Забытый Ветром": "forgotten_by_wind.png",
+    "Проклятый Солнцем": "cursed_by_the_sun.png",
+    "Пепел Пустыни": "desert_ash.png",
 }
 
 
@@ -1139,7 +1219,7 @@ class MenuWidget(FloatLayout):
 
         # ======== Логотип / Заголовок ========
         self.title_label = Label(
-            text="Лэрдон",
+            text="Легенды Лэрдона",
             font_size='48sp',
             bold=True,
             color=(1, 1, 1, 1),
@@ -1167,7 +1247,7 @@ class MenuWidget(FloatLayout):
             opacity=0
         )
         self.btn_dossier = RoundedButton(
-            text="Личное дело",
+            text="Рейтинг",
             size_hint=(0.4, 0.08),
             pos_hint={'center_x': 0.5, 'y': 0.53},
             background_normal='',
@@ -1354,7 +1434,7 @@ class DossierScreen(Screen):
         """
         root_layout = BoxLayout(orientation='vertical')
 
-        # === Заголовок "Личное дело" ===
+        # === Заголовок "Рейтинг" ===
         title_widget = self._create_title_bar()
         root_layout.add_widget(title_widget)
 
@@ -1401,7 +1481,7 @@ class DossierScreen(Screen):
         title_box.bind(pos=_update_title_canvas, size=_update_title_canvas)
 
         title_label = Label(
-            text="[b]Личное дело[/b]",
+            text="[b]Рейтинг[/b]",
             markup=True,
             font_size=sp(24),
             color=get_color_from_hex('#FFD700'),
@@ -1446,7 +1526,7 @@ class DossierScreen(Screen):
     def load_dossier_data(self):
         """
         Читает данные из SQLite и наполняет TabbedPanel.
-        Если данных нет — выводит таб «Информация» с надписью «Ваше личное дело не найдено в архиве»
+        Если данных нет — выводит таб «Информация» с надписью «Вы еще не давали присягу»
         Если данные есть — группирует по фракциям и создаёт для каждой фракции вкладку.
         """
         # Очищаем предыдущие вкладки, если они уже были
@@ -1465,7 +1545,7 @@ class DossierScreen(Screen):
         if not rows:
             # Если записей нет
             info_label = Label(
-                text="Ваше личное дело не найдено в архиве",
+                text="Вы еще не давали присягу",
                 font_size=sp(18),
                 color=get_color_from_hex('#FFFFFF'),
                 halign='center'
@@ -1708,7 +1788,7 @@ class DossierScreen(Screen):
 
     def _recreate_dossier_tab(self):
         """
-        Полностью удаляет текущую вкладку 'Личное дело' и создаёт новую.
+        Полностью удаляет текущую вкладку 'Рейтинг' и создаёт новую.
         """
         # Определяем, какая вкладка сейчас открыта
         current_tab = self.tabs.current_tab
@@ -1724,258 +1804,113 @@ class DossierScreen(Screen):
             self.tabs.switch_to(tab_list[0])
 
 
-class HowToPlayScreen(FloatLayout):
+class HowToPlayScreen(Screen):
     def __init__(self, conn, **kwargs):
-        super(HowToPlayScreen, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.conn = conn
-        # Фон
-        self.add_widget(Image(source='files/menu/how_to_play_bg.jpg', allow_stretch=True, keep_ratio=False))
+        with self.canvas.before:
+            self.bg_rect = Rectangle(
+                source='files/menu/how_to_play_bg.jpg',  # путь к фону экрана обучения
+                pos=self.pos,
+                size=self.size
+            )
+        self.bind(pos=self._update_bg, size=self._update_bg)
+        self.build_ui()
 
-        # Панель вкладок
-        self.tab_panel = TabbedPanel(
-            do_default_tab=False,
-            size_hint=(0.8, 0.6),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+    def build_ui(self):
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(20))
+
+        title = Label(
+            text="[b]Как играть[/b]",
+            markup=True,
+            font_size='32sp',
+            size_hint=(1, None),
+            height=dp(60),
+            halign='center',
+            valign='middle',
+            color=(1, 1, 1, 1)
+        )
+        layout.add_widget(title)
+
+        scroll = ScrollView(size_hint=(1, 1), bar_width=dp(12), scroll_type=['bars', 'content'], bar_color=(1, 1, 0, 1), bar_inactive_color=(1, 1, 0, 0.4))
+        content = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(10), padding=dp(10))
+        content.bind(minimum_height=content.setter('height'))
+
+        how_to_text = (
+            "[b]Экономика[/b]\n"
+            "В игре есть три основных ресурса, которые можно заработать:\n"
+            "- [color=#ffcc00]Крона[/color] — деньги, добываются продажей сырья, налогами или выпрашиванием у "
+            "союзника.\n"
+            "- [color=#99ccff]Сырье[/color] — сырье, растет от количества фабрик, при отрицательном значении "
+            "население сокращается(если население достигнет 0 то засчитается поражение).\n"
+            "- [color=#00ccff]Рабочие[/color] — требуется для найма юнитов и увеличивают население(которое дает "
+            "кроны). Растет от количества больниц.\n\n"
+            "[b]Боевые единицы[/b]\n"
+            "В игре используется новая структура армии в отличии от 'Лэрдона':\n\n"
+            "- [b]1 класс[/b] — основные юниты. Без героя крайне слаба.\n"
+            "- [b]2 и 3 классы[/b] — герои, усиливают 1 класс своими характеристиками.\n"
+            "- [b]4 класс[/b] — элита. Не усиливают других, но сильны сами по себе.\n\n"
+            "[b]Порядок атаки[/b]\n"
+            "Если в армии несколько типов 1 класса, первыми в бой вступают те, у кого [color=#FFD700]наибольший урон[/color].\n\n"
+            "[b]Поддержка героев[/b]\n"
+            "Отсутствие героя делает юниты 1 класса почти бесполезными против сильного врага.\n"
+            "Сами герои могут делится на тех кто больше полезен в защите и тех кто больше полезен в атаке(здесь важно "
+            "обратить внимание на то какая характеристика у героя больше)\n\n"
+            "[b]Ресурсы и идеологии[/b]\n"
+            "Каждая фракция при старте игры обладает своей идеологией:\n"
+            "- [b]Смирение[/b] - увеличивает доход [color=#ffcc00]крон[/color].\n"
+            "- [b]Борьба[/b] - увеличивает поступление [color=#99ccff]сырья[/color].\n"
+            "Обе идеологии ненавидят друг друга и рано или поздно начнут войну если у одного из них окажется слабая армия\n"
         )
 
-        # === Вкладка "Экономика" ===
-        economy_content = self.create_scrollable_content([
-            {"type": "text", "content": "Экономика....всмысле налоги высокие? плати давай\n\n"
-                                        "Первое и главное что нужно сделать на первом же ходу — это определить "
-                                        "соотношение построек между больницами и фабриками.\n"
-                                        "Они очень сильно влияют на экономику и дальнейшее развитие. "
-                                        "Экспериментируйте с соотношением только тогда, когда уже научились играть.\n\n"
-                                        "Стандартное решение для всех фракций — это 2 больницы на 1 фабрику. Такое "
-                                        "соотношение никогда не приведёт к сильному упадку экономики на старте, "
-                                        "а недостаток крон можно компенсировать продав сырьё на рынке(вкладка торговля тут же)."},
-            {"type": "image", "source": "files/menu/tutorial/economy_1.jpg"},
-            {"type": "text", "content": "Так же стоит установить сразу налоги(на продаже сырья пока его мало, далеко "
-                                        "не уедешь, а враг не дремлет) Итак рекомендую 34% налога.(размер налога "
-                                        "влияет на то любит вас население или нет(будет от вас убегать или наоборот "
-                                        "прибывать)) Если выставить слишком большие налоги все разбегутся и Ваше государство прекратит существование(Вы проиграете))"},
-            {"type": "image", "source": "files/menu/tutorial/economy_2.jpg"},
-            {"type": "text", "content": "* Для более детальной информации об экономике игры посетите раздел схема"}
-        ])
+        label = Label(
+            text=how_to_text,
+            markup=True,
+            font_size='18sp',
+            halign='left',
+            valign='top',
+            size_hint_y=None,
+            text_size=(Window.width * 0.9, None)
+        )
+        label.bind(texture_size=lambda instance, value: setattr(label, 'height', value[1]))
 
-        # === Вкладка "Армия" ===
-        army_content = self.create_scrollable_content([
-            {"type": "text", "content": "Управление армией — какой дебил нас сюда послал...\n\n"
-                                        "Начнем с того что набирать юнитов по принципу чем больше тем лучше -> плохая идея.\n"
-                                        "Заботитесь о качестве вашей армии, а не о ее численности. Иначе сожрут лимит, а толку мало\n"
-                                        "Итак базовые моменты, в игре есть атакующие юниты и защитные.(определяется по текущим характеристикам юнита)"},
-            {"type": "image", "source": "files/menu/tutorial/army_1.jpg"},
-            {"type": "text", "content": "На примере выше видно, как выглядит карточка юнита.\n"
-                                        "Пробежимся по ключевым моментам:\n"
-                                        "\n"
-                                        "Урон - взаимодействует с классом юнита(чем выше класс тем выше урон(доп. "
-                                        "коэфициент увеличения урона)) - учитывается при атаке на город противника\n"
-                                        "\n"
-                                        "Защита - учитывается при защите города и складывается с Живучестью, увеличивая параметр защиты.\n"
-                                        "\n"
-                                        "Класс - увеличивает базовый урон юнита и определяет очередность вступания в бой.\n"
-                                        "Первыми в бой вступают самые младшие классы города(1 самый младший 5 самый старший в игре).\n"
-                                        "Если у тебя в гарнизоне несколько юнитов с одинаковым классом то первый в бой вступает тот у которого больше урон\n"
-                                        "Таким образом нужно учитывать это при атаке или защите города(будут ли "
-                                        "защитные юниты защищать атакующих юнитов гарнизона при отражении атаки "
-                                        "врага? И кто первым будет "
-                                        "атаковать врага в городе? не дай бог это будут защитные юниты они там "
-                                        "полягут все)"
-                                        "\n"
-                                        "Ниже рассмотрим как управлять армией"},
-            {"type": "image", "source": "files/menu/tutorial/army_2.jpg"},
-            {"type": "text", "content": "После того как ты набрал юнитов, можешь их разместить в одном из городов \n"
-                                        "Разместить армию - это как раз та кнопка которая размещает войска в городе \n"
-                                        "Ввести войска - это отправка войск из других городов(то есть уже размещенные войска) в текущий \n"
-                                        "Хочешь напасть? Нажимай ввести войска и выбирай далее кем хочешь напасть. "
-                                        "Важно! Перемещение происходит группами\n"
-                                        "То есть ты должен как быть 'Набрать группу из юнитов' это может быть даже "
-                                        "один юнит и далее ты отправляешь группу в текущий город\n"
-                                        "тоже самое если ты хочешь перебазировать войска из одного города в другой \n"
-                                        "КЛЮЧЕВОЕ ЧТО НАДО УЧИТЫВАТЬ У ТЕБЯ ВСЕГО ОДНО ПЕРЕМЕЩЕНИЕ НА ХОД! \n"
-                                        "Если напал на врага - ты израсходовал перемещение \n"
-                                        "Если перевел войска из одного своего города в другой - ты израсходовал перемещение \n"
-                                        "Атака на город врага провалилась? - ты израсходовал перемещение \n"
-                                        "\n"
-                                        "Не маловажный момент имеет логистика, ты не можешь нападать на любой город на карте из любой точки, только в ближайший \n"
-                                        "НО если ты перемещаешь войска между своими городами то тут логистика не имеет значения,"
-                                        " ты моментально можешь переместить войска из одной части карты в другую \n"
-                                        "\n"
-                                        "Будь осторожен игрок! И помни вся твоя навоеванная статистика учитывается в финальном отчете!"}
-        ])
+        content.add_widget(label)
+        scroll.add_widget(content)
 
-        # === Вкладка "Политика" ===
-        politics_content = self.create_scrollable_content([
-            {"type": "text", "content": "Политика...че вы начинаете? нормально же общались!.\n\n"
-                                        "Итак первое что надо сделать на первом же ходу выяснить кто ты Коммунист или "
-                                        "Капиталист?.\n"
-             },
-            {"type": "image", "source": "files/menu/tutorial/politic_1.jpg"},
-            {"type": "text", "content": "Там выбираем полит. строй и видим:"},
-            {"type": "image", "source": "files/menu/tutorial/politic_2.jpg"},
-            {"type": "text", "content": "Коммунист - увеличение производства сырья (на самом деле бафф/дэбафф, "
-                                        "если идешь в минус то это добавит сверху)\n"
-                                        "Капиталист - увеличение уровня дохода крон (та же херня, не удивляйся "
-                                        "откуда у тебя такой минус в деньгах при капитализме если доходы "
-                                        "отрицательные)\n"
-                                        "Ну и мое любимое, одни ненавидят других, а значит рано или поздно дадут друг "
-                                        "друг в репу. \n"
-                                        "При этом ты всегда можешь 'переобуться', видишь как твоих друзей уничтожают "
-                                        "капиталисты? Ну что ж теперь я тоже капиталист и наоборот. \n"
-                                        "Чтобы тебе захотели набить лицо у тебя должны быть \n"
-                                        "1. Плохие отношения с ними, возможно потому что ты из другого 'лагеря'(они "
-                                        "ухудшаются постоянно).\n"
-                                        "2. Слабая армия\n"
-                                        "Только одновременно два этих условия дают повод врагам атаковать тебя.\n"
-                                        "Тебя могут 'терпеть' до тех пор пока у тебя сильная армия\n"
-                                        "Но это не значит что твои друзья могут стать врагами если у тебя слабая "
-                                        "армия это не так.\n"
-                                        "Вы в одной команде? даже если у тебя слабая армия мы тебя не тронем потому "
-                                        "что ты свой в доску. \n"
-                                        "Так же обрати внимание на соседние вкладки этого окна например Отношения(Тут "
-                                        "можно отслеживать как 'Хорошо' у тебя обстоят дела с другими странами)"},
-            {"type": "image", "source": "files/menu/tutorial/politic_3.jpg"},
-            {"type": "text", "content": "Здесь мы видим как к нам относятся и готовы ли с нами выгодно торговать(ну "
-                                        "то есть бартер).\n"
-                                        "Колонка Кф. торговли влияет на выгодность сделок между тобой и страной с "
-                                        "которой ты хочешь заключить торговое соглашение\n"
-                                        "(Особенно полезно когда на рынке цены упали на 'дно шахты', и ты хочешь "
-                                        "сделку повыгоднее) \n "
-                                        "\n"
-                                        "Перейдем к следующему большому разделу который тоже имеет отношение к дипломатии.\n"
-                                        ""},
-            {"type": "image", "source": "files/menu/tutorial/politic_4.jpg"},
-            {"type": "image", "source": "files/menu/tutorial/politic_5.jpg"},
-            {"type": "text", "content": "Тут мы видим стандартный набор договоров:\n\n"
-                                        "Торговое соглашение - обмен ресурсами на условиях которые предусмотрены "
-                                        "отношениями. \n"
-                                        "например Кф. 1.5 дает возможность условно предлагать 10, а требовать 15 "
-                                        "любого ресурса.\n"
-                                        "Договор об культурном обмене - проще говоря лизать задницу другому "
-                                        "государству чтобы улучшить с ним отношения \n"
-                                        "Заключение мира - тут все ясно, если ты предлагаешь мир и ты сильнее при "
-                                        "этом то они согласятся на мир а если слабее...тоо...не пошел бы...\n"
-                                        "Заключение альянса - можно заключить союз с страной с которой у тебя хорошие "
-                                        "отношения(куча ништяков типо попрашайничества ресурсов войск(помощь в "
-                                        "защите) и даже возможность приказать развязать войну с другим государством("
-                                        "например помочь тебе отмудохать кое кого))\n"
-                                        "Но учти любой запрос к союзнику идет долго и помощь приходит не сразу, "
-                                        "войска на следующий ход, а ресурсы через один ход\n"
-                                        "Чтобы 'попользовать' союзника выбери вкладку Союзник рядом с Дипломатией. \n"
-                                        "Затем чтобы отдать приказ об обороне, выбери защита и город который тебе "
-                                        "надо защитить(просто нажми на него) \n"
-                                        "Если хочешь отдать приказ об атаке на врага делай тоже самое, выбирай атака "
-                                        "и город противника.\n"
-                                        "Объявление войны - тут аккуратнее, если не вытянешь войну потом сложно будет "
-                                        "помириться."},
-        ])
+        # Пульсация полосы прокрутки
+        from kivy.animation import Animation
+        def animate_bar():
+            anim = Animation(bar_color=(1, 0.6, 0, 1), duration=0.5) + Animation(bar_color=(1, 1, 0, 1), duration=0.5)
+            anim.repeat = True
+            anim.start(scroll)
+        animate_bar()
+        layout.add_widget(scroll)
 
-        economy_scheme_content = self.create_scrollable_content([
-            {"type": "text", "content": "Разберём подробнее, как работает экономическая система Лэрдона:\n\n"
-                                        "Если по простому то тут все от чего-то зависит..."},
-
-            {"type": "image", "source": "files/menu/tutorial/shema.png"},
-            {"type": "text", "content": "Больницы производят рабочих, но потребляют кроны\n"
-                                        "Фабрики требуют рабочих, но вырабатывают сырье\n"
-                                        "Население растет от прироста рабочих, размера налогов(если низкие) и наличия сырья(без него идет "
-                                        "сокращение населения), но добавляют кроны в казну(если налоги установлены)\n"
-                                        "Армия так же требует наличия сырья и активно его потребляет вместе с "
-                                        "населением, однако если потребление войск превысит лимит армии, то каждый "
-                                        "ход значительная часть армии будет "
-                                        "умирать от голода. Пока ее потребление снова не станет меньше или равно лимиту"}
-        ])
-
-        # === Вкладка "Экономика" ===
-        economy_tab = TabbedPanelHeader(text='Экономика')
-        economy_tab.content = economy_content
-        economy_tab.size_hint_x = None
-        economy_tab.width = Window.width * 0.8 / 4  # ~ 1/4 ширины панели
-        self.tab_panel.add_widget(economy_tab)
-
-        # === Вкладка "Армия" ===
-        army_tab = TabbedPanelHeader(text='Армия')
-        army_tab.content = army_content
-        army_tab.size_hint_x = None
-        army_tab.width = Window.width * 0.8 / 4
-        self.tab_panel.add_widget(army_tab)
-
-        # === Вкладка "Политика" ===
-        politics_tab = TabbedPanelHeader(text='Политика')
-        politics_tab.content = politics_content
-        politics_tab.size_hint_x = None
-        politics_tab.width = Window.width * 0.8 / 4
-        self.tab_panel.add_widget(politics_tab)
-
-        # === Вкладка "Схема экономики" ===
-        economy_scheme_tab = TabbedPanelHeader(text='Схема')
-        economy_scheme_tab.content = economy_scheme_content
-        economy_scheme_tab.size_hint_x = None
-        economy_scheme_tab.width = Window.width * 0.8 / 4
-        self.tab_panel.add_widget(economy_scheme_tab)
-        # Добавляем вкладки на экран
-        self.add_widget(self.tab_panel)
-        # Кнопка "Вернуться в главное меню"
         back_button = Button(
-            text="Вернуться в главное меню",
-            size_hint=(0.4, 0.08),
-            pos_hint={'center_x': 0.5, 'y': 0.05},
-            background_normal='',
+            text="Назад",
+            size_hint=(0.3, None),
+            height=dp(50),
+            pos_hint={'center_x': 0.5},
             background_color=(0.2, 0.6, 1, 1),
             color=(1, 1, 1, 1),
             font_size='16sp'
         )
-        back_button.bind(on_press=self.back_to_menu)
-        self.add_widget(back_button)
+        back_button.bind(on_release=self.go_back)
+        layout.add_widget(back_button)
 
-    def create_scrollable_content(self, content_blocks):
-        layout = BoxLayout(orientation='vertical', size_hint_y=None)
-        layout.bind(minimum_height=layout.setter('height'))
+        self.add_widget(layout)
 
-        for block in content_blocks:
-            if block["type"] == "text":
-                label = Label(
-                    text=block["content"],
-                    halign='left',
-                    valign='top',
-                    size_hint_y=None,
-                    font_size='16sp',
-                    text_size=(None, None)  # Сначала не задаем ширину
-                )
+    def _update_bg(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
 
-                # Правильное использование bind с учётом двух аргументов
-                def update_text_size(lbl, value):
-                    lbl.text_size = (lbl.width, None)
-                    lbl.height = lbl.texture_size[1]  # Обновляем высоту под текст
-
-                label.bind(
-                    width=update_text_size,
-                    texture_size=lambda lbl, value: lbl.setter('height')(lbl, value[1])
-                )
-
-                layout.add_widget(label)
-
-            elif block["type"] == "image":
-                img = Image(
-                    source=block["source"],
-                    size_hint=(None, None),
-                    width=Window.width * 0.8,
-                    height=Window.width * 0.45,
-                    allow_stretch=True,
-                    keep_ratio=False
-                )
-                layout.add_widget(img)
-
-        scroll_view = ScrollView(size_hint=(1, 1), do_scroll_x=False, scroll_y=1)
-        scroll_view.add_widget(layout)
-
-        # Прокрутка вверх через небольшую задержку
-        Clock.schedule_once(lambda dt: setattr(scroll_view, 'scroll_y', 1), 0.1)
-
-        return scroll_view
-
-    def back_to_menu(self, instance):
+    def go_back(self, instance):
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
+
+
+
 
 
 class Lerdon(App):
