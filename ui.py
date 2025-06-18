@@ -1,10 +1,7 @@
-
 from db_lerdon_connect import *
 
 from fight import fight
 from economic import format_number
-
-
 
 
 class FortressInfoPopup(Popup):
@@ -47,7 +44,6 @@ class FortressInfoPopup(Popup):
 
         self.title = f"Информация о поселении {self.city_name}"
         self.create_ui()
-
 
     def create_ui(self):
         """
@@ -416,8 +412,6 @@ class FortressInfoPopup(Popup):
             )
             self.table_layout.add_widget(label)
 
-
-
         for city_name, unit_name, unit_count, unit_image in troops_data:
             # --- создаём сами виджеты строки ---
             city_lbl = Label(text=city_name, font_size='18sp', size_hint_y=None, height=90)
@@ -701,33 +695,73 @@ class FortressInfoPopup(Popup):
                 show_popup_message("Ошибка", "Вы уже использовали своё перемещение на этом ходу.")
                 return
 
-            # Перемещаем каждый юнит отдельно, учитывая его источник
-            for unit in self.selected_group:
-                unit_name = unit["unit_name"]
-                taken_count = unit["unit_count"]
-                source_city = unit.get("city_name")
+            # Получаем владельца целевого города
+            destination_owner = self.get_city_owner(self.city_name)
 
-                if not source_city:
-                    show_popup_message("Ошибка", "Не указан исходный город для перемещения.")
-                    continue  # Пропускаем этот юнит
+            # Если целевой город свой или союзник — отправляем без проверки расстояния
+            if destination_owner == current_player_kingdom or self.is_ally(current_player_kingdom, destination_owner):
+                source_city = None
 
-                # Проверяем владельца источника и целевого города
-                source_owner = self.get_city_owner(source_city)
-                destination_owner = self.get_city_owner(self.city_name)
+                for unit in self.selected_group:
+                    unit_source_city = unit.get("city_name")
+                    if not unit_source_city:
+                        show_popup_message("Ошибка", "Не указан исходный город для перемещения.")
+                        return
 
-                if not source_owner or not destination_owner:
-                    show_popup_message("Ошибка", "Один из городов не существует.")
-                    continue
+                    source_city = unit_source_city
 
-                # Перемещаем юнит
+                # Перемещаем всю группу без проверки расстояния
+                unit_name = self.selected_group[0]["unit_name"]
+                total_count = sum(u["unit_count"] for u in self.selected_group)
                 self.transfer_troops_between_cities(
                     source_fortress_name=source_city,
                     destination_fortress_name=self.city_name,
                     unit_name=unit_name,
-                    taken_count=taken_count,
-                    dry_run=False
+                    taken_count=total_count
                 )
 
+            # Если цель — враг или нейтрал — требуется проверка расстояния
+            else:
+                destination_coords = self.get_city_coordinates(self.city_name)
+                can_attack = False
+                source_city = None
+
+                for unit in self.selected_group:
+                    unit_source_city = unit.get("city_name")
+                    if not unit_source_city:
+                        show_popup_message("Ошибка", "Не указан исходный город для перемещения.")
+                        return
+
+                    # Запоминаем первый город (для вызова transfer)
+                    if source_city is None:
+                        source_city = unit_source_city
+
+                    # Считаем расстояние только для первого юнита (остальные в одной группе)
+                    if not can_attack:
+                        source_coords = self.get_city_coordinates(unit_source_city)
+                        x_diff = abs(source_coords[0] - destination_coords[0])
+                        y_diff = abs(source_coords[1] - destination_coords[1])
+                        if x_diff + y_diff < 280:
+                            can_attack = True
+
+                if not can_attack:
+                    show_popup_message("Логистика не выдержит",
+                                       "Слишком далеко. Найдите ближайший населенный пункт")
+                    return
+
+                # Отправляем всю группу в атаку
+                unit_name = self.selected_group[0]["unit_name"]
+                total_count = sum(u["unit_count"] for u in self.selected_group)
+                self.transfer_troops_between_cities(
+                    source_fortress_name=source_city,
+                    destination_fortress_name=self.city_name,
+                    unit_name=unit_name,
+                    taken_count=total_count
+                )
+
+            # Обновляем статус движения
+            cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
+                           (False, current_player_kingdom))
             self.conn.commit()
 
             # Закрытие окон и обновление интерфейса
@@ -1119,7 +1153,6 @@ class FortressInfoPopup(Popup):
         popup.content = layout
         popup.open()
 
-
     def get_city_owner(self, city_name):
         try:
             cursor = self.conn.cursor()
@@ -1199,167 +1232,95 @@ class FortressInfoPopup(Popup):
                                        source_fortress_name,
                                        destination_fortress_name,
                                        unit_name,
-                                       taken_count,
-                                       dry_run=False):
-        """
-        Переносит войска из одного города в другой с учётом обобщённых правил:
-        1) Если войска в своём городе:
-           — в свой город — без ограничений;
-           — в союзный город — логистика < 300;
-           — в вражеский город — логистика < 280 + проверка флага атаки;
-           — в нейтральный город — запрещено.
-        2) Если войска в городе союзника:
-           — в любой город, принадлежащий текущему игроку или другим его союзникам — логистика < 300;
-           — во все прочие (нейтральные/враждебные) — запрещено.
-        3) Если войска в чужом (нейтральном или враждебном) городе — всегда запрещено.
-        :param source_fortress_name: Название исходного города/крепости.
-        :param destination_fortress_name: Название целевого города/крепости.
-        :param unit_name: Название юнита.
-        :param taken_count: Количество юнитов для переноса.
-        :param dry_run: Если True — только проверяем возможность, не меняем данные.
-        :return: True, если действие возможно, иначе False.
-        """
+                                       taken_count):
 
         try:
             cursor = self.conn.cursor()
+
             # Получаем владельцев городов
             source_owner = self.get_city_owner(source_fortress_name)
-            # Получаем владельца целевого города
             destination_owner = self.get_city_owner(destination_fortress_name)
-
             # Проверяем, является ли город нейтральным
             cursor.execute("SELECT faction FROM cities WHERE name = ?", (destination_fortress_name,))
             dest_kingdom_result = cursor.fetchone()
             dest_kingdom = dest_kingdom_result[0] if dest_kingdom_result else None
+            # Проверяем существование обоих городов
             if not source_owner or not destination_owner:
                 show_popup_message("Ошибка", "Один из городов не существует.")
                 return False
 
             current_player_kingdom = self.player_fraction
 
-            # Получаем координаты городов и считаем манхэттенское расстояние
-            source_coords = self.get_city_coordinates(source_fortress_name)
-            destination_coords = self.get_city_coordinates(destination_fortress_name)
-            x_diff = abs(source_coords[0] - destination_coords[0])
-            y_diff = abs(source_coords[1] - destination_coords[1])
-            total_diff = x_diff + y_diff
-
-            # ── 1) Сценарий: войска в своём городе ──────────────────────────────────────────
+            # 1) Сценарий: войска в своём городе
             if source_owner == current_player_kingdom:
-                # — если цель свой город, разрешаем без ограничений;
-                if destination_owner == current_player_kingdom:
-                    if not dry_run:
-                        self.move_troops(source_fortress_name,
-                                         destination_fortress_name,
-                                         unit_name,
-                                         taken_count)
-                        cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?", (False, current_player_kingdom))
-                        self.conn.commit()
+
+                # Свой город или союзник — просто перемещаем
+                if destination_owner == current_player_kingdom or self.is_ally(current_player_kingdom,
+                                                                               destination_owner):
+                    self.move_troops(source_fortress_name, destination_fortress_name, unit_name, taken_count)
+                    cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
+                                   (False, current_player_kingdom))
+                    self.conn.commit()
                     return True
 
-                # — если цель союзник, проверяем total_diff < 300;
-                elif self.is_ally(current_player_kingdom, destination_owner):
-                    if total_diff < 300:
-                        if not dry_run:
-                            self.move_troops(source_fortress_name,
-                                             destination_fortress_name,
-                                             unit_name,
-                                             taken_count)
-                            cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?", (False, current_player_kingdom))
-                            self.conn.commit()
-                        return True
-                    else:
-
-                        show_popup_message("Логистика не выдержит",
-                                           "Слишком далеко. Найдите ближайший населенный пункт")
-                        return False
-                # ── ДОБАВЛЕНО: если город Нетрал ───────────────────────
+                # Нейтральный город — захват без боя
                 elif dest_kingdom == "Нейтрал":
-                    if total_diff < 280:
-                        if not dry_run:
-                            # Вызываем захват без боя
-                            self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
-                            cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?", (False, current_player_kingdom))
-                            self.conn.commit()
-                        return True
-                    else:
-                        print('Расстоние между городами: ', total_diff)
-                        show_popup_message("Логистика не выдержит",
-                                           "Слишком далеко. Найдите ближайший населенный пункт")
-                        return False
+                    self.capture_city(destination_fortress_name, current_player_kingdom, self.selected_group)
+                    cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
+                                   (False, current_player_kingdom))
+                    self.conn.commit()
+                    return True
 
-
-                # — если цель враг, проверяем total_diff < 280 и флаги атаки;
+                # Вражеский город — начинаем атаку
                 elif self.is_enemy(current_player_kingdom, destination_owner):
-                    if total_diff < 280:
-                        cursor.execute(
-                            "SELECT check_attack FROM turn_check_attack_faction WHERE faction = ?",
-                            (destination_owner,)
-                        )
-                        attack_data = cursor.fetchone()
-                        if attack_data and attack_data[0]:
-                            show_popup_message("Ошибка",
-                                               f"Фракция '{destination_owner}' уже была атакована на этом ходу.")
-                            return False
-
-                        if not dry_run:
-                            # Отмечаем, что эту фракцию уже атаковали
-                            cursor.execute(
-                                "INSERT OR REPLACE INTO turn_check_attack_faction (faction, check_attack) VALUES (?, ?)",
-                                (destination_owner, True)
-                            )
-                            self.conn.commit()
-
-                            # Лишаем игрока права на дальнейшее перемещение в этом ходу
-                            cursor.execute(
-                                "UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
-                                (False, current_player_kingdom)
-                            )
-                            self.conn.commit()
-
-                            # Запускаем бой
-                            self.start_battle_group(source_fortress_name,
-                                                    destination_fortress_name,
-                                                    self.selected_group)
-                        return True
-                    else:
-                        show_popup_message("Логистика не выдержит",
-                                           "Слишком далеко. Найдите ближайший населенный пункт")
+                    cursor.execute(
+                        "SELECT check_attack FROM turn_check_attack_faction WHERE faction = ?",
+                        (destination_owner,)
+                    )
+                    attack_data = cursor.fetchone()
+                    if attack_data and attack_data[0]:
+                        show_popup_message("Ошибка",
+                                           f"Фракция '{destination_owner}' уже была атакована на этом ходу.")
                         return False
 
-                # — иначе (нейтральный), запрещаем.
+                    # Обновляем данные об атаке и возможности движения
+                    cursor.execute(
+                        "INSERT OR REPLACE INTO turn_check_attack_faction (faction, check_attack) VALUES (?, ?)",
+                        (destination_owner, True)
+                    )
+                    cursor.execute(
+                        "UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
+                        (False, current_player_kingdom)
+                    )
+                    self.conn.commit()
+
+                    # Запускаем бой
+                    self.start_battle_group(source_fortress_name,
+                                            destination_fortress_name,
+                                            self.selected_group)
+                    return True
+
+                # Если слишком далеко
                 else:
-                    show_popup_message("Ошибка", "Нельзя нападать на нейтральный город.")
+                    show_popup_message("Логистика не выдержит",
+                                       "Слишком далеко. Найдите ближайший населенный пункт")
                     return False
 
-            # ── 2) Сценарий: войска в городе союзника ────────────────────────────────────
+            # 2) Сценарий: войска в городе союзника
             elif self.is_ally(current_player_kingdom, source_owner):
-                # Разрешаем перемещать войска из города союзника:
-                # — либо в любой город текущего игрока,
-                # — либо в город любого другого союзника.
-                # Лимит логистики тот же, что и для переходов «свой→союзник» (300).
 
-                # Проверяем, является ли назначение своим городом или городом другого союзника
                 if (destination_owner == current_player_kingdom or
                         self.is_ally(current_player_kingdom, destination_owner)):
-                    if total_diff < 300:
-                        if not dry_run:
-                            self.move_troops(source_fortress_name,
-                                             destination_fortress_name,
-                                             unit_name,
-                                             taken_count)
-                        return True
-                    else:
-                        show_popup_message("Логистика не выдержит",
-                                           "Слишком далеко. Найдите ближайший населенный пункт")
-                        return False
+
+                    self.move_troops(source_fortress_name, destination_fortress_name, unit_name, taken_count)
+                    return True
+
                 else:
-                    # Попытка отправить войска из города союзника в нейтральный или враждебный город
-                    show_popup_message("Ошибка",
-                                       "Вы можете перемещать войска из города союзника только в свои города или в города союзника.")
+                    show_popup_message("Логистика не выдержит",
+                                       "Слишком далеко. Найдите ближайший населенный пункт")
                     return False
 
-            # ── 3) Во всех остальных случаях (нейтральный или враждебный источник) ───────
+            # 3) Во всех остальных случаях (нейтральный или враждебный источник)
             else:
                 show_popup_message("Ошибка",
                                    "Вы можете перемещать свои войска на свою территорию только из города союзника.")
@@ -1374,6 +1335,7 @@ class FortressInfoPopup(Popup):
             show_popup_message("Ошибка",
                                f"Произошла ошибка при переносе войск: {e}")
             return False
+
 
     def start_battle_group(self, source_fortress_name, destination_fortress_name, attacking_units):
         try:
