@@ -489,19 +489,6 @@ class AdvisorView(FloatLayout):
         # Очищаем текущее содержимое popup
         content = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
 
-        header = Label(
-            text=f"Отношения ({self.faction})",
-            font_size='16sp',
-            bold=True,
-            size_hint_y=None,
-            height=dp(40),
-            color=(0, 0.6, 1, 1),
-            halign='center',
-            valign='middle'
-        )
-        header.bind(size=header.setter('text_size'))
-        content.add_widget(header)
-
         table = GridLayout(
             cols=4,
             size_hint_y=None,
@@ -536,7 +523,7 @@ class AdvisorView(FloatLayout):
             background_color=(0.227, 0.525, 0.835, 1),
             font_size='16sp',
             size_hint=(1, None),
-            height=dp(50),
+            height=dp(48),
             color=(1, 1, 1, 1),
             background_normal='',
             background_down=''
