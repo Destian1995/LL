@@ -451,7 +451,7 @@ class FortressInfoPopup(Popup):
         btn_add_all = Button(
             text="Добавить всех в группу",
             size_hint=(1, None),  # на всю ширину
-            height=dp(48),  # адаптивная высота 48dp
+            height=dp(56),  # адаптивная высота 56dp
             font_size=sp(16),  # адаптивный шрифт 16sp
             background_normal='',
             background_color=(0.2, 0.5, 0.8, 1),
@@ -490,7 +490,7 @@ class FortressInfoPopup(Popup):
         self.send_group_button = Button(
             text="Отправить группу в город",
             size_hint=(0.5, None),  # займёт половину ширины родителя
-            height=dp(56),  # 56dp — стандартная Material высота кнопки
+            height=dp(50),  # 50dp — стандартная Material высота кнопки
             font_size=sp(16),
             background_normal='',
             background_color=(0.3, 0.7, 0.3, 1),
@@ -501,7 +501,7 @@ class FortressInfoPopup(Popup):
         close_button = Button(
             text="Закрыть",
             size_hint=(0.5, None),
-            height=dp(56),
+            height=dp(50),
             font_size=sp(16),
             background_normal='',
             background_color=(0.6, 0.6, 0.6, 1),

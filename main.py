@@ -1651,13 +1651,7 @@ class DossierScreen(Screen):
         # --- 3. Выбираем английское имя файла из словаря, если нет — fallback на 'private.png' ---
         filename = RANK_TO_FILENAME.get(rank, "1.png")
         asset_path = f"files/menu/dossier/{filename}"
-
-        # Логируем, что ищем и что нашли
-        Logger.debug(f"myapp: raw_rank={raw_rank!r}, normalized rank={rank!r}")
-        Logger.debug(f"myapp: Ожидаемое имя файла: {filename!r}")
-        Logger.debug(f"myapp: Ищу resource_find({asset_path!r}) →")
         real_path = resource_find(asset_path)
-        Logger.debug(f"myapp: resource_find вернул: {real_path!r}")
 
         # === 4. Рисуем контейнер для иконки ===
         image_height = dp(90)

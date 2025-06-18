@@ -154,30 +154,12 @@ class AdvisorView(FloatLayout):
     def show_political_systems(self):
         political_systems = self.load_political_systems()
         print("Загруженные данные о политических системах:", political_systems)
-
         if not political_systems:
             print(f"Нет данных о политических системах для фракции {self.faction}.")
             return
 
-        main_layout = BoxLayout(
-            orientation='vertical',
-            spacing=dp(8),
-            padding=dp(10),
-            size_hint=(1, 1)
-        )
-
-        header = Label(
-            text=f"Идеология ({self.faction})",
-            font_size='16sp',
-            bold=True,
-            size_hint_y=None,
-            height=dp(40),
-            color=(0.15, 0.15, 0.15, 1),
-            halign='center',
-            valign='middle'
-        )
-        header.bind(size=header.setter('text_size'))
-        main_layout.add_widget(header)
+        # Очищаем текущее содержимое popup
+        content = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
 
         table = GridLayout(
             cols=3,
@@ -190,33 +172,25 @@ class AdvisorView(FloatLayout):
         for title in ["Фракция", "Идеология", "Отношения"]:
             table.add_widget(self.create_header(title))
 
-        print("Загруженные политические системы:", political_systems)
-
         for faction, data in political_systems.items():
             system = data["system"]
             highlight = faction == self.faction
-
-            print(f"Обработка фракции: {faction}, Система: {system}, Выделение: {highlight}")
-
-            influence_widget = self.create_arrow_icon(
+            influence_icon = self.create_arrow_icon(
                 "up") if system == self.load_political_system() else self.create_arrow_icon("down")
-
-            faction_widget = self._create_cell(faction, highlight=highlight)
-            system_widget = self._create_cell(system, highlight=highlight)
-
-            table.add_widget(faction_widget)
-            table.add_widget(system_widget)
-            table.add_widget(influence_widget)
+            faction_label = self._create_cell(faction, highlight=highlight)
+            system_label = self._create_cell(system, highlight=highlight)
+            table.add_widget(faction_label)
+            table.add_widget(system_label)
+            table.add_widget(influence_icon)
 
         scroll = ScrollView(
-            size_hint=(1, 1),
+            size_hint=(1, 0.6),
             bar_width=dp(6),
             bar_color=(0.5, 0.5, 0.5, 0.6),
-            scroll_type=['bars', 'content'],
-            bar_margin=-dp(2)
+            scroll_type=['bars', 'content']
         )
         scroll.add_widget(table)
-        main_layout.add_widget(scroll)
+        content.add_widget(scroll)
 
         system_layout = BoxLayout(
             orientation='horizontal',
@@ -251,19 +225,11 @@ class AdvisorView(FloatLayout):
 
         system_layout.add_widget(capitalism_button)
         system_layout.add_widget(communism_button)
-        main_layout.add_widget(system_layout)
 
-        popup = Popup(
-            title='',
-            content=main_layout,
-            size_hint=(0.9, 0.85),
-            separator_height=0,
-            background_color=(0.96, 0.96, 0.96, 1),
-            overlay_color=(0, 0, 0, 0.3)
-        )
-        popup.open()
+        content.add_widget(system_layout)
 
-        self.popup = popup
+        # Обновляем содержимое popup вместо создания нового
+        self.popup.content = content
 
     def _create_cell(self, text, highlight=False):
         text_color = self.colors['accent'] if highlight else (1, 1, 1, 1)
@@ -511,76 +477,157 @@ class AdvisorView(FloatLayout):
     def show_relations(self, instance):
         """Отображает окно с таблицей отношений."""
         self.manage_relations()
+
         # Загружаем комбинированные отношения
         combined_relations = self.load_combined_relations()
-        print("Комбинированные отношения для отображения:", combined_relations)  # Отладочный вывод
+        print("Комбинированные отношения для отображения:", combined_relations)
 
         if not combined_relations:
             print(f"Нет данных об отношениях для фракции {self.faction}.")
             return
 
-        # Создаем основной контейнер
-        main_layout = BoxLayout(
-            orientation='vertical',
-            spacing=dp(10),
-            padding=dp(10),
-            size_hint=(1, 1)
-        )
+        # Очищаем текущее содержимое popup
+        content = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
 
-        # Заголовок
         header = Label(
-            text=f"Отношения {self.faction}",
-            font_size=calculate_font_size(),
+            text=f"Отношения ({self.faction})",
+            font_size='16sp',
             bold=True,
             size_hint_y=None,
-            height=Window.height * 0.06,
-            color=(0.15, 0.15, 0.15, 1)
+            height=dp(40),
+            color=(0, 0.6, 1, 1),
+            halign='center',
+            valign='middle'
         )
-        main_layout.add_widget(header)
+        header.bind(size=header.setter('text_size'))
+        content.add_widget(header)
 
-        # Таблица с данными (4 столбца)
         table = GridLayout(
             cols=4,
             size_hint_y=None,
-            spacing=dp(5),
-            row_default_height=Window.height * 0.06
+            spacing=dp(4),
+            row_default_height=dp(40)
         )
         table.bind(minimum_height=table.setter('height'))
 
-        # Заголовки таблицы
-        table.add_widget(self.create_header("Фракция"))
-        table.add_widget(self.create_header("Отношения"))
-        table.add_widget(self.create_header("Торговля"))
-        table.add_widget(self.create_header("Статус"))
+        for title in ["Фракция", "Отношения", "Торговля", "Статус"]:
+            table.add_widget(self.create_header(title))
 
-        # Добавление данных
         for country, data in combined_relations.items():
             relation_level = data["relation_level"]
             status = data["status"]
+
             table.add_widget(self.create_cell(country))
             table.add_widget(self.create_value_cell(relation_level))
-            coefficient = self.calculate_coefficient(relation_level)
-            table.add_widget(self.create_value_trade_cell(coefficient))
+            table.add_widget(self.create_value_trade_cell(self.calculate_coefficient(relation_level)))
             table.add_widget(self.create_status_cell(status))
 
-        # Прокрутка
         scroll = ScrollView(
-            size_hint=(1, 1),
-            bar_width=dp(8),
-            bar_color=(0.4, 0.4, 0.4, 0.6)
+            size_hint=(1, 0.7),
+            bar_width=dp(6),
+            bar_color=(0.5, 0.5, 0.5, 0.6),
+            scroll_type=['bars', 'content']
         )
         scroll.add_widget(table)
-        main_layout.add_widget(scroll)
+        content.add_widget(scroll)
 
-        # Настройка попапа
-        popup = Popup(
-            title='',
-            content=main_layout,
-            size_hint=(0.8, 0.8),
-            background_color=(0.96, 0.96, 0.96, 1),
-            overlay_color=(0, 0, 0, 0.2)
+        back_button = Button(
+            text="Назад",
+            background_color=(0.227, 0.525, 0.835, 1),
+            font_size='16sp',
+            size_hint=(1, None),
+            height=dp(50),
+            color=(1, 1, 1, 1),
+            background_normal='',
+            background_down=''
         )
-        popup.open()
+        back_button.bind(on_release=lambda x: self.reset_popup_to_main())
+        content.add_widget(back_button)
+
+        # Обновляем содержимое popup вместо создания нового
+        self.popup.content = content
+
+    def reset_popup_to_main(self, *args):
+        """Возвращает к главному интерфейсу вкладки"""
+        # Очищаем и восстанавливаем основной интерфейс
+        self.interface_window.clear_widgets()
+        main_layout = BoxLayout(
+            orientation='horizontal',
+            spacing=dp(20),
+            padding=dp(20),
+            size_hint=(1, 1)
+        )
+
+        # Левая панель с изображением
+        left_panel = FloatLayout(size_hint=(0.45, 1))
+        # Правая панель
+        right_panel = BoxLayout(
+            orientation='vertical',
+            size_hint=(0.55, 1),
+            spacing=0,
+            padding=0
+        )
+
+        # Панель вкладок
+        tabs_panel = ScrollView(
+            size_hint=(1, None),
+            height=Window.height * 0.3,
+            bar_width=dp(8),
+            bar_color=(0.5, 0.5, 0.5, 0.5)
+        )
+        self.tabs_content = GridLayout(
+            cols=1,
+            size_hint_y=None,
+            spacing=dp(10),
+            padding=dp(5)
+        )
+        self.tabs_content.bind(minimum_height=self.tabs_content.setter('height'))
+        tabs_panel.add_widget(self.tabs_content)
+        right_panel.add_widget(tabs_panel)
+
+        # Сборка интерфейса
+        main_layout.add_widget(left_panel)
+        main_layout.add_widget(right_panel)
+
+        # Нижняя панель с кнопками
+        bottom_panel = BoxLayout(
+            size_hint=(1, None),
+            height=Window.height * 0.1,
+            padding=dp(10),
+            pos_hint={'x': 0, 'y': 0},
+            spacing=dp(10)
+        )
+        political_system_button = Button(
+            text="Идеология",
+            size_hint=(1, 1),
+            background_normal='',
+            background_color=(0.227, 0.525, 0.835, 1),
+            color=(1, 1, 1, 1),
+            font_size=calculate_font_size(),
+            bold=True,
+            border=(0, 0, 0, 0)
+        )
+        political_system_button.bind(on_release=lambda x: self.show_political_systems())
+
+        relations_button = Button(
+            text="Отношения",
+            size_hint=(1, 1),
+            background_normal='',
+            background_color=(0.118, 0.255, 0.455, 1),
+            color=(1, 1, 1, 1),
+            font_size=calculate_font_size(),
+            bold=True,
+            border=(0, 0, 0, 0)
+        )
+        relations_button.bind(on_release=lambda x: self.show_relations("Состояние отношений"))
+
+        bottom_panel.add_widget(political_system_button)
+        bottom_panel.add_widget(relations_button)
+
+        self.interface_window.add_widget(main_layout)
+        self.interface_window.add_widget(bottom_panel)
+
+        self.popup.content = self.interface_window
 
     def load_diplomacies(self):
         """
