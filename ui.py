@@ -445,7 +445,7 @@ class FortressInfoPopup(Popup):
         btn_add_all = Button(
             text="Добавить всех в группу",
             size_hint=(1, None),  # на всю ширину
-            height=dp(50),  # адаптивная высота 48dp
+            height=dp(44),  # адаптивная высота 48dp
             font_size=sp(16),  # адаптивный шрифт 16sp
             background_normal='',
             background_color=(0.2, 0.5, 0.8, 1),
