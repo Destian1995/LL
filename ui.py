@@ -408,26 +408,25 @@ class FortressInfoPopup(Popup):
                 bold=True,
                 size_hint_y=None,
                 height=60,
-                color=(1, 1, 1, 1)  # Черный текст
+                color=(1, 1, 1, 1)
             )
             self.table_layout.add_widget(label)
 
         for city_name, unit_name, unit_count, unit_image in troops_data:
-            # --- создаём сами виджеты строки ---
             city_lbl = Label(text=city_name, font_size='18sp', size_hint_y=None, height=90)
             unit_lbl = Label(text=unit_name, font_size='18sp', size_hint_y=None, height=90)
             count_lbl = Label(text=str(unit_count), font_size='18sp', size_hint_y=None, height=90)
             img_box = BoxLayout(size_hint_y=None, height=60)
             img_box.add_widget(Image(source=unit_image, size=(80, 80), size_hint=(None, None)))
             btn_add = Button(text="Добавить", font_size='18sp', size_hint_y=None, height=80)
-            btn_add.bind(on_release=lambda btn, data=(city_name, unit_name, unit_count, unit_image):
-            self.create_troop_group(data, btn, city_lbl, unit_lbl, count_lbl, img_box, btn_add))
+            btn_add.bind(
+                on_release=lambda btn, data=(city_name, unit_name, unit_count, unit_image):
+                self.create_troop_group(data, btn, city_lbl, unit_lbl, count_lbl, img_box, btn_add)
+            )
 
-            # Добавляем их в таблицу
             for w in (city_lbl, unit_lbl, count_lbl, img_box, btn_add):
                 self.table_layout.add_widget(w)
 
-            # --- сохраняем по ключу из города+юнита ---
             unique_id = f"{city_name}_{unit_name}"
             self.table_widgets[unique_id] = {
                 "city_label": city_lbl,
@@ -436,7 +435,7 @@ class FortressInfoPopup(Popup):
                 "image_container": img_box,
                 "action_button": btn_add
             }
-        # сразу после заполнения table_layout
+
         scroll_view = ScrollView(size_hint=(1, 1))
         scroll_view.add_widget(self.table_layout)
         main_layout.add_widget(scroll_view)
@@ -444,18 +443,16 @@ class FortressInfoPopup(Popup):
         # Кнопка «Добавить всех в группу»
         btn_add_all = Button(
             text="Добавить всех в группу",
-            size_hint=(1, None),  # на всю ширину
-            height=dp(44),  # адаптивная высота 48dp
-            font_size=sp(16),  # адаптивный шрифт 16sp
+            size_hint=(1, None),
+            height=dp(44),
+            font_size=sp(16),
             background_normal='',
             background_color=(0.2, 0.5, 0.8, 1),
             color=(1, 1, 1, 1)
         )
 
         def add_all(btn):
-            # Добавляем все из current_troops_data
             for city, unit, count, img in list(self.current_troops_data):
-                # 1) добавляем запись в selected_group
                 self.selected_group.append({
                     "city_name": city,
                     "unit_name": unit,
@@ -464,34 +461,33 @@ class FortressInfoPopup(Popup):
                 })
                 self.selected_units_set.add((city, unit))
 
-                # 2) удаляем виджеты из таблицы
                 uid = f"{city}_{unit}"
                 if uid in self.table_widgets:
                     widgets = self.table_widgets.pop(uid)
                     for key in ("city_label", "unit_label", "count_label", "image_container", "action_button"):
                         self.table_layout.remove_widget(widgets[key])
 
-            # 3) очищаем исходный список, чтобы ничего не вернулось
             self.current_troops_data.clear()
-
-            # 4) разблокируем кнопку «Отправить»
             self.send_group_button.disabled = False
 
         btn_add_all.bind(on_release=add_all)
-        main_layout.add_widget(btn_add_all)
 
-        # Кнопка "Отправить группу в город"
+        # Добавляем «Добавить всех» над кнопками отправки/закрытия
+        main_layout.add_widget(btn_add_all)
+        # Небольшой отступ
+        main_layout.add_widget(Widget(size_hint_y=None, height=dp(10)))
+
+        # Кнопки «Отправить группу в город» и «Закрыть»
         self.send_group_button = Button(
             text="Отправить группу в город",
-            size_hint=(0.5, None),  # займёт половину ширины родителя
-            height=dp(44),  # 44 — стандартная Material высота кнопки
+            size_hint=(0.5, None),
+            height=dp(44),
             font_size=sp(16),
             background_normal='',
             background_color=(0.3, 0.7, 0.3, 1),
             color=(1, 1, 1, 1),
             disabled=True
         )
-        # Кнопка "Закрыть"
         close_button = Button(
             text="Закрыть",
             size_hint=(0.5, None),
@@ -504,10 +500,15 @@ class FortressInfoPopup(Popup):
         self.send_group_button.bind(on_release=self.move_selected_group_to_city)
         close_button.bind(on_release=popup.dismiss)
 
-        # Добавляем кнопки в макет
-        buttons_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=90, spacing=10)
+        buttons_layout = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=90,
+            spacing=10
+        )
         buttons_layout.add_widget(self.send_group_button)
         buttons_layout.add_widget(close_button)
+
         main_layout.add_widget(buttons_layout)
 
         popup.content = main_layout
