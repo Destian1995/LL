@@ -635,7 +635,6 @@ class AdvisorView(FloatLayout):
         # Обновляем содержимое popup вместо создания нового
         self.popup.content = content
 
-
     def show_relations(self, instance):
         """Отображает окно с таблицей отношений."""
         self.manage_relations()
@@ -706,7 +705,9 @@ class AdvisorView(FloatLayout):
             halign='center',
             valign='middle',
             size_hint_y=None,
-            height=dp(40)
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2
         )
 
     def create_value_trade_cell(self, coefficient):
@@ -719,7 +720,9 @@ class AdvisorView(FloatLayout):
             halign='center',
             valign='middle',
             size_hint_y=None,
-            height=dp(40)
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),  # Чёрная обводка
+            outline_width=2  # Толщина обводки
         )
 
     def create_status_cell(self, status):
@@ -732,7 +735,9 @@ class AdvisorView(FloatLayout):
             halign='center',
             valign='middle',
             size_hint_y=None,
-            height=dp(40)
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),  # Чёрная обводка
+            outline_width=2  # Толщина обводки
         )
 
     def create_cell(self, text, status="нейтралитет"):
@@ -743,26 +748,12 @@ class AdvisorView(FloatLayout):
             height=dp(40),
             color=color,
             halign='center',
-            valign='middle'
+            valign='middle',
+            outline_color=(0, 0, 0, 1),  # Чёрная обводка
+            outline_width=2  # Толщина обводки
         )
         label.bind(size=label.setter('text_size'))
         return label
-
-    def create_text_cell(self, text):
-        """
-        Создает ячейку с текстовым описанием (например, бонусов политической системы).
-        """
-        lbl = Label(
-            text=text,
-            font_size=calculate_font_size(),  # Адаптивный размер шрифта
-            bold=True,
-            color=(0, 0, 0, 1),  # Черный цвет текста
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=Window.height * 0.06  # Адаптивная высота
-        )
-        return lbl
 
     def _create_cell(self, text, highlight=False):
         text_color = self.colors['accent'] if highlight else (1, 1, 1, 1)
@@ -776,7 +767,9 @@ class AdvisorView(FloatLayout):
             valign='middle',
             size_hint_y=None,
             height=dp(40),
-            text_size=(None, None)
+            text_size=(None, None),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2
         )
 
     def create_header(self, text):
@@ -790,7 +783,9 @@ class AdvisorView(FloatLayout):
             valign='middle',
             size_hint_y=None,
             height=dp(40),
-            text_size=(None, None)
+            text_size=(None, None),
+            outline_color=(0, 0, 0, 1),   # Чёрная обводка
+            outline_width=2
         )
         label.bind(size=label.setter('text_size'))
         return label
