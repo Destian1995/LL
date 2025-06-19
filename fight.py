@@ -1,4 +1,3 @@
-from lerdon_libraries import *
 from db_lerdon_connect import *
 
 
@@ -69,6 +68,62 @@ def update_results_table(db_connection, faction, units_combat, units_destroyed, 
         print(f"[ERROR] Ошибка базы данных в update_results_table: {e}")
     except Exception as e:
         print(f"[ERROR] Неожиданная ошибка в update_results_table: {e}")
+
+def generate_battle_report(attacking_army, defending_army, winner, attacking_fraction, defending_fraction, user_faction,
+                           city):
+    """
+    Генерирует отчет о бое.
+    :param attacking_army: Данные об атакующей армии (список словарей).
+    :param defending_army: Данные об обороняющейся армии (список словарей).
+    :param winner: Результат боя ('attacking' или 'defending').
+    :param attacking_fraction: Название атакующей фракции.
+    :param defending_fraction: Название обороняющейся фракции.
+    :return: Отчет о бое (список словарей).
+    """
+    global attacking_result, defending_result
+    report_data = []  # ← Теперь это список, а не словарь
+
+    def process_army(army, side, result=None):
+        for unit in army:
+            initial_count = unit.get('initial_count', 0)
+            final_count = unit['unit_count']
+            losses = initial_count - final_count
+            report_data.append({
+                'unit_name': unit['unit_name'],
+                'initial_count': initial_count,
+                'final_count': final_count,
+                'losses': losses,
+                'side': side,
+                'result': result,
+                'city': city
+            })
+
+    # Определяем результат только для фракции игрока
+    if user_faction:
+        if winner == 'attacking' and attacking_fraction == user_faction:
+            attacking_result = "Победа"
+            defending_result = None
+        elif winner == 'defending' and defending_fraction == user_faction:
+            attacking_result = None
+            defending_result = "Победа"
+        else:
+            # Игрок проиграл
+            if attacking_fraction == user_faction:
+                attacking_result = "Поражение"
+                defending_result = None
+            elif defending_fraction == user_faction:
+                attacking_result = None
+                defending_result = "Поражение"
+    else:
+        # Если игрок не участвует, результаты не нужны
+        attacking_result = None
+        defending_result = None
+
+    # Обработка армий
+    process_army(attacking_army, 'attacking', attacking_result)
+    process_army(defending_army, 'defending', defending_result)
+
+    return report_data
 
 
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
@@ -358,12 +413,33 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
     modified_defending.sort(key=priority)
 
     # Бой
+    # Цепочка боя: один атакующий может атаковать несколько целей, но только если убивает каждую
     for atk in modified_attacking:
-        for df in modified_defending:
-            if atk['unit_count'] > 0 and df['unit_count'] > 0:
-                atk_new, df_new = battle_units(atk, df, defending_city, user_faction, conn)
-                atk['unit_count'] = atk_new['unit_count']
-                df['unit_count'] = df_new['unit_count']
+        if atk['unit_count'] <= 0:
+            continue
+
+        i = 0
+        while i < len(modified_defending) and atk['unit_count'] > 0:
+            df = modified_defending[i]
+            if df['unit_count'] <= 0:
+                i += 1
+                continue
+
+            # Проводим бой
+            atk_copy = atk.copy()
+            df_copy = df.copy()
+            atk_new, df_new = battle_chain(atk_copy, df_copy, defending_city, user_faction, conn)
+
+            # Обновляем данные
+            atk['unit_count'] = atk_new['unit_count']
+            df['unit_count'] = df_new['unit_count']
+
+            # Если защитник погиб — переходим к следующему
+            if df['unit_count'] <= 0:
+                i += 1
+            else:
+                # Защитник жив — больше не можем атаковать других
+                break
 
     # Потери
     for u in modified_attacking + modified_defending:
@@ -433,61 +509,43 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
     }
 
 
-def generate_battle_report(attacking_army, defending_army, winner, attacking_fraction, defending_fraction, user_faction,
-                           city):
-    """
-    Генерирует отчет о бое.
-    :param attacking_army: Данные об атакующей армии (список словарей).
-    :param defending_army: Данные об обороняющейся армии (список словарей).
-    :param winner: Результат боя ('attacking' или 'defending').
-    :param attacking_fraction: Название атакующей фракции.
-    :param defending_fraction: Название обороняющейся фракции.
-    :return: Отчет о бое (список словарей).
-    """
-    global attacking_result, defending_result
-    report_data = []  # ← Теперь это список, а не словарь
+def battle_chain(attacker, defender, city, user_faction, conn):
+    attack_power = calculate_unit_power(attacker, is_attacking=True)
+    defense_power = calculate_unit_power(defender, is_attacking=False)
 
-    def process_army(army, side, result=None):
-        for unit in army:
-            initial_count = unit.get('initial_count', 0)
-            final_count = unit['unit_count']
-            losses = initial_count - final_count
-            report_data.append({
-                'unit_name': unit['unit_name'],
-                'initial_count': initial_count,
-                'final_count': final_count,
-                'losses': losses,
-                'side': side,
-                'result': result,
-                'city': city
-            })
+    if defense_power <= 0:
+        defense_power = 1  # защита от деления на 0
 
-    # Определяем результат только для фракции игрока
-    if user_faction:
-        if winner == 'attacking' and attacking_fraction == user_faction:
-            attacking_result = "Победа"
-            defending_result = None
-        elif winner == 'defending' and defending_fraction == user_faction:
-            attacking_result = None
-            defending_result = "Победа"
+    total_attack = attack_power * attacker['unit_count']
+    total_defense = defense_power * defender['unit_count']
+
+    damage_to_infrastructure(total_attack, city, user_faction, conn)
+
+    if total_attack > total_defense:
+        remaining_power = total_attack - total_defense
+        attacker_class = get_unit_class(attacker)
+
+        if attacker_class >= 3:
+            attacker['unit_count'] = 1 if remaining_power >= 1 else 0
         else:
-            # Игрок проиграл
-            if attacking_fraction == user_faction:
-                attacking_result = "Поражение"
-                defending_result = None
-            elif defending_fraction == user_faction:
-                attacking_result = None
-                defending_result = "Поражение"
+            attacker['unit_count'] = max(int(remaining_power // attack_power), 0)
+        defender['unit_count'] = 0
     else:
-        # Если игрок не участвует, результаты не нужны
-        attacking_result = None
-        defending_result = None
+        remaining_power = total_defense - total_attack
+        defender_class = get_unit_class(defender)
 
-    # Обработка армий
-    process_army(attacking_army, 'attacking', attacking_result)
-    process_army(defending_army, 'defending', defending_result)
+        if defender_class >= 3:
+            defender['unit_count'] = 1 if remaining_power >= 1 else 0
+        else:
+            surviving = max(int(remaining_power // defense_power), 0)
+            defender['unit_count'] = surviving
+        attacker['unit_count'] = 0
 
-    return report_data
+    return attacker, defender
+
+
+def get_unit_class(unit):
+    return int(unit['units_stats'].get('Класс юнита', '1'))
 
 
 def calculate_army_power(army):
@@ -511,63 +569,15 @@ def calculate_unit_power(unit, is_attacking):
     :param is_attacking: True, если юнит атакующий; False, если защитный.
     :return: Сила юнита (float).
     """
-    class_coefficients = {
-        '1': 1.3,
-        '2': 1.7,
-        '3': 2.0,
-        '4': 3.0,
-        '5': 4.0
-    }
-
-    unit_class = unit['units_stats']['Класс юнита']
-    coefficient = class_coefficients.get(unit_class, 1.0)
-
     if is_attacking:
         # Для атакующих юнитов
         attack = unit['units_stats']['Урон']
-        return attack * coefficient
+        return attack
     else:
         # Для защитных юнитов
         durability = unit['units_stats']['Живучесть']
         defense = unit['units_stats']['Защита']
         return durability + defense
-
-
-def battle_units(attacking_unit, defending_unit, city, user_faction, conn):
-    """
-    Осуществляет бой между двумя юнитами.
-    :param city:
-    :param attacking_unit: Атакующий юнит.
-    :param defending_unit: Защитный юнит.
-    :return: Обновленные данные об атакующем и защитном юнитах после боя.
-    """
-    # Расчет силы атакующего юнита
-    attack_points = calculate_unit_power(attacking_unit, is_attacking=True)
-    total_attack_power = attack_points * attacking_unit['unit_count']
-
-    # Расчет силы защитного юнита
-    defense_points = calculate_unit_power(defending_unit, is_attacking=False)
-    total_defense_power = defense_points * defending_unit['unit_count']
-
-    damage_to_infrastructure(total_attack_power, city, user_faction, conn)
-
-    # Определение победителя раунда
-    if total_attack_power > total_defense_power:
-        # Атакующий побеждает
-        remaining_power = total_attack_power - total_defense_power
-        remaining_attackers = max(int(remaining_power / attack_points), 0)
-        remaining_defenders = 0
-    else:
-        # Защитный побеждает
-        remaining_power = total_defense_power - total_attack_power
-        remaining_defenders = max(int(remaining_power / defense_points), 0)
-        remaining_attackers = 0
-
-    # Обновляем количество юнитов
-    attacking_unit['unit_count'] = remaining_attackers
-    defending_unit['unit_count'] = remaining_defenders
-
-    return attacking_unit, defending_unit
 
 
 def update_garrisons_after_battle(winner, attacking_city, defending_city,
@@ -646,15 +656,7 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
     except sqlite3.Error as e:
         print(f"Ошибка при обновлении гарнизонов: {e}")
 
-def update_city_name_with_faction(city_name, new_faction):
-    """
-        Удаляет всё, что находится в скобках (включая сами скобки),
-        и возвращает новое имя в формате: "base_name (new_faction)".
-        """
-    # Способ 2 (альтернатива без regex):
-    base_name = city_name.split('(')[0].strip()
 
-    return f"{base_name} ({new_faction})"
 
 #------------------------------------
 
@@ -751,38 +753,12 @@ def damage_to_infrastructure(all_damage, city_name, user_faction, conn):
     except Exception as e:
         print(f"Ошибка при работе с базой данных: {e}")
 
-    if user_faction == 1:
-        # Показать информацию об уроне
-        show_damage_info_infrastructure(damage_info)
-
-
-def show_damage_info_infrastructure(damage_info):
-    from kivy.uix.boxlayout import BoxLayout
-    from kivy.uix.label import Label
-    from kivy.uix.button import Button
-    from kivy.uix.popup import Popup
-
-    content = BoxLayout(orientation='vertical')
-    message = "Информация об уроне по инфраструктуре:\n\n"
-    for building, destroyed_count in damage_info.items():
-        message += f"{building.capitalize()}, уничтожено зданий: {destroyed_count}\n"
-
-    label = Label(text=message, size_hint_y=None, height=400)
-    close_button = Button(text="Закрыть", size_hint_y=None, height=50)
-    close_button.bind(on_release=lambda instance: popup.dismiss())
-
-    content.add_widget(label)
-    content.add_widget(close_button)
-
-    popup = Popup(title="Результат удара по инфраструктуре", content=content, size_hint=(0.7, 0.7))
-    popup.open()
-
 
 def update_dossier_battle_stats(conn, user_faction, is_victory):
     """
     Обновляет статистику по боям в таблице dossier для текущей фракции пользователя.
 
-    :param db_connection: Соединение с базой данных.
+    :param conn: Соединение с базой данных.
     :param user_faction: Название фракции игрока.
     :param is_victory: True, если игрок победил, False — если проиграл.
     """

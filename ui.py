@@ -1148,14 +1148,6 @@ class FortressInfoPopup(Popup):
                 show_popup_message("Ошибка", "Вы уже использовали своё перемещение на этом ходу.")
                 return
 
-            # Получаем владельца целевого города
-            destination_owner = self.get_city_owner(self.city_name)
-
-            # Если цель — свой или союзник → можно без ограничений
-            is_friendly_destination = (
-                    destination_owner == current_player_kingdom or
-                    self.is_ally(current_player_kingdom, destination_owner)
-            )
 
             # Группируем юниты по их городам
             grouped_by_city = defaultdict(lambda: defaultdict(int))
@@ -1193,11 +1185,13 @@ class FortressInfoPopup(Popup):
                 self.current_popup = None
             if hasattr(self, 'dismiss'):
                 self.dismiss()
-            self.selected_group.clear()
-            self.update_garrison()
 
         except Exception as e:
             show_popup_message("Ошибка", f"Произошла ошибка при перемещении группы: {e}")
+
+        finally:
+            self.selected_group.clear()
+            self.update_garrison()
 
     def transfer_troops_between_cities(self,
                                        source_fortress_name,

@@ -35,6 +35,8 @@ class AuthorScreen(Screen):
             font_size='28sp',
             size_hint_y=None,
             height=dp(50),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
             color=(1, 1, 1, 1),
             halign="center"
         )
@@ -49,6 +51,8 @@ class AuthorScreen(Screen):
             font_size='18sp',
             size_hint_y=None,
             height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
             halign="center",
             valign="middle"
         )
@@ -60,6 +64,8 @@ class AuthorScreen(Screen):
             font_size='18sp',
             size_hint_y=None,
             height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
             halign="center",
             valign="middle"
         )
@@ -68,6 +74,20 @@ class AuthorScreen(Screen):
         link_box.add_widget(vk_label)
         link_box.add_widget(tg_label)
         layout.add_widget(link_box)
+
+        # Новая желтая подпись внизу
+        credits_label = Label(
+            text="[color=#FFD700]Все иконки и изображения были разработаны с использованием ресурсов: \n Flaticon.com, Qwen, ChatGPT, а так же Шедеврума.[/color]",
+            markup=True,
+            font_size='12sp',
+            size_hint_y=None,
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
+            halign="center",
+            valign="middle"
+        )
+        layout.add_widget(credits_label)
 
         # Кнопка "Назад" — уменьшена
         back_button = Button(
@@ -1904,9 +1924,6 @@ class HowToPlayScreen(Screen):
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
-
-
-
 
 
 class Lerdon(App):

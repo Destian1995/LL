@@ -1,4 +1,4 @@
-from lerdon_libraries import *
+
 from db_lerdon_connect import *
 
 
@@ -1695,48 +1695,63 @@ def show_popup_message(title, message):
 #-------------------------------------
 
 def calculate_army_strength(conn):
-    """Рассчитывает силу армий для каждой фракции."""
-    class_coefficients = {
-        "1": 1.3,  # Класс 1: базовые юниты
-        "2": 1.7,  # Класс 2: улучшенные юниты
-        "3": 2.0,  # Класс 3: элитные юниты
-        "4": 3.0,
-        "5": 4.0
-    }
+    """Рассчитывает силу армий для каждой фракции по новой логике."""
 
     army_strength = {}
 
     try:
-            cursor = conn.cursor()
+        cursor = conn.cursor()
 
-            # Получаем все юниты из таблицы garrisons и их характеристики из таблицы units
-            cursor.execute("""
-                SELECT g.unit_name, g.unit_count, u.faction, u.attack, u.defense, u.durability, u.unit_class 
-                FROM garrisons g
-                JOIN units u ON g.unit_name = u.unit_name
-            """)
-            garrison_data = cursor.fetchall()
+        # Получаем все юниты из таблицы garrisons и их характеристики из units
+        cursor.execute("""
+            SELECT g.unit_name, g.unit_count, u.faction, u.attack, u.defense, u.durability, u.unit_class 
+            FROM garrisons g
+            JOIN units u ON g.unit_name = u.unit_name
+        """)
+        garrison_data = cursor.fetchall()
 
-            # Рассчитываем силу армии для каждой фракции
-            for row in garrison_data:
-                unit_name, unit_count, faction, attack, defense, durability, unit_class = row
+        # Собираем данные по фракциям
+        factions_data = {}
 
-                if not faction:
-                    continue
+        for row in garrison_data:
+            unit_name, unit_count, faction, attack, defense, durability, unit_class = row
 
-                # Коэффициент класса
-                coefficient = class_coefficients.get(unit_class, 1.0)
+            if not faction:
+                continue
 
-                # Рассчитываем силу юнита
-                unit_strength = (attack * coefficient) + defense + durability
+            key = faction
+            if key not in factions_data:
+                factions_data[key] = {
+                    "class_1": {"count": 0, "total_stats": 0},
+                    "heroes": {"total_stats": 0},  # герои класса 2 и 3
+                    "others": {"total_stats": 0}   # юниты класса 4 и 5
+                }
 
-                # Умножаем на количество юнитов
-                total_strength = unit_strength * unit_count
+            stats_sum = attack + defense + durability
 
-                # Добавляем к общей силе фракции
-                if faction not in army_strength:
-                    army_strength[faction] = 0
-                army_strength[faction] += total_strength
+            if unit_class == "1":
+                factions_data[key]["class_1"]["count"] += unit_count
+                factions_data[key]["class_1"]["total_stats"] += stats_sum * unit_count
+            elif unit_class in ("2", "3"):
+                factions_data[key]["heroes"]["total_stats"] += stats_sum * unit_count
+            else:  # класс 4 и выше
+                factions_data[key]["others"]["total_stats"] += stats_sum * unit_count
+
+        # Применяем новую формулу
+        for faction, data in factions_data.items():
+            class_1_count = data["class_1"]["count"]
+            base_stats = data["class_1"]["total_stats"]
+            hero_bonus = data["heroes"]["total_stats"]
+            others_stats = data["others"]["total_stats"]
+
+            total_strength = 0
+
+            if class_1_count > 0:
+                total_strength += base_stats + hero_bonus * class_1_count
+
+            total_strength += others_stats
+
+            army_strength[faction] = total_strength
 
     except Exception as e:
         print(f"Ошибка при работе с базой данных: {e}")
@@ -1798,9 +1813,9 @@ def create_army_rating_table(conn):
         return lbl
 
     # Заголовки
-    layout.add_widget(create_label("Страна", header_color, halign="center", valign="middle", bold=True))
+    layout.add_widget(create_label("Раса", header_color, halign="center", valign="middle", bold=True))
     layout.add_widget(create_label("Рейтинг", header_color, halign="center", valign="middle", bold=True))
-    layout.add_widget(create_label("Мощь", header_color, halign="center", valign="middle", bold=True))
+    layout.add_widget(create_label("Могущество", header_color, halign="center", valign="middle", bold=True))
 
     sorted_factions = sorted(army_strength.items(), key=lambda x: x[1], reverse=True)
 
