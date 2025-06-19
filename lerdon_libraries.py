@@ -70,14 +70,12 @@ from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.resources import resource_find
 from kivy.uix.togglebutton import ToggleButtonBehavior
-from kivy.properties import ListProperty
+from kivy.properties import ListProperty, StringProperty, NumericProperty, BooleanProperty
 from kivy.uix.screenmanager import Screen, ScreenManager, FadeTransition
 from kivy.uix.progressbar import ProgressBar
 from kivy.clock import Clock
 from kivy.animation import AnimationTransition
 from kivy.utils import get_color_from_hex as hex_color
 from kivy.uix.stencilview import StencilView
-from kivy.properties import BooleanProperty
-
 
 # kivymd libraries

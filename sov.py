@@ -231,21 +231,6 @@ class AdvisorView(FloatLayout):
         # Обновляем содержимое popup вместо создания нового
         self.popup.content = content
 
-    def _create_cell(self, text, highlight=False):
-        text_color = self.colors['accent'] if highlight else (1, 1, 1, 1)
-        return Label(
-            text=f"[b]{text}[/b]" if highlight else text,
-            markup=True,
-            font_size='14sp',
-            bold=True,
-            color=text_color,
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=dp(40),
-            text_size=(None, None)
-        )
-
     def create_arrow_icon(self, direction):
         if direction == "up":
             source = 'files/pict/up.png'
@@ -259,23 +244,6 @@ class AdvisorView(FloatLayout):
             allow_stretch=True,
             keep_ratio=True
         )
-
-    def create_header(self, text):
-        label = Label(
-            text=f"[b]{text}[/b]",
-            markup=True,
-            font_size='14sp',
-            bold=True,
-            color=(1, 1, 1, 1),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=dp(40),
-            text_size=(None, None)
-        )
-        label.bind(size=label.setter('text_size'))
-        return label
-
 
     def load_political_system(self):
         """
@@ -792,6 +760,38 @@ class AdvisorView(FloatLayout):
             height=Window.height * 0.06  # Адаптивная высота
         )
         return lbl
+
+    def _create_cell(self, text, highlight=False):
+        text_color = self.colors['accent'] if highlight else (1, 1, 1, 1)
+        return Label(
+            text=f"[b]{text}[/b]" if highlight else text,
+            markup=True,
+            font_size='14sp',
+            bold=True,
+            color=text_color,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40),
+            text_size=(None, None)
+        )
+
+    def create_header(self, text):
+        label = Label(
+            text=f"[b]{text}[/b]",
+            markup=True,
+            font_size='14sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40),
+            text_size=(None, None)
+        )
+        label.bind(size=label.setter('text_size'))
+        return label
+
     def get_status_color(self, status):
         """Определяет цвет на основе статуса отношений."""
         if status == "война":
