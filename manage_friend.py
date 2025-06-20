@@ -341,9 +341,9 @@ class ManageFriend(Popup):
 
         btn_materials = self.create_action_button(
             icon='files/pict/friends/economic_materials.png',
-            text='Сырьё',
+            text='Кристаллы',
             bg_color=(0.3, 0.7, 0.3, 1),
-            on_release=lambda btn: self._on_resource_selected(ally_name, "Сырьё")
+            on_release=lambda btn: self._on_resource_selected(ally_name, "Кристаллы")
         )
         main_container.add_widget(btn_materials)
 
@@ -567,9 +567,40 @@ class ManageFriend(Popup):
         )
         conn.commit()
 
-
     def _send_request(self, ally, resource):
-        self.save_query_resources_to_db(resource)
+        cursor = self.conn.cursor()
+        try:
+            # Проверяем, есть ли уже запрос на этот ресурс в этом ходу (в таблице queries)
+            cursor.execute("""
+                SELECT COUNT(*) FROM queries 
+                WHERE faction = ? AND resource = ?
+            """, (self.faction_name, resource))
+            existing_query_count = cursor.fetchone()[0]
+
+            if existing_query_count > 0:
+                self._show_fullscreen_message(f"Вы уже делали запрос на '{resource}' в этом ходу.")
+                return
+
+            # Проверяем, есть ли уже активная сделка на этот ресурс в trade_agreements
+            cursor.execute("""
+                SELECT COUNT(*) FROM trade_agreements 
+                WHERE (initiator = ? OR target_faction = ?) 
+                  AND initiator_type_resource = ?
+                  AND agree != 'completed'
+            """, (self.faction_name, self.faction_name, resource))
+            active_deal_count = cursor.fetchone()[0]
+            if active_deal_count > 0:
+                self._show_fullscreen_message(f"Текущая сделка на {resource} еще не закрыта.")
+                return
+
+            # Сохраняем запрос с указанием текущего хода
+            self.save_query_resources_to_db(resource)
+
+            self._show_fullscreen_message(f"Запрос на '{resource}' отправлен союзнику.")
+
+        except Exception as e:
+            print(f"[ERROR] Ошибка при отправке запроса: {e}")
+            self._show_fullscreen_message("Ошибка при отправке запроса.")
 
     def open_popup(self):
         super().open()

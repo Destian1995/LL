@@ -407,7 +407,7 @@ def show_trade_agreement_form(faction, game_area, conn):
     # Spinner: "Наш ресурс"
     our_resource_spinner = Spinner(
         text="Наш ресурс",
-        values=["Рабочие", "Сырье", "Кроны"],
+        values=["Рабочие", "Кристаллы", "Кроны"],
         size_hint_y=None,
         height=input_height,
         font_size=font_size,
@@ -421,7 +421,7 @@ def show_trade_agreement_form(faction, game_area, conn):
     # Spinner: "Их ресурс"
     their_resource_spinner = Spinner(
         text="Их ресурс",
-        values=["Рабочие", "Сырье", "Кроны"],
+        values=["Рабочие", "Кристаллы", "Кроны"],
         size_hint_y=None,
         height=input_height,
         font_size=font_size,
@@ -488,9 +488,9 @@ def show_trade_agreement_form(faction, game_area, conn):
     def load_resources():
         cursor.execute("""
             SELECT resource_type, amount FROM resources 
-            WHERE faction = ? AND resource_type IN ('Рабочие', 'Сырье', 'Кроны')
+            WHERE faction = ? AND resource_type IN ('Рабочие', 'Кристаллы', 'Кроны')
         """, (faction,))
-        result = {res: 0 for res in ["Рабочие", "Сырье", "Кроны"]}
+        result = {res: 0 for res in ["Рабочие", "Кристаллы", "Кроны"]}
         for row in cursor.fetchall():
             result[row[0]] = int(row[1])
         return result

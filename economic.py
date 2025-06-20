@@ -118,7 +118,7 @@ class Faction:
         self.resources = {
             'Кроны': self.money,
             'Рабочие': self.free_peoples,
-            'Сырье': self.raw_material,
+            'Кристаллы': self.raw_material,
             'Население': self.population,
             'Потребление': self.current_consumption,
             'Лимит армии': self.max_army_limit
@@ -156,7 +156,7 @@ class Faction:
     def load_resources(self):
         """Загружает ресурсы из таблицы resources."""
         rows = self.load_data("resources", ["resource_type", "amount"], "faction = ?", (self.faction,))
-        resources = {"Рабочие": 0, "Кроны": 0, "Сырье": 0, "Население": 0}
+        resources = {"Рабочие": 0, "Кроны": 0, "Кристаллы": 0, "Население": 0}
         for resource_type, amount in rows:
             resources[resource_type] = amount
         return resources
@@ -535,7 +535,7 @@ class Faction:
         self.load_resources()
         self.resources['Кроны'] = self.money
         self.resources['Рабочие'] = self.free_peoples
-        self.resources['Сырье'] = self.raw_material
+        self.resources['Кристаллы'] = self.raw_material
         self.resources['Население'] = self.population
         self.resources['Потребление'] = self.current_consumption
         self.resources['Лимит армии'] = self.max_army_limit
@@ -546,7 +546,7 @@ class Faction:
         """
         Проверяет, достаточно ли у фракции ресурсов для выполнения сделки.
 
-        :param resource_type: Тип ресурса (например, "Сырье", "Кроны", "Рабочие", "Население").
+        :param resource_type: Тип ресурса (например, "Кристаллы", "Кроны", "Рабочие", "Население").
         :param required_amount: Требуемое количество ресурсов.
         :return: True, если ресурсов достаточно, иначе False.
         """
@@ -574,11 +574,11 @@ class Faction:
         """
         Обновляет количество ресурсов фракции на указанное значение.
 
-        :param resource_type: Тип ресурса (например, "Сырье", "Кроны", "Рабочие", "Население").
+        :param resource_type: Тип ресурса (например, "Кристаллы", "Кроны", "Рабочие", "Население").
         :param amount: Изменение количества ресурсов (положительное или отрицательное).
         """
-        if resource_type == "Сырье":
-            self.resources['Сырье'] += amount
+        if resource_type == "Кристаллы":
+            self.resources['Кристаллы'] += amount
         elif resource_type == "Кроны":
             self.resources['Кроны'] += amount
         elif resource_type == "Население":
@@ -630,13 +630,13 @@ class Faction:
                     initiator_summ_resource, target_type_resource, target_summ_resource = row
 
                 # Проверяем, была ли сделка одобрена
-                show_message("Сделка", f" {target_faction} одобрили сделку с {target_type_resource}.")
+                show_message(f"{initiator_type_resource}", f" {initiator} одобрили сделку!")
 
                 if initiator == self.faction:
                     # Проверяем наличие ресурсов только если они должны быть отданы
                     if initiator_summ_resource and initiator_type_resource:
                         if not self.check_resource_availability(initiator_type_resource, initiator_summ_resource):
-                            print(f"Недостаточно ресурсов для выполнения сделки с фракцией {target_faction}.")
+                            print(f"Недостаточно ресурсов для выполнения сделки с фракцией {initiator}.")
                             continue
 
                         # Отнимаем ресурс, который отдает инициатор
@@ -700,7 +700,7 @@ class Faction:
                     self.money = amount
                 elif resource_type == "Рабочие":
                     self.free_peoples = amount
-                elif resource_type == "Сырье":
+                elif resource_type == "Кристаллы":
                     self.raw_material = amount
                 elif resource_type == "Население":
                     self.population = amount
@@ -795,7 +795,7 @@ class Faction:
                 crowns_bonus = int(self.money_up * 8.75)
                 self.money += crowns_bonus
             elif system == "Борьба":
-                # +365% Сырья от общего прироста
+                # +365% Кристаллы от общего прироста
                 raw_material_bonus = int(self.food_info * 3.65)
                 self.raw_material += raw_material_bonus
 
@@ -861,7 +861,7 @@ class Faction:
 
     def calculate_and_deduct_consumption(self):
         """
-        Метод для расчета потребления сырья гарнизонами текущей фракции
+        Метод для расчета потребления Кристаллы гарнизонами текущей фракции
         и вычета суммарного потребления из self.raw_material.
         Также проверяет лимиты потребления и при необходимости сокращает армию,
         уменьшая количество юнитов на 15% от их числа.
@@ -958,8 +958,8 @@ class Faction:
 
             # Шаг 5: Обновление ресурсов
             self.raw_material -= self.current_consumption
-            print(f"Общее потребление сырья: {self.current_consumption}")
-            print(f"Остаток сырья у фракции: {self.raw_material}")
+            print(f"Общее потребление Кристаллы: {self.current_consumption}")
+            print(f"Остаток Кристаллы у фракции: {self.raw_material}")
 
             self.resources['Потребление'] = self.current_consumption
             self.save_resources_to_db()
@@ -975,7 +975,7 @@ class Faction:
         """
         Обновляет или создает запись в таблице results для колонок Average_Net_Profit_Coins и Average_Net_Profit_Raw.
         :param coins_profit: Текущая прибыль по кронам
-        :param raw_profit: Текущая прибыль по сырью
+        :param raw_profit: Текущая прибыль по Кристаллы
         """
         try:
             # Проверяем существование записи для фракции
@@ -1023,7 +1023,7 @@ class Faction:
         # Сохраняем предыдущие значения ресурсов
         previous_money = self.money
         previous_raw_material = self.raw_material
-        # Генерируем новую цену на сырье
+        # Генерируем новую цену на Кристаллы
         self.generate_raw_material_price()
         # Обновляем ресурсы на основе торговых соглашений
         self.update_trade_resources_from_db()
@@ -1070,20 +1070,20 @@ class Faction:
         if self.raw_material > 0:
             self.population += int(self.clear_up_peoples)
         else:
-            # Логика убыли населения при недостатке Сырья
+            # Логика убыли населения при недостатке Кристаллы
             if self.population > 100:
                 loss = int(self.population * 0.45)  # 45% от населения
                 self.population -= loss
             else:
                 loss = min(self.population, 50)  # Обнуление по 50, но не ниже 0
                 self.population -= loss
-            self.free_peoples = 0  # Все рабочие обнуляются, так как Сырья нет
+            self.free_peoples = 0  # Все рабочие обнуляются, так как Кристаллы нет
 
         # Проверка, чтобы ресурсы не опускались ниже 0 и не превышали максимальные значения
         self.resources.update({
             "Кроны": max(min(int(self.money), 10_000_000_000), 0),  # Не более 10 млрд
             "Рабочие": max(min(int(self.free_peoples), 10_000_000), 0),  # Не более 10 млн
-            "Сырье": max(min(int(self.raw_material), 10_000_000_000), 0),  # Не более 10 млрд
+            "Кристаллы": max(min(int(self.raw_material), 10_000_000_000), 0),  # Не более 10 млрд
             "Население": max(min(int(self.population), 100_000_000), 0),  # Не более 100 млн
             "Потребление": self.current_consumption,  # Используем рассчитанное значение
             "Лимит армии": self.max_army_limit
@@ -1115,7 +1115,7 @@ class Faction:
             self.money = new_amount
         elif resource_type == 'Рабочие':
             self.free_peoples = new_amount
-        elif resource_type == 'Сырье':
+        elif resource_type == 'Кристаллы':
             self.raw_material = new_amount
         elif resource_type == 'Население':
             self.population = new_amount
@@ -1316,13 +1316,13 @@ class Faction:
             print(f"Ошибка при обновлении экономической эффективности: {e}")
 
     def initialize_raw_material_prices(self):
-        """Инициализация истории цен на сырье"""
+        """Инициализация истории цен на Кристаллы"""
         for _ in range(25):  # Генерируем 25 случайных цен
             self.generate_raw_material_price()
 
     def generate_raw_material_price(self):
         """
-        Генерация случайной цены на сырье.
+        Генерация случайной цены на Кристаллы.
         Цена генерируется только при изменении номера хода.
         """
         # Загрузка номера хода из таблицы turn
@@ -1348,13 +1348,13 @@ class Faction:
 
         # Генерация новой цены
         if current_turn == 1:  # Если это первый ход
-            self.current_raw_material_price = random.randint(896, 51700)
+            self.current_raw_material_price = random.randint(736, 53200)
             self.raw_material_price_history.append(self.current_raw_material_price)
         else:
             # Генерация новой цены на основе текущей
-            self.current_raw_material_price = self.raw_material_price_history[-1] + random.randint(-3450, 3550)
+            self.current_raw_material_price = self.raw_material_price_history[-1] + random.randint(-3450, 4750)
             self.current_raw_material_price = max(
-                896, min(51700, self.current_raw_material_price)  # Ограничиваем диапазон
+                736, min(53200, self.current_raw_material_price)  # Ограничиваем диапазон
             )
             self.raw_material_price_history.append(self.current_raw_material_price)
 
@@ -1367,15 +1367,15 @@ class Faction:
 
     def trade_raw_material(self, action, quantity):
         """
-        Торговля сырьем через таблицу resources.
+        Торговля Кристаллым через таблицу resources.
         :param action: Действие ('buy' для покупки, 'sell' для продажи).
-        :param quantity: Количество лотов (1 лот = 10,000 единиц сырья).
+        :param quantity: Количество лотов (1 лот = 10,000 единиц Кристаллы).
         """
-        # Преобразуем количество лотов в единицы сырья
+        # Преобразуем количество лотов в единицы Кристаллы
         total_quantity = quantity * 10000
         total_cost = self.current_raw_material_price * quantity
 
-        if action == 'buy':  # Покупка сырья
+        if action == 'buy':  # Покупка Кристаллы
             # Проверяем, достаточно ли денег для покупки
             if self.money >= total_cost:
                 # Обновляем ресурсы
@@ -1385,11 +1385,11 @@ class Faction:
                 self.save_resources_to_db()
                 return True  # Операция успешна
             else:
-                show_message("Недостаточно денег", "У вас недостаточно денег для покупки сырья.")
+                show_message("Недостаточно денег", "У вас недостаточно денег для покупки Кристаллы.")
                 return False
 
-        elif action == 'sell':  # Продажа сырья
-            # Проверяем, достаточно ли сырья для продажи
+        elif action == 'sell':  # Продажа Кристаллы
+            # Проверяем, достаточно ли Кристаллы для продажи
             if self.raw_material >= total_quantity:
                 # Обновляем ресурсы
                 self.money += total_cost
@@ -1398,13 +1398,13 @@ class Faction:
                 self.save_resources_to_db()
                 return True  # Операция успешна
             else:
-                show_message("Недостаточно сырья", "У вас недостаточно сырья для продажи.")
+                show_message("Недостаточно Кристаллы", "У вас недостаточно Кристаллы для продажи.")
                 return False
 
         return False  # Операция не удалась
 
     def get_raw_material_price_history(self):
-        """Получение табличного представления истории цен на сырье"""
+        """Получение табличного представления истории цен на Кристаллы"""
         history = []
         for i, price in enumerate(self.raw_material_price_history):
             # Вместо строки создаем кортеж (номер хода, цена)
@@ -1412,7 +1412,7 @@ class Faction:
         return history
 
     def get_available_raw_material_lots(self) -> int:
-        """Возвращает количество доступных для торговли лотов сырья"""
+        """Возвращает количество доступных для торговли лотов Кристаллы"""
         return self.raw_material // 10000
 
 def show_message(title, message):
@@ -1556,7 +1556,7 @@ def open_build_popup(faction):
 
     # Подпись для фабрики
     fact_label = Label(
-        text="1 фабрика: +1000 сырья / -200 рабочих",
+        text="1 фабрика: +1000 Кристаллы / -200 рабочих",
         font_size=adaptive_font,
         color=(1, 1, 1, 1),
         size_hint_y=None,
@@ -1576,8 +1576,8 @@ def open_build_popup(faction):
         ("Рабочих на фабриках:", format_number(faction.work_peoples)),
         ("Прирост рабочих:", format_number(faction.clear_up_peoples)),
         ("Расход денег больницами:", format_number(faction.money_info)),
-        ("Прирост сырья:", format_number(faction.food_info)),
-        ("Прирост денег:", format_number(faction.money_up)),
+        ("Прирост кристаллов:", format_number(faction.food_info)),
+        ("Чистый прирост денег:", format_number(faction.money_up)),
         ("Доход от налогов:", format_number(faction.taxes_info)),
         ("Эффект от налогов:",
          format_number(faction.apply_tax_effect(int(faction.current_tax_rate[:-1]))) if faction.tax_set else "–")
@@ -1716,7 +1716,7 @@ def open_trade_popup(game_instance):
         (1, 0, 0, 1) if current_price < prev_price else (0.8, 0.8, 0.8, 1)
 
     current_price_label = Label(
-        text=f"[b]Текущая цена сырья:[/b] {current_price}",
+        text=f"[b]Текущая цена на Кристаллы:[/b] {current_price}",
         markup=True,
         font_size=sp(25),
         color=arrow_color,
@@ -1756,7 +1756,7 @@ def open_trade_popup(game_instance):
     trade_layout.add_widget(button_layout)
 
     # === ПОПАП ===
-    popup = Popup(title="Рынок сырья", content=trade_layout, size_hint=(0.95, 0.8))
+    popup = Popup(title="Рынок Кристаллы", content=trade_layout, size_hint=(0.95, 0.8))
 
     def on_press_wrapper(action):
         def handler(instance):
@@ -1783,7 +1783,7 @@ def open_trade_popup(game_instance):
 
 
 def handle_trade(game_instance, action, quantity, trade_popup):
-    """Обработка торговли (покупка/продажа сырья)"""
+    """Обработка торговли (покупка/продажа Кристаллы)"""
     try:
         # Проверяем, что количество введено
         if not quantity or int(quantity) <= 0:
@@ -1792,23 +1792,23 @@ def handle_trade(game_instance, action, quantity, trade_popup):
         quantity = int(quantity)
         price_per_lot = game_instance.current_raw_material_price  # Цена за 1 лот
 
-        # Проверяем, что количество сырья для продажи не превышает доступное
-        if action == 'sell' and quantity * 10000 > game_instance.resources["Сырье"]:
-            raise ValueError("Недостаточно сырья для продажи.")
+        # Проверяем, что количество Кристаллы для продажи не превышает доступное
+        if action == 'sell' and quantity * 10000 > game_instance.resources["Кристаллы"]:
+            raise ValueError("Недостаточно Кристаллы для продажи.")
 
         result = game_instance.trade_raw_material(action, quantity)
         if result:  # Если торговля прошла успешно
 
             # Рассчитываем экономическую эффективность
-            economic_efficiency = round(price_per_lot / 10000, 2)  # Цена за единицу сырья
+            economic_efficiency = round(price_per_lot / 10000, 2)  # Цена за единицу Кристаллы
             game_instance.update_economic_efficiency(economic_efficiency)
 
             if action == 'buy':
                 total_cost = price_per_lot * quantity
-                show_message("Успех", f"Куплено {format_number(quantity)} лотов сырья за {format_number(total_cost)} крон.")
+                show_message("Успех", f"Куплено {format_number(quantity)} лотов Кристаллов за {format_number(total_cost)} крон.")
             elif action == 'sell':
                 profit = price_per_lot * quantity
-                show_message("Успех", f"Получено: {format_number(profit)} крон\n(Соотношение: {economic_efficiency} крон/ед. сырья)")
+                show_message("Успех", f"Получено: {format_number(profit)} крон\n(Соотношение: {economic_efficiency} крон/ед. Кристалла)")
 
         else:
             show_message("Ошибка", "Не удалось завершить операцию.")

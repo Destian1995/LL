@@ -41,7 +41,7 @@ class AIController:
         self.resources = {
             'Кроны': self.money,
             'Рабочие': self.free_peoples,
-            'Сырье': self.raw_material,
+            'Кристаллы': self.raw_material,
             'Население': self.population,
             'Текущее потребление': self.total_consumption,
             'Лимит армии': self.army_limit
@@ -66,7 +66,7 @@ class AIController:
                     self.money = amount
                 elif resource_type == "Рабочие":
                     self.free_peoples = amount
-                elif resource_type == "Сырье":
+                elif resource_type == "Кристаллы":
                     self.raw_material = amount
                 elif resource_type == "Население":
                     self.population = amount
@@ -463,20 +463,20 @@ class AIController:
         return True
 
     def sell_resources(self):
-        if self.resources['Сырье'] > 10000:
-            amount_to_sell = int(self.resources['Сырье'] * 0.95)
+        if self.resources['Кристаллы'] > 10000:
+            amount_to_sell = int(self.resources['Кристаллы'] * 0.95)
             earned_crowns = int(amount_to_sell * self.raw_material_price)
-            self.resources['Сырье'] -= amount_to_sell
+            self.resources['Кристаллы'] -= amount_to_sell
             self.resources['Кроны'] += earned_crowns
 
-            # Рассчитываем эффективность сделки (цена за единицу сырья)
+            # Рассчитываем эффективность сделки (цена за единицу Кристаллы)
             price_per_lot = self.raw_material_price / 10000
             self.update_economic_efficiency(price_per_lot)  # Обновляем эффективность
 
-            print(f"Продано {amount_to_sell} сырья за {earned_crowns} крон.")
+            print(f"Продано {amount_to_sell} Кристаллы за {earned_crowns} крон.")
             return True
         else:
-            print("Недостаточно сырья для продажи.")
+            print("Недостаточно Кристаллы для продажи.")
             return False
 
     def hire_army(self):
@@ -702,14 +702,14 @@ class AIController:
                         # Добавляем потребление данного типа юнита
                         self.total_consumption += consumption * unit_count
 
-            print(f"Текущее потребление сырья: {self.total_consumption}")
+            print(f"Текущее потребление Кристаллы: {self.total_consumption}")
 
         except Exception as e:
             print(f"Ошибка при расчете текущего потребления: {e}")
 
     def calculate_and_deduct_consumption(self):
         """
-        Метод для расчета потребления сырья гарнизонами текущей фракции
+        Метод для расчета потребления Кристаллы гарнизонами текущей фракции
         и вычета суммарного потребления из self.raw_material.
         """
         try:
@@ -742,8 +742,8 @@ class AIController:
 
             # Шаг 3: Вычитание общего потребления из денег фракции
             self.raw_material -= self.total_consumption
-            print(f"Общее потребление сырья: {self.total_consumption}")
-            print(f"Остаток сырья у фракции: {self.raw_material}")
+            print(f"Общее потребление Кристаллы: {self.total_consumption}")
+            print(f"Остаток Кристаллы у фракции: {self.raw_material}")
 
         except Exception as e:
             print(f"Произошла ошибка: {e}")
@@ -779,11 +779,11 @@ class AIController:
 
     def generate_raw_material_price(self):
         """
-        Генерирует новую цену на сырье.
+        Генерирует новую цену на Кристаллы.
         """
         # Простая реализация: случайная цена в диапазоне
         self.raw_material_price = round(random.uniform(16200, 49250), 2200)
-        print(f"Новая цена на сырье: {self.raw_material_price}")
+        print(f"Новая цена на Кристаллы: {self.raw_material_price}")
 
     def update_trade_resources_from_db(self):
         """
@@ -854,7 +854,7 @@ class AIController:
                     self.money = amount
                 elif resource_type == "Рабочие":
                     self.free_peoples = amount
-                elif resource_type == "Сырье":
+                elif resource_type == "Кристаллы":
                     self.raw_material = amount
                 elif resource_type == "Население":
                     self.population = amount
@@ -863,7 +863,7 @@ class AIController:
             self.resources = {
                 'Кроны': self.money,
                 'Рабочие': self.free_peoples,
-                'Сырье': self.raw_material,
+                'Кристаллы': self.raw_material,
                 'Население': self.population
             }
 
@@ -879,7 +879,7 @@ class AIController:
         try:
             self.update_buildings_from_db()
 
-            # Генерируем новую цену на сырье
+            # Генерируем новую цену на Кристаллы
             self.generate_raw_material_price()
 
             # Обновляем ресурсы на основе торговых соглашений из таблицы trade_agreements
@@ -926,29 +926,29 @@ class AIController:
 
             # Проверяем, будет ли население увеличиваться
             if self.raw_material > 0:
-                self.population += int(self.clear_up_peoples)  # Увеличиваем население только если есть Сырье
+                self.population += int(self.clear_up_peoples)  # Увеличиваем население только если есть Кристаллы
             else:
-                # Логика убыли населения при недостатке Сырья
+                # Логика убыли населения при недостатке Кристаллы
                 if self.population > 100:
                     loss = int(self.population * 0.45)  # 45% от населения
                     self.population -= loss
                 else:
                     loss = min(self.population, 50)  # Обнуление по 50, но не ниже 0
                     self.population -= loss
-                self.free_peoples = 0  # Все рабочие обнуляются, так как Сырья нет
+                self.free_peoples = 0  # Все рабочие обнуляются, так как Кристаллы нет
 
             # Проверка, чтобы ресурсы не опускались ниже 0 и не превышали максимальные значения
             self.resources.update({
                 "Кроны": max(min(int(self.money), 10_000_000_000), 0),  # Не более 10 млрд
                 "Рабочие": max(min(int(self.free_peoples), 10_000_000), 0),  # Не более 10 млн
-                "Сырье": max(min(int(self.raw_material), 10_000_000_000), 0),  # Не более 10 млрд
+                "Кристаллы": max(min(int(self.raw_material), 10_000_000_000), 0),  # Не более 10 млрд
                 "Население": max(min(int(self.population), 100_000_000), 0),  # Не более 100 млн
                 "Текущее потребление": self.total_consumption,  # Используем рассчитанное значение
                 "Лимит армии": self.army_limit
             })
             self.money = self.resources['Кроны']
             self.free_peoples = self.resources['Рабочие']
-            self.raw_material = self.resources['Сырье']
+            self.raw_material = self.resources['Кристаллы']
             self.population = self.resources['Население']
             self.army_limit = self.resources['Лимит армии']
             self.total_consumption = self.resources['Текущее потребление']
@@ -2150,8 +2150,8 @@ class AIController:
             print(f"Бонус от смирения: +{crowns_bonus} Крон")
         elif system == "Борьба":
             raw_material_bonus = int(self.food_info * 2.25)
-            self.resources['Сырье'] = int(self.resources.get('Сырье', 0)) + raw_material_bonus
-            print(f"Бонус от борьбы: +{raw_material_bonus} Сырья")
+            self.resources['Кристаллы'] = int(self.resources.get('Кристаллы', 0)) + raw_material_bonus
+            print(f"Бонус от борьбы: +{raw_material_bonus} Кристаллы")
 
     def update_relations_based_on_political_system(self):
         """
@@ -2304,9 +2304,9 @@ class AIController:
             self.update_buildings_from_db()
             # 6. Управление строительством (90% крон на строительство)
             self.manage_buildings()
-            # 7. Продажа сырья (99% сырья, если его больше 10000)
+            # 7. Продажа Кристаллы (99% Кристаллы, если его больше 10000)
             resources_sold = self.sell_resources()
-            # 8. Найм армии (на оставшиеся деньги после строительства и продажи сырья)
+            # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
             if resources_sold:
                 self.hire_army()
             # 9. Сохраняем все изменения в базу данных

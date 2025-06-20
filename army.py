@@ -412,7 +412,7 @@ def load_unit_data(faction, conn):
                 "Защита": defense,
                 "Живучесть": durability,
                 "Класс юнита": unit_class,
-                "Потребление сырья": consumption
+                "Потребление Кристаллов": consumption
             }
         }
     return unit_data
@@ -529,12 +529,12 @@ def start_army_mode(faction, game_area, class_faction, conn):
             if stat_name == 'Класс':
                 key = 'Класс юнита'
             elif stat_name == 'Потребление':
-                key = 'Потребление сырья'
+                key = 'Потребление Кристаллов'
             else:
                 key = stat_name
 
             value = unit_info['stats'].get(key, '')
-            if key in ('Урон', 'Защита', 'Живучесть', 'Потребление сырья'):
+            if key in ('Урон', 'Защита', 'Живучесть', 'Потребление Кристаллов'):
                 value = format_number(value)
 
             stat_line.add_widget(Label(
