@@ -88,6 +88,110 @@ def show_warning(message, color=(1, 0, 0, 1)):
     )
     warning_popup.open()
 
+def get_relation_level(conn, f1, f2):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT relationship FROM relations 
+        WHERE (faction1=? AND faction2=?) OR (faction1=? AND faction2=?)
+    """, (f1, f2, f2, f1))
+    row = cursor.fetchone()
+    return int(row[0]) if row else 0
+
+
+def calculate_coefficient(rel):
+    rel = int(rel)
+    if rel < 15:
+        return 0
+    if 15 <= rel < 25:
+        return 0.08
+    if 25 <= rel < 35:
+        return 0.3
+    if 35 <= rel < 50:
+        return 0.8
+    if 50 <= rel < 60:
+        return 1.0
+    if 60 <= rel < 75:
+        return 1.4
+    if 75 <= rel < 90:
+        return 2.0
+    if 90 <= rel <= 100:
+        return 2.9
+    return 0
+
+class FactionDropdown(Button):
+    def __init__(self, faction, conn, callback=None, font_size=16, **kwargs):
+        kwargs.setdefault('text', "Выберите фракцию")
+        kwargs.setdefault('size_hint_y', None)
+        kwargs.setdefault('height', dp(48))
+        kwargs.setdefault('background_color', (0, 0, 0, 0))
+        kwargs.setdefault('color', (1, 1, 1, 1))
+        kwargs.setdefault('font_size', font_size * 1.2)
+        kwargs.setdefault('halign', 'center')
+        kwargs.setdefault('valign', 'middle')
+
+        super().__init__(**kwargs)
+
+        self.faction = faction
+        self.conn = conn
+        self.callback = callback
+        self.font_size = font_size
+        self.dropdown = DropDown()
+        self.bind(on_release=self.dropdown.open)
+        self.update_dropdown()
+
+
+    def update_dropdown(self):
+        cursor = self.conn.cursor()
+        available_factions = all_factions(cursor)
+        available_factions = [f for f in available_factions if f != self.faction]
+
+        # Получаем коэффициенты отношений
+        relations = {}
+        for target in available_factions:
+            rel = get_relation_level(self.conn, self.faction, target)
+            coeff = calculate_coefficient(rel)
+            relations[target] = coeff
+
+        # Нормализация коэффициентов для расчёта цвета
+        max_coeff = max(relations.values()) if relations else 1
+        min_coeff = min(relations.values()) if relations else 0
+
+        for target, coeff in relations.items():
+            normalized = (max_coeff - coeff) / (max_coeff - min_coeff) if max_coeff != min_coeff else 1
+            red = 1
+            green = blue = 1 - normalized  # от 0 до 1 → от черного к белому
+
+            btn = Button(
+                text=target,
+                size_hint_y=None,
+                height=dp(48),
+                background_color=(0, 0, 0, 0),
+                color=(0, 0, 0, 1),
+                font_size=self.font_size * 1.1,
+                halign='left',
+                valign='middle'
+            )
+
+            with btn.canvas.before:
+                Color(red, green, blue, 1)
+                btn.rect = RoundedRectangle(pos=btn.pos, size=btn.size, radius=[10])
+                btn.border = (1, 1, 1, 0.2)
+
+            btn.bind(
+                pos=lambda inst, value: setattr(inst.rect, 'pos', inst.pos),
+                size=lambda inst, value: setattr(inst.rect, 'size', inst.size)
+            )
+
+            btn.bind(on_release=lambda btn_inst: self.select_and_callback(btn_inst.text))
+            self.dropdown.add_widget(btn)
+
+    def select_and_callback(self, selected_text):
+        self.text = selected_text
+        self.dropdown.dismiss()
+        if self.callback:
+            self.callback(selected_text)
+
+
 class PoliticalCash:
     def __init__(self, faction, class_faction):
         """
@@ -391,16 +495,10 @@ def show_trade_agreement_form(faction, game_area, conn):
     inner_layout.add_widget(title)
 
     # Spinner: "С какой фракцией?"
-    factions_spinner = Spinner(
-        text="С какой фракцией?",
-        values=available_factions,
-        size_hint_y=None,
-        height=input_height,
-        font_size=font_size,
-        background_color=[0.20, 0.60, 0.86, 1],
-        color=[1, 1, 1, 1],
-        background_normal='',
-        background_down='',
+    factions_spinner = FactionDropdown(
+        faction=faction,
+        conn=conn,
+        callback=lambda selected: update_sliders()
     )
     inner_layout.add_widget(factions_spinner)
 
@@ -681,7 +779,7 @@ def on_window_resize(instance, width, height):
 
 
 def show_cultural_exchange_form(faction, game_area, class_faction, conn):
-    """Окно формы для договора о культурном обмене (с StyledButton, увеличенным шрифтом, чуть меньшим размером окна и отступом перед кнопками)."""
+    """Окно формы для договора о культурном обмене."""
     font_size = calculate_font_size()
     button_height = font_size * 3
     input_height = font_size * 2.5
@@ -689,18 +787,15 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     spacing = font_size // 4
 
     cursor = conn.cursor()
-    # Список всех фракций, кроме текущей
     available_factions = all_factions(cursor)
     available_factions = [f for f in available_factions if f != faction]
 
-    # Создаём контент для Popup
     content = BoxLayout(
         orientation='vertical',
         padding=padding,
         spacing=spacing
     )
 
-    # Заголовок
     title = Label(
         text="Договор о культурном обмене",
         size_hint=(1, None),
@@ -712,21 +807,24 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     )
     content.add_widget(title)
 
-    # Спиннер для выбора фракции
-    factions_spinner = Spinner(
-        text="С какой фракцией?",
-        values=available_factions,
+    # Переменная для хранения выбранной фракции
+    selected_target_faction = {"value": None}
+
+    # Callback при выборе фракции
+    def on_faction_selected(faction_name):
+        selected_target_faction["value"] = faction_name
+
+    # Используем кастомный дропдаун вместо Spinner
+    faction_dropdown = FactionDropdown(
+        faction=faction,
+        conn=conn,
+        callback=on_faction_selected,
         size_hint=(1, None),
         height=input_height,
-        font_size=font_size,
-        background_color=(0.2, 0.6, 1, 1),
-        color=(1, 1, 1, 1),
-        background_normal='',
-        background_down='',
+        font_size=font_size
     )
-    content.add_widget(factions_spinner)
+    content.add_widget(faction_dropdown)
 
-    # Описание
     description_label = Label(
         text="Обмен культурными ценностями повышает доверие между фракциями (+7% к отношениям).\n"
              "Стоимость: от 25 млн. крон.",
@@ -739,7 +837,6 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     description_label.bind(size=description_label.setter('text_size'))
     content.add_widget(description_label)
 
-    # Сообщения пользователю
     message_label = Label(
         text="",
         size_hint=(1, None),
@@ -750,29 +847,23 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     )
     content.add_widget(message_label)
 
-    # Функция для вывода предупреждений
     def show_warning(text, color=(1, 0, 0, 1)):
         message_label.text = text
         message_label.color = color
 
-    # Создаём экземпляр PoliticalCash
     political_cash = PoliticalCash(faction, class_faction)
 
-    # Переподключаемся к БД, чтобы узнать количество городов у фракций
-    cursor = conn.cursor()
     cursor.execute("SELECT faction, COUNT(*) FROM cities GROUP BY faction")
     city_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
-    # Функция отправки предложения
     def send_proposal(instance):
-        target_faction = factions_spinner.text
-        if target_faction == "С какой фракцией?":
+        target_faction = selected_target_faction["value"]
+        if not target_faction:
             show_warning("Пожалуйста, выберите фракцию!")
             return
 
         cursor2 = conn.cursor()
         try:
-            # Получаем текущее отношение
             cursor2.execute(
                 "SELECT relationship FROM relations WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)",
                 (faction, target_faction, target_faction, faction)
@@ -791,25 +882,19 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
                 )
                 return
 
-            # Узнаём число городов у целевой фракции
             cursor2.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (target_faction,))
             target_city_count = cursor2.fetchone()[0]
 
-            # Стоимость договора
             cost = 5_000_000 + (20_000_000 * target_city_count)
-
-            # Баланс игрока
             current_balance = political_cash.resources["Кроны"]
             if current_balance < cost:
                 show_warning(f"Недостаточно средств, требуется {format_number(cost)} крон.")
                 return
 
-            # Пытаемся списать
             if not political_cash.deduct_resources(cost):
                 show_warning("Мы недавно уже подписали один договор! Попробуйте позже")
                 return
 
-            # Обновляем отношения
             new_relationship = min(100, current_relationship + 7)
             cursor2.execute(
                 "UPDATE relations SET relationship = ? WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)",
@@ -826,13 +911,8 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
         except Exception as e:
             show_warning(f"Произошла ошибка: {e}")
 
-
-    # -------------------------------------------------------------------
-    # Добавляем отступ перед кнопочной панелью
-    # -------------------------------------------------------------------
     content.add_widget(Widget(size_hint=(1, None), height=spacing * 2))
 
-    # Заменяем стандартные Button на StyledButton
     button_layout = BoxLayout(
         orientation='horizontal',
         size_hint=(1, None),
@@ -842,8 +922,8 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
 
     send_button = StyledButton(
         text="Отправить предложение",
-        font_size=font_size * 1.2,                # чуть больше шрифт
-        button_color=[0.20, 0.60, 0.86, 1],      # ярко-синий
+        font_size=font_size * 1.2,
+        button_color=[0.20, 0.60, 0.86, 1],
         text_color=[1, 1, 1, 1]
     )
     send_button.bind(on_release=send_proposal)
@@ -851,42 +931,34 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     back_button = StyledButton(
         text="Назад",
         font_size=font_size * 1.2,
-        button_color=[0.80, 0.20, 0.20, 1],      # красно-бордовый
+        button_color=[0.80, 0.20, 0.20, 1],
         text_color=[1, 1, 1, 1]
     )
     back_button.bind(on_release=lambda _: popup.dismiss())
 
     button_layout.add_widget(send_button)
     button_layout.add_widget(back_button)
-
     content.add_widget(button_layout)
 
-    # -------------------------------------------------------------------
-    # Сделаем окно чуть меньшим по высоте, чтобы убрать пустое пространство сверху
-    # -------------------------------------------------------------------
     popup = Popup(
         title="Культурный обмен",
         content=content,
-        size_hint=(0.8, 0.6),   # Уменьшили высоту с 0.7 до 0.6
+        size_hint=(0.8, 0.6),
         auto_dismiss=False
     )
     popup.open()
 
 
+
 def calculate_peace_army_points(conn, faction):
     """
-    Вычисляет общую силу армии фракции с учетом коэффициентов классов юнитов.
+    Вычисляет общую силу армии фракции по новой логике:
+    - Класс 1: базовая сила
+    - Герои (класс 2 и 3): усиливают класс 1 умножением
+    - Прочие юниты (класс 4+): просто добавляются к общей силе
     """
-    class_coefficients = {
-        "1": 1.3,
-        "2": 1.7,
-        "3": 2.0,
-        "4": 3.0,
-        "5": 4.0
-    }
-
-    total_points = 0
     cursor = conn.cursor()
+    factions_data = {}
 
     try:
         cursor.execute("""
@@ -897,12 +969,39 @@ def calculate_peace_army_points(conn, faction):
         """, (faction,))
         units_data = cursor.fetchall()
 
-        for unit_name, unit_count, attack, defense, durability, unit_class in units_data:
-            coefficient = class_coefficients.get(str(unit_class), 1.0)
-            unit_score = (attack * coefficient) + defense + durability
-            total_points += unit_score * unit_count
+        # Инициализируем данные для текущей фракции
+        factions_data[faction] = {
+            "class_1": {"count": 0, "total_stats": 0},
+            "heroes": {"total_stats": 0},   # классы 2 и 3
+            "others": {"total_stats": 0}    # классы 4 и выше
+        }
 
-        return total_points
+        for unit_name, unit_count, attack, defense, durability, unit_class in units_data:
+            stats_sum = attack + defense + durability
+
+            if unit_class == "1":
+                factions_data[faction]["class_1"]["count"] += unit_count
+                factions_data[faction]["class_1"]["total_stats"] += stats_sum * unit_count
+            elif unit_class in ("2", "3"):
+                factions_data[faction]["heroes"]["total_stats"] += stats_sum * unit_count
+            else:
+                factions_data[faction]["others"]["total_stats"] += stats_sum * unit_count
+
+        # Рассчитываем силу армии
+        data = factions_data[faction]
+        class_1_count = data["class_1"]["count"]
+        base_stats = data["class_1"]["total_stats"]
+        hero_bonus = data["heroes"]["total_stats"]
+        others_stats = data["others"]["total_stats"]
+
+        total_strength = 0
+
+        if class_1_count > 0:
+            total_strength += base_stats + hero_bonus * class_1_count
+
+        total_strength += others_stats
+
+        return total_strength
 
     except Exception as e:
         print(f"Ошибка при вычислении очков армии: {e}")
@@ -1509,7 +1608,7 @@ def show_declare_war_form(faction, conn):
             cursor.execute("SELECT turn_count FROM turn")
             turn_result = cursor.fetchone()
             if turn_result is None or turn_result[0] < 14:
-                show_popup_message("Слишком рано", "Атаковать другие фракции можно только после 14 хода.")
+                show_popup_message("Слишком рано", "Атаковать другие расы можно только с 14-го хода.")
                 return
 
             # Получаем все активные фракции
@@ -1544,11 +1643,11 @@ def show_declare_war_form(faction, conn):
 
     # Уникальные фразы для фракций
     faction_phrases = {
-        "Эльфы": "Вы нарываетесь на драку? Я к Вашим услугам!",
-        "Люди": "Тебя давно по голове били? Сейчас исправим!",
-        "Адепты": "Меня поражает Ваша самоуверенность...",
-        "Элины": "Пустыня поглодит Вас..",
-        "Вампиры": "Я сейчас кому-то в лицо плюну...кто бы это мог быть?"
+        "Эльфы": "Еще один решил что может гадить в наших лесах!",
+        "Люди": "Ты знаешь что такое 12 калибр? Сейчас узнаешь...",
+        "Адепты": "С нами Бог!",
+        "Элины": "Наш Владыка Вас уничтожит...",
+        "Вампиры": "Кажется у нас будет новый слуга...кто бы это мог быть?"
     }
 
     # Контент Popup

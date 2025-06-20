@@ -759,7 +759,8 @@ class GameScreen(Screen):
         """
         # Увеличиваем счетчик ходов
         self.turn_counter += 1
-
+        # Удаляем лишних героев 2, 3, 4 классов
+        self.enforce_garrison_hero_limits()
         # Обновляем метку с текущим ходом
         self.turn_label.text = f"Текущий ход: {self.turn_counter}"
         # Сохраняем текущее значение хода в таблицу turn
@@ -1431,6 +1432,61 @@ class GameScreen(Screen):
             self.conn.commit()
         except sqlite3.Error as e:
             print(f"Ошибка при сохранении координат {element_name}: {e}")
+
+    def enforce_garrison_hero_limits(self):
+        """
+        Для каждого юнита 2–4 класса (unit_class > 1) проверяет в таблице garrisons,
+        сколько записей этого юнита у каждой фракции. Оставляет только одну запись
+        и устанавливает unit_count = 1. Все лишние строки удаляет.
+        """
+        cur = self.conn.cursor()
+
+        # 1) Построим временную таблицу с городами и их фракциями
+        #    (если у вас уже есть cities(city_name, faction), этот шаг не обязателен)
+        cur.execute("""
+            CREATE TEMP TABLE IF NOT EXISTS city_factions AS
+            SELECT name AS city_name, faction
+              FROM cities
+        """)
+
+        # 2) Находим всех «героев» unit_class > 1 вместе с их фракцией
+        cur.execute("""
+            SELECT g.id, cf.faction, g.unit_name, u.unit_class
+              FROM garrisons AS g
+              JOIN units      AS u  ON g.unit_name = u.unit_name
+              JOIN city_factions AS cf ON g.city_name = cf.city_name
+             WHERE u.unit_class > 1
+        """)
+        rows = cur.fetchall()
+
+        # Группируем по (faction, unit_name)
+        from collections import defaultdict
+        heroes = defaultdict(list)
+        for row in rows:
+            row_id, faction, unit_name, unit_class = row
+            heroes[(faction, unit_name)].append(row_id)
+
+        # 3) Обрабатываем каждую группу
+        for (faction, unit_name), ids in heroes.items():
+            keep_id = ids[0]
+            delete_ids = ids[1:]
+
+            if delete_ids:
+                cur.execute(
+                    "DELETE FROM garrisons WHERE id IN ({})"
+                    .format(",".join("?" * len(delete_ids))),
+                    delete_ids
+                )
+
+            # 4) Обновляем count в оставшейся записи
+            cur.execute(
+                "UPDATE garrisons SET unit_count = 1 WHERE id = ?",
+                (keep_id,)
+            )
+
+        self.conn.commit()
+        cur.execute("DROP TABLE IF EXISTS city_factions")
+        self.conn.commit()
 
     def reset_game(self):
         """Сброс игры (например, при новой игре)."""

@@ -1124,6 +1124,8 @@ class FortressInfoPopup(Popup):
         except sqlite3.Error as e:
             print(f"Ошибка при инициализации turn_check_move: {e}")
 
+
+
     def move_selected_group_to_city(self, instance=None):
         """Перемещает выбранную группу юнитов в город."""
         if not self.selected_group:
@@ -1134,8 +1136,11 @@ class FortressInfoPopup(Popup):
             current_player_kingdom = self.player_fraction
             cursor = self.conn.cursor()
 
-            # Проверка возможности перемещения
-            cursor.execute("SELECT can_move FROM turn_check_move WHERE faction = ?", (current_player_kingdom,))
+            # Проверка возможности перемещения в рамках хода
+            cursor.execute(
+                "SELECT can_move FROM turn_check_move WHERE faction = ?",
+                (current_player_kingdom,)
+            )
             move_data = cursor.fetchone()
             if not move_data:
                 cursor.execute(
@@ -1143,22 +1148,55 @@ class FortressInfoPopup(Popup):
                     (current_player_kingdom, True)
                 )
                 self.conn.commit()
-                move_data = (True,)
-            elif not move_data[0]:
+                can_move_this_turn = True
+            else:
+                can_move_this_turn = move_data[0]
+
+            if not can_move_this_turn:
                 show_popup_message("Ошибка", "Вы уже использовали своё перемещение на этом ходу.")
                 return
 
+            # Если город назначения принадлежит текущей фракции — перемещение без ограничений
+            cursor.execute(
+                "SELECT faction FROM cities WHERE name = ?",
+                (self.city_name,)
+            )
+            target_faction_row = cursor.fetchone()
+            if target_faction_row and target_faction_row[0] == current_player_kingdom:
+                allowed_by_distance = True
+            else:
+                # Проверяем условие по дистанции хотя бы для одного юнита
+                allowed_by_distance = False
+                for unit in self.selected_group:
+                    source_city = unit.get("city_name")
+                    if not source_city:
+                        show_popup_message("Ошибка", "Не указан исходный город для перемещения.")
+                        return
 
-            # Группируем юниты по их городам
+                    # Получаем координаты городов и считаем манхэттенское расстояние
+                    source_coords = self.get_city_coordinates(source_city)
+                    dest_coords = self.get_city_coordinates(self.city_name)
+                    x_diff = abs(source_coords[0] - dest_coords[0])
+                    y_diff = abs(source_coords[1] - dest_coords[1])
+                    total_diff = x_diff + y_diff
+
+                    if total_diff < 280:
+                        allowed_by_distance = True
+                        break  # достаточно одного юнита
+
+            if not allowed_by_distance:
+                show_popup_message(
+                    "Нет дороги",
+                    f"Наши слишком далеко, нет ни одного бойца находящегося ближе 280 километров от {self.city_name}."
+                )
+                return
+
+            # Группируем юниты по их исходным городам
             grouped_by_city = defaultdict(lambda: defaultdict(int))
-
             for unit in self.selected_group:
-                city = unit.get("city_name")
+                city = unit["city_name"]
                 name = unit["unit_name"]
                 count = unit["unit_count"]
-                if not city:
-                    show_popup_message("Ошибка", "Не указан исходный город для перемещения.")
-                    return
                 grouped_by_city[city][name] += count
 
             # Перемещаем по каждому городу отдельно
@@ -1171,15 +1209,20 @@ class FortressInfoPopup(Popup):
                         taken_count=total_count
                     )
                     if not success:
-                        show_popup_message("Ошибка", f"Не удалось переместить {unit_name} из {source_city}")
+                        show_popup_message(
+                            "Ошибка",
+                            f"Не удалось переместить {unit_name} из {source_city}"
+                        )
                         return
 
-            # Обновляем статус движения
-            cursor.execute("UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
-                           (False, current_player_kingdom))
+            # Фиксируем факт использования перемещения
+            cursor.execute(
+                "UPDATE turn_check_move SET can_move = ? WHERE faction = ?",
+                (False, current_player_kingdom)
+            )
             self.conn.commit()
 
-            # Закрытие окон и обновление интерфейса
+            # Закрываем попап и обновляем интерфейс
             if hasattr(self, 'current_popup') and self.current_popup:
                 self.current_popup.dismiss()
                 self.current_popup = None
@@ -1304,15 +1347,11 @@ class FortressInfoPopup(Popup):
     def move_troops(self, source_fortress_name, destination_fortress_name, unit_name, taken_count):
         """
         Перемещает войска между городами.
-        :param source_fortress_name: Название исходного города/крепости.
-        :param destination_fortress_name: Название целевого города/крепости.
-        :param unit_name: Название юнита.
-        :param taken_count: Количество юнитов для переноса.
         """
         try:
             cursor = self.conn.cursor()
 
-            # Шаг 1: Проверяем наличие юнитов в исходном городе
+            # Проверяем наличие юнита в источнике
             cursor.execute("""
                 SELECT unit_count, unit_image FROM garrisons 
                 WHERE city_name = ? AND unit_name = ?
@@ -1326,7 +1365,7 @@ class FortressInfoPopup(Popup):
             unit_image = source_unit[1]
             remaining_count = source_unit[0] - taken_count
 
-            # Шаг 2: Обновляем количество юнитов в исходном городе
+            # Обновляем или удаляем из исходного города
             if remaining_count > 0:
                 cursor.execute("""
                     UPDATE garrisons 
@@ -1339,32 +1378,20 @@ class FortressInfoPopup(Popup):
                     WHERE city_name = ? AND unit_name = ?
                 """, (source_fortress_name, unit_name))
 
-            # Шаг 3: Проверяем наличие юнитов в целевом городе
+            # Переносим в целевой город с защитой от дубликатов
             cursor.execute("""
-                SELECT unit_count FROM garrisons 
-                WHERE city_name = ? AND unit_name = ?
-            """, (destination_fortress_name, unit_name))
-            destination_unit = cursor.fetchone()
+                INSERT INTO garrisons (city_name, unit_name, unit_count, unit_image)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(city_name, unit_name) DO UPDATE
+                SET unit_count = unit_count + excluded.unit_count
+            """, (destination_fortress_name, unit_name, taken_count, unit_image))
 
-            if destination_unit:
-                new_count = destination_unit[0] + taken_count
-                cursor.execute("""
-                    UPDATE garrisons 
-                    SET unit_count = ? 
-                    WHERE city_name = ? AND unit_name = ?
-                """, (new_count, destination_fortress_name, unit_name))
-            else:
-                cursor.execute("""
-                    INSERT INTO garrisons (city_name, unit_name, unit_count, unit_image)
-                    VALUES (?, ?, ?, ?)
-                """, (destination_fortress_name, unit_name, taken_count, unit_image))
-
-            self.conn.commit()  # Фиксируем изменения
+            self.conn.commit()
             print("Войска успешно перенесены.")
             self.close_current_popup()
 
         except sqlite3.Error as e:
-            self.conn.rollback()  # Откатываем изменения
+            self.conn.rollback()
             print(f"[ERROR] Ошибка SQLite при перемещении войск: {e}")
             show_popup_message("Ошибка", f"Не удалось переместить войска: {e}")
 

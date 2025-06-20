@@ -578,13 +578,26 @@ class AdvisorView(FloatLayout):
         for faction, data in political_systems.items():
             system = data["system"]
             highlight = faction == self.faction
-            influence_icon = self.create_arrow_icon(
-                "up") if system == self.load_political_system() else self.create_arrow_icon("down")
+            is_improving = system == self.load_political_system()
+            influence_text = "Улучшаются" if system == self.load_political_system() else "Ухудшаются"
+            influence_color = (0.2, 0.8, 0.2, 1) if is_improving else (0.9, 0.2, 0.2, 1)
+            influence_label = Label(
+                text=influence_text,
+                font_size='14sp',
+                bold=True,
+                color=influence_color,
+                halign='center',
+                valign='middle',
+                size_hint_y=None,
+                height=dp(40),
+                outline_color=(0, 0, 0, 1),
+                outline_width=2
+            )
             faction_label = self._create_cell(faction, highlight=highlight)
             system_label = self._create_cell(system, highlight=highlight)
             table.add_widget(faction_label)
             table.add_widget(system_label)
-            table.add_widget(influence_icon)
+            table.add_widget(influence_label)
 
         scroll = ScrollView(
             size_hint=(1, 0.6),
