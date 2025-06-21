@@ -630,7 +630,7 @@ class Faction:
                     initiator_summ_resource, target_type_resource, target_summ_resource = row
 
                 # Проверяем, была ли сделка одобрена
-                show_message(f"{initiator_type_resource}", f" {initiator} одобрили сделку!")
+                show_message(f"{initiator_type_resource}", f" {target_faction} одобрили сделку!")
 
                 if initiator == self.faction:
                     # Проверяем наличие ресурсов только если они должны быть отданы
