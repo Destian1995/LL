@@ -1679,8 +1679,8 @@ class DossierScreen(Screen):
             .replace("\u2015", "-")
         )
 
-        # --- 3. Выбираем английское имя файла из словаря, если нет — fallback на 'private.png' ---
-        filename = RANK_TO_FILENAME.get(rank, "1.png")
+        # --- 3. Выбираем английское имя файла из словаря, если нет — fallback на '0.png' ---
+        filename = RANK_TO_FILENAME.get(rank, "0.png")
         asset_path = f"files/menu/dossier/{filename}"
         real_path = resource_find(asset_path)
 
