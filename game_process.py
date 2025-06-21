@@ -759,8 +759,6 @@ class GameScreen(Screen):
         """
         # Увеличиваем счетчик ходов
         self.turn_counter += 1
-        # Удаляем лишних героев 2, 3, 4 классов
-        self.enforce_garrison_hero_limits()
         # Обновляем метку с текущим ходом
         self.turn_label.text = f"Текущий ход: {self.turn_counter}"
         # Сохраняем текущее значение хода в таблицу turn
@@ -790,6 +788,8 @@ class GameScreen(Screen):
         # Выполнение хода для всех ИИ
         for ai_controller in self.ai_controllers.values():
             ai_controller.make_turn()
+        # Удаляем лишних героев 2, 3, 4 классов которых мог наплодить ИИ
+        self.enforce_garrison_hero_limits()
         # Обновляем статус уничтоженных фракций
         self.update_destroyed_factions()
         # Обновляем статус ходов
