@@ -440,7 +440,7 @@ def show_trade_agreement_form(faction, game_area, conn):
     # Spinner: "Наш ресурс"
     our_resource_spinner = Spinner(
         text="Наш ресурс",
-        values=["Рабочие", "Сырье", "Кроны"],
+        values=["Рабочие", "Кристаллы", "Кроны"],
         size_hint_y=None,
         height=input_height,
         font_size=font_size,
@@ -454,7 +454,7 @@ def show_trade_agreement_form(faction, game_area, conn):
     # Spinner: "Их ресурс"
     their_resource_spinner = Spinner(
         text="Их ресурс",
-        values=["Рабочие", "Сырье", "Кроны"],
+        values=["Рабочие", "Кристаллы", "Кроны"],
         size_hint_y=None,
         height=input_height,
         font_size=font_size,
