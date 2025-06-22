@@ -483,8 +483,8 @@ class AIController:
         """
         Найм армии с учётом классов юнитов:
         - Класс 1: всегда доступен, нанимается максимально возможное количество
-        - Класс 3: один случайный герой, если его ещё нет во всей фракции
-        - Класс 2 и 4: только после 14 хода, если позволяет потребление и не нанят ранее
+        - Класс 2 и 3: по одному герою (случайный если 3 класс), если его ещё нет во всей фракции
+        - Класс 4: только после 14 хода, если позволяет потребление и не нанят ранее
         """
         self.update_buildings_for_current_cities()
 
@@ -517,19 +517,25 @@ class AIController:
 
         new_garrison = {target_city: []}
 
-        # --- Шаг 1: Проверяем, есть ли уже герой 3 класса у фракции ---
+        # --- Шаг 1: Проверяем и нанимаем героя 2 или 3 класса ---
         has_hero_3 = self.has_hero_of_class("3")
-        if has_hero_3:
-            print("Герой 3 класса уже существует. Пропускаем найм.")
-        else:
-            hero_3_units = {
-                name: data for name, data in self.army.items()
-                if data["stats"]["Класс"] == "3"
-            }
+        has_hero_2 = self.has_hero_of_class("2")
 
-            if hero_3_units:
-                hero_name = random.choice(list(hero_3_units.keys()))
-                unit_data = hero_3_units[hero_name]
+        hero_candidates = {
+            name: data for name, data in self.army.items()
+            if data["stats"]["Класс"] in ["2", "3"]
+        }
+
+        if hero_candidates and (not has_hero_3 or not has_hero_2):
+            # Фильтруем кандидатов, чтобы не нанимать уже существующих классов
+            possible_hires = []
+            for name, data in hero_candidates.items():
+                unit_class = data["stats"]["Класс"]
+                if (unit_class == "2" and not has_hero_2) or (unit_class == "3" and not has_hero_3):
+                    possible_hires.append((name, data))
+
+            if possible_hires:
+                hero_name, unit_data = random.choice(possible_hires)
                 consumption = unit_data['consumption']
                 cost_money = unit_data['cost']['money']
                 cost_time = unit_data['cost']['time']
@@ -546,7 +552,7 @@ class AIController:
                         "unit_name": hero_name,
                         "unit_count": 1
                     })
-                    print(f"Нанят герой 3 класса: {hero_name}")
+                    print(f"Нанят герой {unit_data['stats']['Класс']} класса: {hero_name}")
 
         # --- Шаг 2: Наем юнитов 1 класса ---
         class_1_units = {
@@ -579,14 +585,14 @@ class AIController:
                 })
                 print(f"Нанято {max_affordable} юнитов '{unit_name}'")
 
-        # --- Шаг 3: После 14 хода — герой 2 или легендарный (4) ---
+        # --- Шаг 3: После 14 хода — герой 4 класса ---
         if self.turn > 14:
-            hero_candidates = {
+            hero_4_candidates = {
                 name: data for name, data in self.army.items()
-                if data["stats"]["Класс"] in ["2", "4"]
+                if data["stats"]["Класс"] == "4"
             }
 
-            for unit_name, unit_data in hero_candidates.items():
+            for unit_name, unit_data in hero_4_candidates.items():
                 # Проверяем, не нанят ли уже этот герой
                 if self.is_unit_already_hired(unit_name):
                     continue
@@ -605,7 +611,7 @@ class AIController:
                         "unit_name": unit_name,
                         "unit_count": 1
                     })
-                    print(f"Нанят герой {unit_data['stats']['Класс']} класса: {unit_name}")
+                    print(f"Нанят герой 4 класса: {unit_name}")
                     break  # Только одного героя
 
         # --- Сохранение изменений ---
