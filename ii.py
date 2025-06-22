@@ -1344,8 +1344,6 @@ class AIController:
             print(f"Ошибка при поиске ближайшего города: {e}")
             return None
 
-
-
     def relocate_units(self, from_city_name, to_city_name, unit_name, unit_count, unit_image):
         try:
             # Проверяем, что города разные

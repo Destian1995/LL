@@ -1021,7 +1021,6 @@ class FortressInfoPopup(Popup):
                 if 0 < selected_count <= available_count:
                     self.transfer_army_to_garrison(unit_data, selected_count)
                     popup.dismiss()
-                    self.update_garrison()
                     name_label.color = (0, 1, 0, 1)
                 else:
                     show_popup_message("Ошибка", f"Выберите количество от 1 до {available_count}")
