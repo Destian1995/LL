@@ -528,7 +528,8 @@ def battle_chain(attacker, defender, city, user_faction, conn):
         if attacker_class >= 2:
             attacker['unit_count'] = 1 if remaining_power >= 1 else 0
         else:
-            attacker['unit_count'] = max(int(remaining_power // attack_power), 0)
+            surviving = max(int(remaining_power // attack_power), 0)
+            attacker['unit_count'] = surviving
         defender['unit_count'] = 0
     else:
         remaining_power = total_defense - total_attack
