@@ -910,43 +910,45 @@ class GameScreen(Screen):
             current_idx = self.current_idx
             current_season_name = self.SEASON_NAMES[current_idx]
 
+            # === Расчёт оставшихся дней до конца сезона ===
+            turns_since_season_start = (self.turn_counter - 1) % 4
+            days_left = 4 - turns_since_season_start  # Всего 4 хода на сезон
+            if days_left == 1:
+                days_text = "(Сезон сменится на следующем ходу)"
+            else:
+                def decline_day(n):
+                    return "хода"
+
+                days_text = f"(осталось {days_left} {decline_day(days_left)})"
+
             # Извлекаем коэффициенты именно для этой фракции
             faction = self.selected_faction
             try:
                 coeffs = SeasonManager.FACTION_EFFECTS[current_idx][faction]
             except KeyError:
-                # Если вдруг нечаянно фракции или сезона нет — выводим заглушку
                 effect_text = "Информация о бонусах для вашей фракции недоступна."
             else:
                 stat_f = coeffs['stat']
                 cost_f = coeffs['cost']
-
                 parts = []
-                # Если stat_f != 1.0, вычисляем процент изменения атаки/защиты
                 if stat_f != 1.0:
                     stat_pct = (stat_f - 1.0) * 100
-                    # Округляем до ближайшего целого
                     stat_pct_int = int(abs(round(stat_pct)))
                     sign = '+' if stat_pct > 0 else '-'
                     parts.append(f"{sign}{stat_pct_int}% к Урону и Защите")
-
-                # Если cost_f != 1.0, вычисляем процент изменения стоимости
                 if cost_f != 1.0:
                     cost_pct = (cost_f - 1.0) * 100
                     cost_pct_int = int(abs(round(cost_pct)))
                     sign = '+' if cost_pct > 0 else '-'
                     parts.append(f"{sign}{cost_pct_int}% к стоимости юнитов")
-
-                # Если ни stat, ни cost нет изменений (коэффициент 1.0) — делаем общий текст
                 if not parts:
                     effect_text = "Нет изменений для вашей фракции в этом сезоне."
                 else:
                     effect_text = ", ".join(parts)
 
-            # ---------- Определяем адаптивные размеры ----------
+            # ========== Определяем адаптивные размеры ==========
             popup_width = Window.width * 0.9
             popup_height = Window.height * 0.45
-
             if platform == 'android':
                 label_font = sp(18)
                 button_font = sp(16)
@@ -960,7 +962,7 @@ class GameScreen(Screen):
                 padding_dp = dp(18)
                 spacing_dp = dp(13)
 
-            # ---------- Собираем контент Popup ----------
+            # ========== Собираем контент Popup ==========
             content = BoxLayout(
                 orientation='vertical',
                 padding=padding_dp,
@@ -969,7 +971,7 @@ class GameScreen(Screen):
 
             # Маркированный текст: жирным показываем название сезона, дальше — effect_text
             label = Label(
-                text=f"{effect_text}",
+                text=f"{effect_text}\n\n[b]{days_text}[/b]",
                 font_size=label_font,
                 halign='center',
                 valign='middle',
@@ -1010,8 +1012,8 @@ class GameScreen(Screen):
 
             btn_close.bind(on_release=popup.dismiss)
             popup.open()
-            return True
 
+            return True
         return False
 
     def confirm_exit(self):
