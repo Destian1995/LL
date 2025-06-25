@@ -1279,7 +1279,10 @@ class FortressInfoPopup(Popup):
                     return True
 
                 # Вражеский город — начинаем атаку
-                elif self.is_enemy(current_player_kingdom, destination_owner):
+                relationship = self.get_relationship(current_player_kingdom, destination_owner)
+
+                if relationship == "война":
+                    # проверка, была ли атака уже
                     cursor.execute(
                         "SELECT check_attack FROM turn_check_attack_faction WHERE faction = ?",
                         (destination_owner,)
@@ -1307,11 +1310,16 @@ class FortressInfoPopup(Popup):
                                             self.selected_group)
                     return True
 
-                # Если слишком далеко
+                elif relationship == "нейтралитет":
+                    show_popup_message("Дипломатия",
+                                       f"Сначала надо объявить им войну.\nГород контролируется фракцией '{destination_owner}'.")
+                    return False
+
                 else:
                     show_popup_message("Логистика не выдержит",
-                                       "Слишком далеко. Найдите ближайший населенный пункт")
+                                       "Слишком далеко. Найдите ближайший населенный пункт.")
                     return False
+
 
             # 2) Сценарий: войска в городе союзника
             elif self.is_ally(current_player_kingdom, source_owner):
@@ -1617,6 +1625,19 @@ class FortressInfoPopup(Popup):
         except sqlite3.Error as e:
             print(f"Ошибка при проверке союзников: {e}")
             return False
+
+    def get_relationship(self, faction1_id, faction2_id):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT relationship FROM diplomacies 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (faction1_id, faction2_id, faction2_id, faction1_id))
+            result = cursor.fetchone()
+            return result[0] if result else None
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении дипломатических отношений: {e}")
+            return None
 
     def is_enemy(self, faction1_id, faction2_id):
         """
