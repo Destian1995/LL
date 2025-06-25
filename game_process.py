@@ -125,6 +125,43 @@ class GameStateManager:
         except sqlite3.Error as e:
             print(f"Ошибка при сохранении счетчика ходов: {e}")
 
+    def close_connection(self):
+        pass
+
+def show_floating_bonus(label, bonus, overlay):
+    if not label or not overlay:
+        return
+
+    color = (0, 1, 0, 1) if bonus > 0 else (1, 0, 0, 1)
+    bonus_text = f"{'+' if bonus > 0 else ''}{format_number(bonus)}"
+
+    bonus_label = Label(
+        text=bonus_text,
+        font_size=sp(16),
+        color=color,
+        size_hint=(None, None),
+        size=(dp(80), dp(24)),
+        halign='left',
+        valign='middle',
+        opacity=1
+    )
+    bonus_label.text_size = bonus_label.size
+
+    # Получаем координаты label в окне → в overlay
+    win_x, win_y = label.to_window(*label.pos)
+    layout_x, layout_y = overlay.to_widget(win_x, win_y)
+
+    bonus_label.pos = (layout_x + label.width + dp(4), layout_y)
+    overlay.add_widget(bonus_label)
+
+    anim = Animation(opacity=0, duration=2.0)
+
+    def cleanup(*_):
+        if bonus_label.parent:
+            bonus_label.parent.remove_widget(bonus_label)
+
+    anim.bind(on_complete=cleanup)
+    anim.start(bonus_label)
 
 
 
@@ -146,10 +183,10 @@ class ResourceBox(BoxLayout):
         "Лимит армии": "files/status/resource_box/army_limit.png",
     }
 
-    def __init__(self, resource_manager, **kwargs):
+    def __init__(self, resource_manager, overlay, **kwargs):
         super(ResourceBox, self).__init__(**kwargs)
         self.resource_manager = resource_manager
-
+        self.overlay = overlay
         # верт. бокс
         self.orientation = 'vertical'
 
@@ -183,11 +220,14 @@ class ResourceBox(BoxLayout):
         self._bg_rect.pos = self.pos
         self._bg_rect.size = self.size
 
-    def update_resources(self):
+    def update_resources(self, delta=None):
+        if delta is None:
+            delta = {}
         self.clear_widgets()
         self._label_values.clear()
 
         resources = self.resource_manager.get_resources()
+
         parsed = {}
         for name, val in resources.items():
             try:
@@ -344,6 +384,10 @@ class ResourceBox(BoxLayout):
             row.add_widget(Widget(size_hint=(None, None), size=(gap, row_h)))
             row.add_widget(lbl_val)
 
+            # Если есть дельта — запускаем анимацию
+            if res_name in delta:
+                self.animate_resource(res_name, delta[res_name])
+
             # Добавляем обработчик тапа по строке для показа подсказки
             row.bind(
                 on_touch_down=lambda instance, touch, name=res_name: show_tooltip(name) if instance.collide_point(
@@ -378,6 +422,21 @@ class ResourceBox(BoxLayout):
         max_allowed_h = Window.height - max_bottom_y
         final_h = min(total_h_raw, max_allowed_h)
         self.height = final_h
+
+    def animate_resource(self, res_name, delta_data):
+        label = self._label_values.get(res_name)
+        if not label:
+            return
+
+        bonus = delta_data.get("bonus", 0)
+        if bonus == 0:
+            return
+
+        # Отложенный вызов — подождём один кадр
+        def do_animate(dt):
+            show_floating_bonus(label, bonus, self.overlay)
+
+        Clock.schedule_once(do_animate, 0)
 
 
 # Класс для кнопки с изображением
@@ -499,6 +558,9 @@ class GameScreen(Screen):
         conn.commit()
 
     def init_ui(self):
+        # === Главный контейнер поверх всех элементов ===
+        self.root_overlay = FloatLayout()
+        self.add_widget(self.root_overlay)
         self.season_container = FloatLayout(
             size_hint=(None, None),
             size=(dp(120), dp(50)),
@@ -539,7 +601,7 @@ class GameScreen(Screen):
 
         self.season_container.add_widget(self.season_icon)
         self.season_container.add_widget(self.season_label)
-        self.add_widget(self.season_container)
+        self.root_overlay.add_widget(self.season_container)
 
         self.season_container.bind(on_touch_down=self.on_season_pressed)
 
@@ -604,7 +666,7 @@ class GameScreen(Screen):
         )
         self.faction_label.bind(size=self.faction_label.setter('text_size'))
         fraction_container.add_widget(self.faction_label)
-        self.add_widget(fraction_container)
+        self.root_overlay.add_widget(fraction_container)
 
         # === Боковая панель с кнопками режимов ===
         mode_panel_width = dp(90)
@@ -639,12 +701,12 @@ class GameScreen(Screen):
         mode_panel_container.add_widget(btn_economy)
         mode_panel_container.add_widget(btn_army)
         mode_panel_container.add_widget(btn_politics)
-        self.add_widget(mode_panel_container)
+        self.root_overlay.add_widget(mode_panel_container)
         self.save_interface_element("ModePanel", "bottom", mode_panel_container)
 
         # === Центральная область ===
         self.game_area = FloatLayout(size_hint=(0.7, 1), pos_hint={'x': 0.25, 'y': 0})
-        self.add_widget(self.game_area)
+        self.root_overlay.add_widget(self.game_area)
         self.save_interface_element("GameArea", "center", self.game_area)
 
         # === Счётчик ходов ===
@@ -671,7 +733,7 @@ class GameScreen(Screen):
         self.turn_label = Label(text=f"Текущий ход: {self.turn_counter}", font_size='18sp', color=(1, 1, 1, 1),
                                 bold=True, halign='center')
         turn_counter_container.add_widget(self.turn_label)
-        self.add_widget(turn_counter_container)
+        self.root_overlay.add_widget(turn_counter_container)
 
         # === Контейнер для кнопки выхода ===
         exit_container = BoxLayout(
@@ -703,12 +765,12 @@ class GameScreen(Screen):
         )
         self.exit_button.bind(on_release=lambda x: self.confirm_exit())
         exit_container.add_widget(self.exit_button)
-        self.add_widget(exit_container)
+        self.root_overlay.add_widget(exit_container)
 
         # === ResourceBox ===
         # Инициализируем ResourceBox с фиксированным размером
-        self.resource_box = ResourceBox(resource_manager=self.faction)
-        self.add_widget(self.resource_box)
+        self.resource_box = ResourceBox(resource_manager=self.faction, overlay=self.root_overlay)
+        self.root_overlay.add_widget(self.resource_box)
 
         # Сохраняем координаты ResourceBox
         self.save_interface_element("ResourceBox", "top_left", self.resource_box)
@@ -722,7 +784,7 @@ class GameScreen(Screen):
 
         self.end_turn_button.bind(on_press=on_end_turn)
         end_turn_container.add_widget(self.end_turn_button)
-        self.add_widget(end_turn_container)
+        self.root_overlay.add_widget(end_turn_container)
         self.save_interface_element("EndTurnButton", "bottom_right", self.end_turn_button)
 
     def update_resource_box_position(self, *args):
@@ -766,9 +828,20 @@ class GameScreen(Screen):
         # Сохраняем историю ходов в таблицу turn_save
         self.save_turn_history(self.selected_faction, self.turn_counter)
 
-        # Обновляем ресурсы игрока
-        self.faction.update_resources()
-        self.resource_box.update_resources()
+        # Обновляем ресурсы игрока и получаем прирост
+        profit_details = self.faction.update_resources()  # Теперь возвращает словарь
+        bonus_details = self.faction.apply_player_bonuses()  # Получаем бонусы
+
+        # Объединяем прирост и бонусы
+        delta_resources = {}
+        for res in profit_details:
+            base_gain = profit_details[res]
+            bonus_gain = bonus_details.get(res, 0)
+            delta_resources[res] = {"base": base_gain, "bonus": bonus_gain}
+
+        # Обновляем интерфейс и передаем дельту для подсветки
+        self.resource_box.update_resources(delta=delta_resources)
+        self.faction.save_resources_to_db()
         # Проверяем условие завершения игры
         game_continues, reason = self.faction.end_game()  # Получаем статус и причину завершения
         if not game_continues:

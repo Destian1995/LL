@@ -530,7 +530,7 @@ class Faction:
 
     def update_cash(self):
         """
-        Обновляет ресурсы и сохраняет их в файл.
+        Обновляет ресурсы и сохраняет их в БД.
         """
         self.load_resources()
         self.resources['Кроны'] = self.money
@@ -783,29 +783,25 @@ class Faction:
             return "Смирение"
 
     def apply_player_bonuses(self):
-        """
-        Применяет бонусы игроку на основе его политической системы.
-        Также изменяет отношения с другими фракциями каждые 4 хода.
-        """
+        bonuses = {}
         try:
-            # Применяем бонусы к ресурсам
             system = self.load_political_system()
             if system == "Смирение":
-                # +875% Крон от общего прироста
-                crowns_bonus = int(self.money_up * 8.75)
+                crowns_bonus = int(self.money_up * 9.85)
                 self.money += crowns_bonus
+                bonuses["Кроны"] = crowns_bonus
             elif system == "Борьба":
-                # +365% Кристаллы от общего прироста
-                raw_material_bonus = int(self.food_info * 3.65)
+                raw_material_bonus = int(self.food_info * 3.70)
                 self.raw_material += raw_material_bonus
+                bonuses["Кристаллы"] = raw_material_bonus
 
-            # Изменяем отношения с другими фракциями каждые 3 хода
             if self.turn % 3 == 0:
-                print("Выполняем обновление отношений...")
                 self.update_relations_based_on_political_system()
 
+            return bonuses
         except Exception as e:
             print(f"Ошибка при применении бонусов игроку: {e}")
+            return {}
 
     def load_political_system_for_faction(self, faction):
         """
@@ -1094,13 +1090,18 @@ class Faction:
         net_profit_raw = round(self.raw_material - previous_raw_material, 2)
         # Обновляем средние значения чистой прибыли в таблице results
         self.update_average_net_profit(net_profit_coins, net_profit_raw)
-        # Применяем бонусы игроку
-        self.apply_player_bonuses()
         # Списываем потребление войсками
         self.calculate_and_deduct_consumption()
         # Сохраняем обновленные ресурсы в базу данных
         self.save_resources_to_db()
         print(f"Ресурсы обновлены: {self.resources}, Больницы: {self.hospitals}, Фабрики: {self.factories}")
+        # Профит от бонусов
+        profit_details = {
+            "Кроны": net_profit_coins,
+            "Кристаллы": net_profit_raw,
+        }
+
+        return profit_details
 
     def get_resource_now(self, resource_type):
         """
