@@ -140,7 +140,7 @@ def show_floating_bonus(label, bonus, overlay):
         font_size=sp(16),
         color=color,
         size_hint=(None, None),
-        size=(dp(80), dp(24)),
+        size=(dp(120), dp(44)),
         halign='left',
         valign='middle',
         opacity=1
@@ -948,7 +948,7 @@ class GameScreen(Screen):
 
             # ========== Определяем адаптивные размеры ==========
             popup_width = Window.width * 0.9
-            popup_height = Window.height * 0.45
+            popup_height = Window.height * 0.6
             if platform == 'android':
                 label_font = sp(18)
                 button_font = sp(16)
