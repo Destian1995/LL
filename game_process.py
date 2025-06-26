@@ -912,12 +912,15 @@ class GameScreen(Screen):
 
             # === Расчёт оставшихся дней до конца сезона ===
             turns_since_season_start = (self.turn_counter - 1) % 4
-            days_left = 4 - turns_since_season_start  # Всего 4 хода на сезон
-            if days_left == 1:
+            days_left = 3 - turns_since_season_start  # Всего 4 хода на сезон
+            if days_left == 0:
                 days_text = "(Сезон сменится на следующем ходу)"
             else:
                 def decline_day(n):
-                    return "хода"
+                    if n == 1:
+                        return "ход"
+                    elif n == 2 or n == 3:
+                        return "хода"
 
                 days_text = f"(осталось {days_left} {decline_day(days_left)})"
 
