@@ -317,6 +317,7 @@ class AIController:
         """
         Сохраняет гарнизон в базу данных.
         Обновляет существующие записи или создает новые, если их нет, ориентируясь на city_name и unit_name.
+        Также обновляет данные в таблице results с учетом фракции и количества юнитов.
         """
         try:
             # Для каждого города обновляем или добавляем записи гарнизона
@@ -338,6 +339,7 @@ class AIController:
                     unit_count = unit['unit_count']
                     unit_image = self.get_unit_image(unit_name)
                     print(f"  Обработка юнита: {unit_name}, Количество: {unit_count}, Изображение: {unit_image}")
+
                     # Проверяем, существует ли уже запись для данного city_name и unit_name
                     self.cursor.execute("""
                         SELECT unit_count
@@ -345,6 +347,7 @@ class AIController:
                         WHERE city_name = ? AND unit_name = ?
                     """, (city_name, unit_name))
                     existing_record = self.cursor.fetchone()
+
                     if existing_record:
                         # Если запись существует, обновляем количество юнитов
                         new_count = existing_record[0] + unit_count
@@ -359,6 +362,14 @@ class AIController:
                             INSERT INTO garrisons (city_name, unit_name, unit_count, unit_image)
                             VALUES (?, ?, ?, ?)
                         """, (city_name, unit_name, unit_count, unit_image))
+
+                    # Обновляем данные в таблице results
+                    self.cursor.execute("""
+                        INSERT INTO results (faction, Units_Combat)
+                        VALUES (?, ?)
+                        ON CONFLICT(faction) DO UPDATE SET Units_Combat = Units_Combat + excluded.Units_Combat
+                    """, (self.faction, unit_count))
+
             # Сохраняем изменения в базе данных
             self.db_connection.commit()
             print("Гарнизон успешно сохранен в БД.")
@@ -481,10 +492,11 @@ class AIController:
 
     def hire_army(self):
         """
-        Найм армии с учётом классов юнитов:
-        - Класс 1: всегда доступен, нанимается максимально возможное количество
-        - Класс 2 и 3: по одному герою (случайный если 3 класс), если его ещё нет во всей фракции
-        - Класс 4: только после 14 хода, если позволяет потребление и не нанят ранее
+        Найм армии с учётом количества городов и классов юнитов:
+        - Меньше 5 городов: строятся атакующие юниты и герои (атакующий + 2 класс, если есть).
+        - 5 или более городов: строятся рандомные герои 3 класса и юниты 1 класса.
+        - После 14 хода: возможен найм героя 4 класса.
+        - Ресурсы распределяются: 40% на юниты, остаток на героев.
         """
         self.update_buildings_for_current_cities()
 
@@ -504,7 +516,7 @@ class AIController:
             print("Потребление полностью исчерпано. Наем невозможен.")
             return
 
-        # Выбираем город
+        # Выбираем город с максимальным развитием
         target_city = max(
             self.buildings.items(),
             key=lambda x: sum(x[1]['Здания'].values()),
@@ -517,53 +529,52 @@ class AIController:
 
         new_garrison = {target_city: []}
 
-        # --- Шаг 1: Проверяем и нанимаем героя 2 или 3 класса ---
-        has_hero_3 = self.has_hero_of_class("3")
-        has_hero_2 = self.has_hero_of_class("2")
+        # --- Шаг 1: Распределяем ресурсы ---
+        resource_percentage_for_units = 0.4  # 40% на юниты
+        crowns_for_units = int(crowns * resource_percentage_for_units)
+        works_for_units = int(works * resource_percentage_for_units)
+        consumption_for_units = int(available_consumption * resource_percentage_for_units)
 
-        hero_candidates = {
-            name: data for name, data in self.army.items()
-            if data["stats"]["Класс"] in ["2", "3"]
-        }
+        crowns_for_heroes = crowns - crowns_for_units
+        works_for_heroes = works - works_for_units
+        consumption_for_heroes = available_consumption - consumption_for_units
 
-        if hero_candidates and (not has_hero_3 or not has_hero_2):
-            # Фильтруем кандидатов, чтобы не нанимать уже существующих классов
-            possible_hires = []
-            for name, data in hero_candidates.items():
-                unit_class = data["stats"]["Класс"]
-                if (unit_class == "2" and not has_hero_2) or (unit_class == "3" and not has_hero_3):
-                    possible_hires.append((name, data))
+        # --- Шаг 2: Найм юнитов ---
+        self.hire_units(new_garrison, crowns_for_units, works_for_units, consumption_for_units)
 
-            if possible_hires:
-                hero_name, unit_data = random.choice(possible_hires)
-                consumption = unit_data['consumption']
-                cost_money = unit_data['cost']['money']
-                cost_time = unit_data['cost']['time']
+        # --- Шаг 3: Найм героев ---
+        city_count = self.get_city_count_for_faction()
+        if city_count < 5:
+            self.hire_for_less_than_5_cities(new_garrison, crowns_for_heroes, works_for_heroes, consumption_for_heroes)
+        else:
+            self.hire_for_more_than_5_cities(new_garrison, crowns_for_heroes, works_for_heroes, consumption_for_heroes)
 
-                if (crowns >= cost_money and works >= cost_time and
-                        available_consumption >= consumption):
-                    # Списываем ресурсы
-                    self.resources['Кроны'] -= cost_money
-                    self.resources['Рабочие'] -= cost_time
-                    available_consumption -= consumption
+        # --- Шаг 4: После 14 хода — герой 4 класса ---
+        if self.turn > 14:
+            self.try_hire_class_4_hero(new_garrison, crowns_for_heroes, works_for_heroes, consumption_for_heroes)
 
-                    # Добавляем героя
-                    new_garrison[target_city].append({
-                        "unit_name": hero_name,
-                        "unit_count": 1
-                    })
-                    print(f"Нанят герой {unit_data['stats']['Класс']} класса: {hero_name}")
+        # --- Сохранение изменений ---
+        if any(new_garrison[target_city]):
+            self.garrison.update(new_garrison)
+            self.save_garrison()
+            self.calculate_and_deduct_consumption()
+            print(f"Гарнизон обновлён: {new_garrison}")
+        else:
+            print("Не удалось нанять ни одного юнита.")
 
-        # --- Шаг 2: Наем юнитов 1 класса ---
+    def hire_units(self, new_garrison, crowns, works, available_consumption):
+        """
+        Найм юнитов для текущего города.
+        """
+        target_city = list(new_garrison.keys())[0]
+
+        # Класс 1 юниты
         class_1_units = {
             name: data for name, data in self.army.items()
             if data["stats"]["Класс"] == "1"
         }
 
-        if class_1_units:
-            # Берём первый попавшийся юнит 1 класса (все одинаковые)
-            unit_name, unit_data = next(iter(class_1_units.items()))
-
+        for unit_name, unit_data in class_1_units.items():
             cost_money = unit_data['cost']['money']
             cost_time = unit_data['cost']['time']
             consumption = unit_data['consumption']
@@ -585,43 +596,147 @@ class AIController:
                 })
                 print(f"Нанято {max_affordable} юнитов '{unit_name}'")
 
-        # --- Шаг 3: После 14 хода — герой 4 класса ---
-        if self.turn > 14:
-            hero_4_candidates = {
-                name: data for name, data in self.army.items()
-                if data["stats"]["Класс"] == "4"
-            }
+    def hire_for_more_than_5_cities(self, new_garrison, crowns, works, available_consumption):
+        """
+        Логика найма героев для фракций с 5 или более городами.
+        - Герои 2 класса нанимаются без проверки характеристик.
+        - Герои 3 класса могут быть любыми.
+        """
+        target_city = list(new_garrison.keys())[0]
 
-            for unit_name, unit_data in hero_4_candidates.items():
-                # Проверяем, не нанят ли уже этот герой
-                if self.is_unit_already_hired(unit_name):
+        # Герои 2 и 3 класса
+        hero_candidates = {
+            name: data for name, data in self.army.items()
+            if data["stats"]["Класс"] in ["2", "3"]
+        }
+
+        for unit_name, unit_data in hero_candidates.items():
+            if self.is_unit_already_hired(unit_name):
+                continue
+
+            # Проверяем, есть ли уже герой этого класса
+            hero_class = unit_data["stats"]["Класс"]
+
+            # Разрешаем одновременный найм героев 2 и 3 класса
+            if hero_class == "2" and self.has_hero_of_class("2"):
+                continue  # Если уже есть герой 2 класса, пропускаем
+            if hero_class == "3" and self.has_hero_of_class("3"):
+                continue  # Если уже есть герой 3 класса, пропускаем
+
+            cost_money = unit_data['cost']['money']
+            cost_time = unit_data['cost']['time']
+            consumption = unit_data['consumption']
+
+            if (crowns >= cost_money and works >= cost_time and
+                    available_consumption >= consumption):
+                self.resources['Кроны'] -= cost_money
+                self.resources['Рабочие'] -= cost_time
+                available_consumption -= consumption
+
+                new_garrison[target_city].append({
+                    "unit_name": unit_name,
+                    "unit_count": 1
+                })
+                print(f"Нанят герой '{unit_name}' ({hero_class} класс)")
+                break  # Только один герой за раз
+
+    def hire_for_less_than_5_cities(self, new_garrison, crowns, works, available_consumption):
+        """
+        Логика найма героев для фракций с менее чем 5 городами.
+        - Герои 2 класса нанимаются без проверки характеристик.
+        - Герои 3 класса должны быть атакующими (атака > защиты).
+        """
+        target_city = list(new_garrison.keys())[0]
+
+        # Все герои 2 и 3 класса
+        hero_candidates = {
+            name: data for name, data in self.army.items()
+            if data["stats"]["Класс"] in ["2", "3"]
+        }
+
+        for unit_name, unit_data in hero_candidates.items():
+            if self.is_unit_already_hired(unit_name):
+                continue
+
+            # Проверяем, есть ли уже герой этого класса
+            hero_class = unit_data["stats"]["Класс"]
+
+            # Разрешаем одновременный найм героев 2 и 3 класса
+            if hero_class == "2" and self.has_hero_of_class("2"):
+                continue  # Если уже есть герой 2 класса, пропускаем
+            if hero_class == "3" and self.has_hero_of_class("3"):
+                continue  # Если уже есть герой 3 класса, пропускаем
+
+            # Для героев 3 класса проверяем характеристики (атака > защиты)
+            if hero_class == "3":
+                if unit_data["stats"]["Атака"] <= unit_data["stats"]["Защита"]:
                     continue
 
-                cost_money = unit_data['cost']['money']
-                cost_time = unit_data['cost']['time']
-                consumption = unit_data['consumption']
+            cost_money = unit_data['cost']['money']
+            cost_time = unit_data['cost']['time']
+            consumption = unit_data['consumption']
 
-                if (crowns >= cost_money and works >= cost_time and
-                        available_consumption >= consumption):
-                    self.resources['Кроны'] -= cost_money
-                    self.resources['Рабочие'] -= cost_time
-                    available_consumption -= consumption
+            if (crowns >= cost_money and works >= cost_time and
+                    available_consumption >= consumption):
+                self.resources['Кроны'] -= cost_money
+                self.resources['Рабочие'] -= cost_time
+                available_consumption -= consumption
 
-                    new_garrison[target_city].append({
-                        "unit_name": unit_name,
-                        "unit_count": 1
-                    })
-                    print(f"Нанят герой 4 класса: {unit_name}")
-                    break  # Только одного героя
+                new_garrison[target_city].append({
+                    "unit_name": unit_name,
+                    "unit_count": 1
+                })
+                print(f"Нанят герой '{unit_name}' ({hero_class} класс)")
+                break  # Только один герой за раз
 
-        # --- Сохранение изменений ---
-        if len(new_garrison[target_city]) > 0:
-            self.garrison.update(new_garrison)
-            self.save_garrison()
-            self.calculate_and_deduct_consumption()
-            print(f"Гарнизон обновлён: {new_garrison}")
-        else:
-            print("Не удалось нанять ни одного юнита.")
+    def try_hire_class_4_hero(self, new_garrison, crowns, works, available_consumption):
+        """
+        Логика найма героя 4 класса после 14 хода.
+        """
+        target_city = list(new_garrison.keys())[0]
+
+        # Герои 4 класса
+        hero_candidates = {
+            name: data for name, data in self.army.items()
+            if data["stats"]["Класс"] == "4"
+        }
+
+        for unit_name, unit_data in hero_candidates.items():
+            if self.is_unit_already_hired(unit_name):
+                continue
+
+            # Проверяем, есть ли уже герой этого класса
+            hero_class = unit_data["stats"]["Класс"]
+            if self.has_hero_of_class(hero_class):  # Вызываем метод проверки
+                continue
+
+            cost_money = unit_data['cost']['money']
+            cost_time = unit_data['cost']['time']
+            consumption = unit_data['consumption']
+
+            if (crowns >= cost_money and works >= cost_time and
+                    available_consumption >= consumption):
+                self.resources['Кроны'] -= cost_money
+                self.resources['Рабочие'] -= cost_time
+                available_consumption -= consumption
+
+                new_garrison[target_city].append({
+                    "unit_name": unit_name,
+                    "unit_count": 1
+                })
+                print(f"Нанят герой '{unit_name}'")
+                break  # Только один герой за раз
+
+    def get_city_count_for_faction(self):
+        """
+        Возвращает количество городов, принадлежащих текущей фракции.
+        """
+        self.cursor.execute("""
+            SELECT COUNT(*) FROM cities 
+            WHERE faction = ?
+        """, (self.faction,))
+        result = self.cursor.fetchone()
+        return result[0]
 
     def has_hero_of_class(self, class_number):
         """Проверяет, есть ли у фракции хотя бы один юнит указанного класса."""

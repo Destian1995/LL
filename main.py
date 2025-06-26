@@ -893,7 +893,7 @@ class KingdomSelectionWidget(FloatLayout):
 
         # ======== ЗАГРУЗКА ДАННЫХ ИЗ БД ========
         self.conn = conn
-        self.kingdom_data = self.load_kingdoms_from_db()
+        self.faction_data = self.load_factions_from_db()
 
         # ======== ПАНЕЛЬ КНОПОК ФРАКЦИЙ (изначально скрыта) ========
         panel_width = 0.10
@@ -915,16 +915,20 @@ class KingdomSelectionWidget(FloatLayout):
             opacity=1
         )
 
-        for kingdom in self.kingdom_data.keys():
-            btn = RectangularButton(
-                text=kingdom,
-                size_hint_y=None,
-                height=button_height,
-                font_size='18sp' if is_android else '18sp',
-                opacity=0
-            )
-            btn.bind(on_release=self.select_kingdom)
-            self.kingdom_buttons.add_widget(btn)
+        try:
+            for faction in self.faction_data:
+                kingdom = faction.get('name', 'Неизвестная фракция')
+                btn = RectangularButton(
+                    text=kingdom,
+                    size_hint_y=None,
+                    height=dp(35),
+                    font_size='18sp',
+                    opacity=1  # Делаем кнопки сразу видимыми
+                )
+                btn.bind(on_release=self.select_kingdom)
+                self.kingdom_buttons.add_widget(btn)
+        except Exception as e:
+            print(f"Ошибка при создании кнопок фракций: {e}")
 
         # ======== КНОПКА «Начать игру» (сразу видна) ========
         self.start_game_button = RoundedButton(
@@ -1007,7 +1011,7 @@ class KingdomSelectionWidget(FloatLayout):
         instance.state = 'play'
 
     def calculate_panel_height(self, btn_height, spacing, padding):
-        num_buttons = len(self.kingdom_data)
+        num_buttons = len(self.faction_data)
         return (btn_height * num_buttons) + (spacing * (num_buttons - 1)) + (padding[1] + padding[3])
 
     def back_to_menu(self, instance):
@@ -1017,20 +1021,31 @@ class KingdomSelectionWidget(FloatLayout):
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
 
-    def load_kingdoms_from_db(self):
-        kingdoms = {}
+    def load_factions_from_db(self):
+        """
+        Загружает список уникальных фракций из таблицы diplomacies_default.
+        :return: Список словарей с информацией о фракциях.
+        """
+        factions = []
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT faction, name, coordinates, color_faction FROM cities_default")
+            # Выполняем запрос к таблице diplomacies_default
+            cursor.execute("""
+                SELECT DISTINCT faction1 
+                FROM diplomacies_default
+            """)
             rows = cursor.fetchall()
+
+            # Обрабатываем результаты запроса
             for row in rows:
-                kingdom, fortress_name, coordinates, color = row
-                if kingdom not in kingdoms:
-                    kingdoms[kingdom] = {"name": [], "color_faction": color}
-                kingdoms[kingdom]["name"].append({"name": fortress_name, "coordinates": coordinates})
+                faction_name = row[0]
+                if faction_name:
+                    factions.append({"name": faction_name})
+
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке данных из базы данных: {e}")
-        return kingdoms
+
+        return factions
 
     def select_kingdom(self, instance):
         """

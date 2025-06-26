@@ -22,13 +22,12 @@ def merge_units(army):
     return list(merged_army.values())
 
 
-def update_results_table(db_connection, faction, units_combat, units_destroyed, enemy_losses):
+def update_results_table(db_connection, faction, units_destroyed, enemy_losses):
     """
     Обновляет или создает запись в таблице results для указанной фракции.
 
     :param db_connection: Соединение с базой данных.
     :param faction: Название фракции.
-    :param units_combat: Общее число юнитов фракции на начало боя.
     :param units_destroyed: Общие потери фракции после боя.
     :param enemy_losses: Потери противника (количество уничтоженных юнитов).
     """
@@ -45,22 +44,21 @@ def update_results_table(db_connection, faction, units_combat, units_destroyed, 
                 cursor.execute("""
                     UPDATE results
                     SET 
-                        Units_Combat = Units_Combat + ?, 
                         Units_Destroyed = Units_Destroyed + ?,
                         Units_killed = Units_killed + ?
                     WHERE faction = ?
-                """, (units_combat, units_destroyed, enemy_losses, faction))
+                """, ( units_destroyed, enemy_losses, faction))
             else:
                 # Вставляем новую запись
                 cursor.execute("""
                     INSERT INTO results (
-                        Units_Combat, Units_Destroyed, Units_killed, 
+                        Units_Destroyed, Units_killed, 
                         Army_Efficiency_Ratio, Average_Deal_Ratio, 
                         Average_Net_Profit_Coins, Average_Net_Profit_Raw, 
                         Economic_Efficiency, faction
                     )
                     VALUES (?, ?, ?, 0, 0, 0, 0, 0, ?)
-                """, (units_combat, units_destroyed, enemy_losses, faction))
+                """, (units_destroyed, enemy_losses, faction))
 
     except sqlite3.IntegrityError as e:
         print(f"[ERROR] Ошибка целостности данных в results: {e}")
@@ -460,15 +458,13 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
     )
 
     # Обновляем таблицу results
-    total_attacking_units = sum(u['initial_count'] for u in modified_attacking)
-    total_defending_units = sum(u['initial_count'] for u in modified_defending)
     total_attacking_losses = sum(u['killed_count'] for u in modified_attacking)
     total_defending_losses = sum(u['killed_count'] for u in modified_defending)
 
-    update_results_table(conn, attacking_fraction, total_attacking_units, total_attacking_losses,
-                         total_defending_losses)
-    update_results_table(conn, defending_fraction, total_defending_units, total_defending_losses,
-                         total_attacking_losses)
+    update_results_table(db_connection=conn, faction=attacking_fraction, units_destroyed=total_attacking_losses,
+                         enemy_losses=total_defending_losses)
+    update_results_table(db_connection=conn, faction=defending_fraction, units_destroyed=total_defending_losses,
+                         enemy_losses=total_attacking_losses)
 
     # Генерируем отчет
     final_report_attacking = [{

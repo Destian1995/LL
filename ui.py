@@ -1661,11 +1661,12 @@ class FortressInfoPopup(Popup):
     def transfer_army_to_garrison(self, selected_unit, taken_count):
         try:
             with self.conn:
-                cursor = self.conn.cursor()
 
+                cursor = self.conn.cursor()
                 unit_type = selected_unit.get("unit_type")
                 stats = selected_unit.get("stats", {})
                 unit_image = selected_unit.get("unit_image")
+                faction = self.player_fraction
 
                 if not all([unit_type, taken_count, stats, unit_image]):
                     raise ValueError("Некорректные данные для переноса юнита.")
@@ -1702,6 +1703,13 @@ class FortressInfoPopup(Popup):
                     DELETE FROM armies 
                     WHERE unit_type = ? AND quantity <= 0
                 """, (unit_type,))
+
+                # Работа с таблицей results
+                cursor.execute("""
+                    INSERT INTO results (faction, Units_Combat)
+                    VALUES (?, ?)
+                    ON CONFLICT(faction) DO UPDATE SET Units_Combat = Units_Combat + excluded.Units_Combat
+                """, (faction, taken_count))
 
             self.update_garrison()
             self.close_current_popup()
