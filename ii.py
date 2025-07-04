@@ -383,9 +383,9 @@ class AIController:
         """
         try:
             crowns = self.resources['Кроны']
-            building_budget = int(crowns * 0.90)  # Используем 90% бюджета на строительство
+            building_budget = int(crowns * 0.99)  # Используем 90% бюджета на строительство
 
-            if building_budget < 350:
+            if building_budget < 250:
                 print("Недостаточно средств для строительства.")
                 return
 
@@ -394,7 +394,7 @@ class AIController:
             max_factories = 250
 
             # Проверяем, сколько можно построить с учетом денег
-            max_by_money = building_budget // 175  # Каждое здание стоит 175 крон
+            max_by_money = building_budget // 125  # Каждое здание стоит 125 крон
             total_possible = min(max_hospitals + max_factories, max_by_money)
 
             # Пропорционально делим возможное количество
@@ -419,7 +419,7 @@ class AIController:
         :param building_type: Тип здания ("Больница" или "Фабрика").
         :param count: Максимальное количество зданий для постройки.
         """
-        cost = 175 if building_type == 'Больница' else 175
+        cost = 125 if building_type == 'Больница' else 125
 
         # Загружаем актуальные данные о городах фракции
         self.cities = self.load_cities()
@@ -474,14 +474,14 @@ class AIController:
         return True
 
     def sell_resources(self):
-        if self.resources['Кристаллы'] > 10000:
+        if self.resources['Кристаллы'] > 1000:
             amount_to_sell = int(self.resources['Кристаллы'] * 0.95)
             earned_crowns = int(amount_to_sell * self.raw_material_price)
             self.resources['Кристаллы'] -= amount_to_sell
             self.resources['Кроны'] += earned_crowns
 
             # Рассчитываем эффективность сделки (цена за единицу Кристаллы)
-            price_per_lot = self.raw_material_price / 10000
+            price_per_lot = self.raw_material_price / 1000
             self.update_economic_efficiency(price_per_lot)  # Обновляем эффективность
 
             print(f"Продано {amount_to_sell} Кристаллы за {earned_crowns} крон.")
@@ -903,7 +903,7 @@ class AIController:
         Генерирует новую цену на Кристаллы.
         """
         # Простая реализация: случайная цена в диапазоне
-        self.raw_material_price = round(random.uniform(16200, 49250), 2200)
+        self.raw_material_price = round(random.uniform(19200, 39250), 8900)
         print(f"Новая цена на Кристаллы: {self.raw_material_price}")
 
     def update_trade_resources_from_db(self):
@@ -2421,12 +2421,12 @@ class AIController:
             self.update_relations_based_on_political_system()
             # 5. Загружаем данные о зданиях
             self.update_buildings_from_db()
-            # 6. Управление строительством (90% крон на строительство)
+            # 6. Управление строительством (99% крон на строительство)
             self.manage_buildings()
-            # 7. Продажа Кристаллы (99% Кристаллы, если его больше 10000)
-            resources_sold = self.sell_resources()
+            # 7. Продажа Кристаллы (99% Кристаллы, если его больше 1000)
+            self.sell_resources()
             # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
-            if resources_sold:
+            if self.turn == 1 or self.resources['Кроны'] > 0:
                 self.hire_army()
             # 9. Сохраняем все изменения в базу данных
             self.save_all_data()
