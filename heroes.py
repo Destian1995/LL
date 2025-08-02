@@ -43,7 +43,7 @@ def load_artifacts_from_db(faction):
                 "image_url": row[11] if row[11] is not None else "files/pict/artifacts/default.png",
                 "cost": row[12] if row[12] is not None else 0 # Добавлено поле cost
             }
-            print(f'Загруженный артефакт:{artifact}')
+            #print(f'Загруженный артефакт:{artifact}')
             stats = [
                 artifact['attack'], artifact['defense'], artifact['health'],
                 artifact['army_consumption'], artifact['crystal_bonus'],
@@ -53,7 +53,6 @@ def load_artifacts_from_db(faction):
                 artifacts.append(artifact)
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке артефактов: {e}")
-    print(f'Данные артефактов на возврат из load_artifacts_from_db {artifacts}')
     return artifacts
 
 def load_hero_equipment_from_db(faction):
@@ -103,20 +102,25 @@ def save_hero_equipment_to_db(faction, slot_type, artifact_id):
 
 def load_hero_image_from_db(faction):
     """
-    Загружает изображение героя из таблицы garrisons.
+    Загружает изображение героя из таблицы garrisons, предварительно проверив faction героя через таблицу units.
     """
     try:
         cursor = faction.conn.cursor()
+
+        # Сначала определяем faction героя через таблицу units и сравниваем с faction игрока
         cursor.execute('''
-            SELECT image_path FROM garrisons
-            WHERE faction = ? AND unit_name IN (?, 'Герой')
+            SELECT DISTINCT g.unit_image FROM garrisons g
+            LEFT JOIN units u ON g.unit_name = u.unit_name
+            WHERE u.faction = ? AND u.unit_class = "3"
             LIMIT 1
-        ''', (faction.faction, faction.faction))
+        ''', (faction.faction,))  # Добавлена запятая здесь
         row = cursor.fetchone()
+        print('Изображение героя:', row)
         if row and row[0]:
             return row[0]
         else:
             return "files/pict/garrisons/default_hero.png"
+
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке изображения героя: {e}")
         return "files/pict/garrisons/default_hero.png"
@@ -157,9 +161,9 @@ def format_artifact_description(artifact):
     # Формируем суффикс для времени действия бонуса
     season = artifact.get('season_name')
     if season:
-        suffix = f"во время {season}"
+        suffix = f"Сезон артефакта: {season}"
     else:
-        suffix = "всегда"
+        suffix = "Всегда"
 
     return f"{', '.join(stats)} {suffix}"
 
@@ -175,7 +179,6 @@ def create_artifact_button_style(btn):
     return btn
 
 # --- Основная функция открытия попапа ---
-
 def open_artifacts_popup(faction):
     """
     Открывает Popup с артефактами и экипировкой героя.
@@ -189,69 +192,28 @@ def open_artifacts_popup(faction):
     # --- Создание Popup ---
     popup_layout = BoxLayout(orientation='horizontal', padding=dp(10), spacing=dp(10))
 
-    # --- Левая часть: Список артефактов (улучшенная вертикальная таблица) ---
-    left_panel = BoxLayout(orientation='vertical', size_hint=(0.5, 1))  # Немного увеличил ширину
+    # --- Левая часть: Список артефактов ---
+    left_panel = BoxLayout(orientation='vertical', size_hint=(0.5, 1))
     left_panel.add_widget(Label(text="Артефакты", size_hint_y=None, height=dp(40), bold=True, font_size='18sp'))
+
     scroll_view = ScrollView(do_scroll_x=False)
-    artifacts_list_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(2))
-    artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
+    artifacts_list_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+    # Привязка высоты будет обновлена позже
+    # artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
 
     # --- Создание виджетов для артефактов ---
     artifact_widgets = {}
-    selected_artifact_id = None
+    equipment_slots = {}  # Ссылки на виджеты слотов будут храниться здесь
 
-    def on_artifact_selected(artifact_data):
-        """Обработчик выбора артефакта из списка."""
-        nonlocal selected_artifact_id
-        selected_artifact_id = artifact_data['id']
-        print(f"Выбран артефакт: {artifact_data['name']} (ID: {artifact_data['id']})")
-
-    # --- Заголовок таблицы ---
-    # Создаем фиксированную ширину для панели заголовков
-    header_width_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30), spacing=dp(1))
-
-    # Фиксированные ширины для колонок (в dp)
-    NAME_COL_WIDTH_DP = 150
-    STATS_COL_WIDTH_DP = 300
-    COST_COL_WIDTH_DP = 70
-
-    header_name = Label(
-        text="Имя",
-        halign='left',
-        valign='middle',
-        font_size='12sp',
-        bold=True,
-        size_hint_x=None,  # Отключаем size_hint_x
-        width=dp(NAME_COL_WIDTH_DP)  # Устанавливаем фиксированную ширину
-    )
-    header_name.bind(size=header_name.setter('text_size'))  # Для текста внутри
-
-    header_stats = Label(
-        text="Характеристики",
-        halign='left',
-        valign='middle',
-        font_size='12sp',
-        bold=True,
-        size_hint_x=None,
-        width=dp(STATS_COL_WIDTH_DP)
-    )
-    header_stats.bind(size=header_stats.setter('text_size'))
-
-    header_cost = Label(
-        text="Стоимость",
-        halign='right',  # Выравнивание текста внутри ячейки
-        valign='middle',
-        font_size='12sp',
-        bold=True,
-        size_hint_x=None,
-        width=dp(COST_COL_WIDTH_DP)
-    )
-    header_cost.bind(size=header_cost.setter('text_size'))
-
-    header_width_container.add_widget(header_name)
-    header_width_container.add_widget(header_stats)
-    header_width_container.add_widget(header_cost)
-    artifacts_list_layout.add_widget(header_width_container)  # Добавляем контейнер с фикс. ширинами
+    # --- Функция для стилизации кнопки "Купить" ---
+    def style_buy_button(button):
+        """Применяет стиль к кнопке 'Купить'."""
+        # Пример стиля, вы можете настроить его по своему вкусу
+        button.background_color = (0.2, 0.6, 0.8, 1)  # Сине-зеленый
+        button.color = (1, 1, 1, 1)  # Белый текст
+        button.bold = True
+        # Можно также изменить background_normal и background_down для картинок
+        return button
 
     # --- Заполнение таблицы артефактами ---
     for artifact in artifacts_list:
@@ -259,99 +221,153 @@ def open_artifacts_popup(faction):
         if not description:  # Пропустить, если описание пустое (все бонусы 0)
             continue
 
-        # Создаем контейнер строки с фиксированными ширинами колонок
+        # --- Контейнер строки артефакта ---
         artifact_row_container = BoxLayout(
             orientation='horizontal',
-            size_hint_y=None,  # Отключаем size_hint_y
-            spacing=dp(4),  # Уменьшил отступы между ячейками
-            padding=(dp(5), dp(5))  # Добавляем внутренний отступ
+            size_hint_y=None,
+            # height будет рассчитана динамически или установлена фиксированная
+            height=dp(90),  # Увеличил высоту для лучшего размещения
+            padding=(dp(5), dp(5)),
+            spacing=dp(10)  # Увеличил отступ между информацией и кнопкой
+        )
+        # Применяем общий стиль к строке, если нужно
+        # artifact_row_container = create_artifact_button_style(artifact_row_container)
+
+        # --- Контейнер информации об артефакте ---
+        artifact_info_container = BoxLayout(
+            orientation='vertical',
+            size_hint_x=0.75  # Занимает 75% ширины строки
         )
 
-        # --- Ячейки строки с фиксированной шириной ---
-        name_cell = BoxLayout(size_hint_x=None, width=dp(NAME_COL_WIDTH_DP))
-        stats_cell = BoxLayout(size_hint_x=None, width=dp(STATS_COL_WIDTH_DP))
-        cost_cell = BoxLayout(size_hint_x=None, width=dp(COST_COL_WIDTH_DP))
-
-        # --- Содержимое ячеек ---
         # Название артефакта
         name_label = Label(
             text=artifact['name'],
             halign='left',
-            valign='top',  # Верхнее выравнивание текста
-            font_size='14sp',
-            size_hint_y=None,  # Отключаем size_hint_y
-            height=dp(60)  # Фиксированная высота для имени
+            valign='middle',
+            font_size='16sp',
+            bold=True,
+            size_hint_y=None,
+            height=dp(25)
         )
         name_label.bind(size=name_label.setter('text_size'))
-        name_cell.add_widget(name_label)
 
         # Характеристики артефакта
         stats_label = Label(
             text=description,
             halign='left',
-            valign='top',  # Верхнее выравнивание текста
-            font_size='12sp',
-            color=(0.8, 0.8, 0.8, 1),  # Светло-серый цвет для бонусов
-            size_hint_y=None,  # Отключаем size_hint_y
-            height=dp(60)  # Фиксированная высота для характеристик
+            valign='top',
+            font_size='14sp',  # <-- Увеличенный размер шрифта
+            bold=True,  # <-- Сделан жирным
+            color=(0.8, 0.8, 0.8, 1),
+            size_hint_y=None,
+            height=dp(50)  # <-- Возможно, стоит немного увеличить высоту, чтобы текст помещался
         )
         stats_label.bind(size=stats_label.setter('text_size'))
-        stats_cell.add_widget(stats_label)
 
-        # Стоимость артефакта
-        cost_label = Label(
-            text=str(artifact.get('cost', 0)),
-            halign='right',  # Выравнивание текста внутри ячейки
-            valign='top',  # Верхнее выравнивание текста
-            font_size='14sp',
-            size_hint_y=None,  # Отключаем size_hint_y
-            height=dp(60)  # Фиксированная высота для стоимости
+        artifact_info_container.add_widget(name_label)
+        artifact_info_container.add_widget(stats_label)
+
+        # --- Кнопка "Купить" ---
+        buy_button = Button(
+            text=f"Купить\n({artifact.get('cost', 0)})",
+            size_hint_x=None,
+            width=dp(90),  # Увеличил ширину
+            height=dp(60),  # Установил фиксированную высоту
+            # valign='middle',
+            # halign='center'
         )
-        cost_label.bind(size=cost_label.setter('text_size'))
-        cost_cell.add_widget(cost_label)
+        # Применяем стиль к кнопке
+        style_buy_button(buy_button)
 
-        # --- Добавление ячеек в контейнер строки ---
-        artifact_row_container.add_widget(name_cell)
-        artifact_row_container.add_widget(stats_cell)
-        artifact_row_container.add_widget(cost_cell)
+        # Обработчик нажатия кнопки "Купить"
+        def make_buy_handler(art_data):
+            def on_buy(instance):
+                """Обработчик нажатия кнопки 'Купить'."""
+                print(f"Покупка артефакта: {art_data['name']} (ID: {art_data['id']})")
+                # --- Здесь должна быть логика покупки ---
+                # Например: проверка денег, вызов save_hero_equipment_to_db или другой функции
 
-        # --- Определение реальной высоты строки ---
-        # Автоматически рассчитываем высоту строки на основе максимальной высоты ячеек
-        max_height = max(name_label.height, stats_label.height, cost_label.height)
-        artifact_row_container.height = max_height + dp(10)  # Добавляем небольшой отступ
+                # Для примера, просто экипируем в первый свободный подходящий слот
+                # Предположим, артефакт имеет поле 'slot_type' или мы определяем его по имени
+                # Если такого поля нет, нужно определить логику определения слота
+                # Например, можно передать slot_type как аргумент или определить его внутри on_buy
 
-        # --- Применение стиля к контейнеру строки ---
-        artifact_row_container = create_artifact_button_style(artifact_row_container)
+                # Простая логика: экипируем в первый свободный слот из списка
+                slot_equipped = False
+                for slot_type in ['weapon', 'boots', 'armor', 'helmet', 'accessory']:
+                    if slot_type not in hero_equipment or hero_equipment[slot_type] is None:
+                        save_hero_equipment_to_db(faction, slot_type, art_data['id'])
+                        hero_equipment[slot_type] = art_data['id']
+                        # Обновляем виджет слота
+                        update_equipment_slot(slot_type, art_data)
+                        print(f"Артефакт {art_data['name']} экипирован в {slot_type}")
+                        slot_equipped = True
+                        break  # Экипировали и вышли
 
-        # --- Сделать строку кликабельной ---
-        artifact_button = Button(background_normal='', background_color=(0, 0, 0, 0), size_hint=(1, 1))
-        artifact_button.add_widget(artifact_row_container)
-        artifact_button.bind(on_release=lambda btn, a=artifact: on_artifact_selected(a))
+                if not slot_equipped:
+                    print(f"Нет свободных слотов для артефакта {art_data['name']}")
 
-        artifacts_list_layout.add_widget(artifact_button)
-        artifact_widgets[artifact['id']] = artifact_button  # Сохраняем ссылку на виджет
+                # --- Конец логики покупки ---
+
+            return on_buy
+
+        buy_button.bind(on_release=make_buy_handler(artifact))
+
+        # --- Добавление виджетов в строку ---
+        artifact_row_container.add_widget(artifact_info_container)
+        # Добавляем виджет с кнопкой, чтобы центрировать кнопку по вертикали
+        button_wrapper = BoxLayout(size_hint_x=None, width=dp(90), padding=(0, dp(15), 0, dp(15)))
+        button_wrapper.add_widget(buy_button)
+        artifact_row_container.add_widget(button_wrapper)
+
+        # --- Добавить строку в таблицу ---
+        artifacts_list_layout.add_widget(artifact_row_container)
+        artifact_widgets[artifact['id']] = artifact_row_container  # Сохраняем ссылку
+
+    # --- Обновление ScrollView ---
+    artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
     scroll_view.add_widget(artifacts_list_layout)
     left_panel.add_widget(scroll_view)
 
     # --- Правая часть: Герой и экипировка ---
-    right_panel = FloatLayout(size_hint=(0.6, 1))
+    right_panel = FloatLayout(size_hint=(0.5, 1))
 
+    # --- Загрузка изображения героя ---
     try:
-        hero_image = Image(source=hero_image_path, size_hint=(None, None), size=(dp(150), dp(150)))
+        hero_image_width = dp(450)
+        hero_image_height = dp(450)
+        hero_image = Image(source=hero_image_path, size_hint=(None, None), size=(hero_image_width, hero_image_height))
+        hero_image_size = (hero_image_width, hero_image_height)
+
         hero_image.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         right_panel.add_widget(hero_image)
     except Exception as e:
         print(f"Ошибка загрузки изображения героя {hero_image_path}: {e}")
-        hero_placeholder = Label(text="[b]Изображение\nГероя[/b]", markup=True, halign='center', valign='middle')
+        # Создаем placeholder, если изображение не загрузилось
+        hero_placeholder = Label(
+            text="[b]Изображение\nГероя[/b]",
+            markup=True,
+            halign='center',
+            valign='middle'
+        )
         hero_placeholder.size_hint = (None, None)
-        hero_placeholder.size = (dp(150), dp(150))
-        hero_placeholder.center = (right_panel.center_x, right_panel.center_y)
+        hero_placeholder.size = (dp(450), dp(450))
+        # Устанавливаем центр, учитывая возможную задержку в получении размеров right_panel
+        hero_placeholder.center = (dp(100), dp(100))  # Значение по умолчанию
+
+        # Попробуем обновить позицию позже, если right_panel уже готов
+        def set_placeholder_center(*args):
+            if hasattr(right_panel, 'center_x') and hasattr(right_panel, 'center_y'):
+                hero_placeholder.center_x = right_panel.center_x
+                hero_placeholder.center_y = right_panel.center_y
+
+        right_panel.bind(parent=set_placeholder_center)  # Привязываем к родителю, как пример
         right_panel.add_widget(hero_placeholder)
-        hero_image = hero_placeholder
+        # hero_image = hero_placeholder # Не нужно, если мы не используем hero_image ниже
 
-    slot_size = (dp(50), dp(50))
-    equipment_slots = {}
+    slot_size = (dp(90), dp(90))
 
+    # --- Функция обновления слота экипировки ---
     def update_equipment_slot(slot_type, artifact_data=None):
         """Обновляет виджет слота экипировки."""
         if slot_type in equipment_slots:
@@ -361,56 +377,71 @@ def open_artifacts_popup(faction):
                 try:
                     img_source = artifact_data.get('image_url')
                     if not img_source:
-                        img_source = "files/pict/artifacts/default.png"
+                        img_source = "files/pict/artifacts/default.png"  # Путь по умолчанию
                     slot_image = Image(source=img_source, allow_stretch=True, keep_ratio=True)
                     slot_widget.add_widget(slot_image)
                 except Exception as e:
                     print(f"Ошибка загрузки изображения для слота {slot_type}: {e}")
+                    # Если изображение не загрузилось, показываем знак вопроса
                     slot_widget.add_widget(Label(text="?", font_size='20sp'))
             else:
+                # Если слот пуст, показываем тип слота
                 slot_widget.add_widget(Label(text=f"[{slot_type[:3].upper()}]", markup=True, font_size='10sp'))
 
-    def on_equip_button_click(slot_type):
-        """Обработчик нажатия на слот экипировки."""
-        nonlocal selected_artifact_id
-        if selected_artifact_id:
-            print(f"Попытка экипировать артефакт ID {selected_artifact_id} в слот {slot_type}")
-            save_hero_equipment_to_db(faction, slot_type, selected_artifact_id)
-            hero_equipment[slot_type] = selected_artifact_id
-            equipped_artifact = next((a for a in artifacts_list if a['id'] == selected_artifact_id), None)
-            if equipped_artifact:
-                update_equipment_slot(slot_type, equipped_artifact)
-            selected_artifact_id = None  # Сбросить выбор после экипировки
-        else:
-            # Снятие экипировки
-            if slot_type in hero_equipment:
-                print(f"Снятие экипировки из слота {slot_type}")
-                save_hero_equipment_to_db(faction, slot_type, None)
-                hero_equipment.pop(slot_type, None)
-                update_equipment_slot(slot_type, None)
-
+    # --- Создание слотов экипировки ---
     for slot_type in ['weapon', 'boots', 'armor', 'helmet', 'accessory']:
+        # Создаем виджет кнопки для слота
         slot_widget = Button(
             size_hint=(None, None),
             size=slot_size,
-            pos=(0, 0),
-            background_color=(0.3, 0.3, 0.3, 1),
-            background_normal=''
+            pos=(0, 0),  # Позиция будет установлена позже
+            background_color=(0.3, 0.3, 0.3, 1),  # Серый фон по умолчанию
+            background_normal='',  # Убираем стандартный фон
+            # text=f"[{slot_type[:3].upper()}]" # Можно добавить текст по умолчанию
         )
+        # Добавляем скругленные углы
         with slot_widget.canvas.before:
-            Color(0.4, 0.4, 0.4, 1)
+            from kivy.graphics import Color, RoundedRectangle
+            Color(0.4, 0.4, 0.4, 1)  # Цвет рамки/фона
             slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size, radius=[8])
+
+        # Обновляем позицию и размер прямоугольника при изменении виджета
         def update_slot_rect(instance, value):
             instance.rect.pos = instance.pos
             instance.rect.size = instance.size
+
         slot_widget.bind(pos=update_slot_rect, size=update_slot_rect)
 
+        # --- Добавление подписи слота ---
+        # Словарь для сопоставления типа слота с его подписью
+        slot_labels = {
+            'weapon': 'Оружие',
+            'boots': 'Сапоги',
+            'armor': 'Туловище',
+            'helmet': 'Голова',
+            'accessory': 'Аксессуар'
+        }
+        # Создаем Label с подписью
+        slot_label = Label(
+            text=slot_labels.get(slot_type, slot_type),  # Получаем подпись или используем тип слота по умолчанию
+            color=(1, 1, 1, 1),  # Белый цвет текста
+            font_size='10sp',  # Размер шрифта
+            halign='center',
+            valign='middle'
+        )
+        slot_label.bind(size=slot_label.setter('text_size'))  # Позволяет выравнивание текста
+        # Добавляем Label в slot_widget
+        slot_widget.add_widget(slot_label)
+
+        # Инициализация слота текущим артефактом (если есть)
         artifact_id_in_slot = hero_equipment.get(slot_type)
         artifact_data_in_slot = next((a for a in artifacts_list if a['id'] == artifact_id_in_slot),
                                      None) if artifact_id_in_slot else None
         update_equipment_slot(slot_type, artifact_data_in_slot)
-        slot_widget.bind(on_release=lambda btn, s=slot_type: on_equip_button_click(s))
+
+        # Добавляем виджет слота на правую панель
         right_panel.add_widget(slot_widget)
+        # Сохраняем ссылку на слот для последующего обновления
         equipment_slots[slot_type] = slot_widget
 
     # --- Сборка основного макета ---
@@ -423,28 +454,58 @@ def open_artifacts_popup(faction):
         content=popup_layout,
         size_hint=(0.95, 0.95),
         title_align='center',
-        separator_color=(0.5, 0.3, 0.7, 1)
+        separator_color=(0.5, 0.3, 0.7, 1)  # Фиолетовый разделитель
     )
 
+    # --- Функция позиционирования слотов ---
     def position_slots(dt):
         """Позиционирует слоты экипировки относительно центра правой панели."""
+        # Проверка, готова ли панель (имеет размеры)
+        if not right_panel or not hasattr(right_panel, 'width') or right_panel.width == 0:
+            return  # Ждем, пока панель не будет готова
         right_panel_width = right_panel.width
         right_panel_height = right_panel.height
         right_panel_x = right_panel.x
         right_panel_y = right_panel.y
         center_x = right_panel_x + right_panel_width / 2
         center_y = right_panel_y + right_panel_height / 2
+
+        # --- Скорректированные позиции ---
+        # Добавляем небольшой отступ (например, dp(10)) между героем и слотом.
+        half_hero_width = hero_image_size[0] / 2
+        half_slot_width = slot_size[0] / 2
+        min_distance_from_center = half_hero_width + half_slot_width + dp(10)  # Минимальное расстояние до центра слота
+
+        # Можно использовать это расстояние или немного больше для esthetics
+        distance_horizontal = max(dp(200),
+                                  min_distance_from_center)  # Убедимся, что не меньше dp(200) или рассчитанного значения
+        distance_vertical = max(dp(200), min_distance_from_center)  # То же для вертикали
+        distance_above_head = distance_vertical + dp(80)  # Аксессуар немного выше, чем шлем
+
         slot_positions = {
-            'weapon': (center_x - dp(100) - slot_size[0]/2, center_y - slot_size[1]/2),
-            'boots': (center_x - slot_size[0]/2, center_y - dp(100) - slot_size[1]/2),
-            'armor': (center_x + dp(100) - slot_size[0]/2, center_y - slot_size[1]/2),
-            'helmet': (center_x - slot_size[0]/2, center_y + dp(100) - slot_size[1]/2),
-            'accessory': (center_x + dp(80) - slot_size[0]/2, center_y + dp(80) - slot_size[1]/2),
+            # Слева от героя (Оружие)
+            'weapon': (center_x - distance_horizontal, center_y - slot_size[1] / 2),
+            # Снизу от героя (Сапоги)
+            'boots': (center_x - slot_size[0] / 2, center_y - distance_vertical),
+            # Справа от героя (Туловище)
+            'armor': (center_x + distance_horizontal - slot_size[0], center_y - slot_size[1] / 2),
+            # Сверху от героя (Голова)
+            'helmet': (center_x - slot_size[0] / 2, center_y + distance_vertical - slot_size[1]),
+            # Сверху справа от героя (Аксессуар)
+            'accessory': (center_x + distance_horizontal - slot_size[0], center_y + distance_above_head - slot_size[1]),
         }
+        # -------------------------------
+
+        # Установка позиций для каждого слота
         for slot_type, pos in slot_positions.items():
             if slot_type in equipment_slots:
                 equipment_slots[slot_type].pos = pos
 
-    Clock.schedule_once(position_slots, 0)
+    # Планируем позиционирование слотов
+    # Приоритет -1 для выполнения как можно раньше после открытия
+    Clock.schedule_once(position_slots, -1)
+    # Также привязываем к событию on_open попапа на случай, если позиционирование не сработает сразу
     artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
+
+    # --- Открытие Popup ---
     artifacts_popup.open()
