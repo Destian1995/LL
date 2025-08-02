@@ -125,155 +125,263 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
 
 
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
-    """
-    Отображает красивый отчет о бое с использованием возможностей Kivy.
+    """Отображает стильный и удобный отчет о бое с использованием возможностей Kivy.
     :param report_data: Данные отчета о бое.
     :param is_user_involved: Участвовал ли пользователь в бою.
     :param user_faction: Фракция пользователя (если участвовал).
+    :param conn: Соединение с БД (если нужно для обновления досье).
     """
     if not report_data:
         print("Нет данных для отображения.")
         return
 
-    # Основной контейнер
-    content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+    # Определение результата для пользователя
+    user_result = ""
+    user_result_color = "#FFFFFF" # Белый по умолчанию
+    battle_city = report_data[0].get('city', 'Неизвестный город')
 
-    # Фон с градиентом
-    with content.canvas.before:
-        Color(0.1, 0.1, 0.1, 1)
-        content.rect = Rectangle(size=content.size, pos=content.pos)
-        content.bind(pos=lambda inst, value: setattr(inst.rect, 'pos', value),
-                     size=lambda inst, value: setattr(inst.rect, 'size', value))
+    if is_user_involved and user_faction:
+        for item in report_data:
+            if item.get('side') == 'attacking' and item.get('faction') == user_faction:
+                user_result = item.get('result', '')
+                break
+            elif item.get('side') == 'defending' and item.get('faction') == user_faction:
+                user_result = item.get('result', '')
+                break
 
-    # Основной макет для отчёта
-    main_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(10))
-    main_layout.bind(minimum_height=main_layout.setter('height'))
+        if user_result == "Победа":
+            user_result_color = "#33FF57" # Зеленый
+        elif user_result == "Поражение":
+            user_result_color = "#FF5733" # Красный
 
-    # === Единожды выводим название города ===
+    # === Создание основного контейнера ===
+    # Используем ScrollView для всей области, кроме кнопки "Закрыть"
+    main_scroll = ScrollView(size_hint=(1, 1)) # Занимает всё пространство, кроме кнопки
+    content_layout = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10), size_hint_y=None)
+    # content_layout должен расширяться по высоте для ScrollView
+    content_layout.bind(minimum_height=content_layout.setter('height'))
+
+    # Фон основного контейнера
+    with content_layout.canvas.before:
+        Color(0.12, 0.12, 0.12, 1) # Очень тёмно-серый фон
+        content_layout.rect = Rectangle(size=content_layout.size, pos=content_layout.pos)
+    content_layout.bind(pos=lambda inst, value: setattr(inst.rect, 'pos', value),
+                        size=lambda inst, value: setattr(inst.rect, 'size', value))
+
+    # === Заголовок отчета ===
+    header_layout = BoxLayout(orientation='vertical', size_hint_y=None, padding=[0, dp(10)], spacing=dp(10))
+    header_layout.bind(minimum_height=header_layout.setter('height'))
+
     city_label = Label(
-        text=f"[b][color=#FFD700]Город: {report_data[0]['city']}[/color][/b]",
+        text=f"[b][color=#FFD700]Город: {battle_city}[/color][/b]",
         markup=True,
         size_hint_y=None,
-        height=dp(30),
-        font_size=sp(16),
-        color=(1, 1, 1, 1)
+        # height=dp(35), # Высота определяется текстом и padding
+        font_size=sp(18),
+        halign='center',
+        valign='middle'
     )
-    main_layout.add_widget(city_label)
+    city_label.bind(size=city_label.setter('text_size'), texture_size=city_label.setter('height'))
+    header_layout.add_widget(city_label)
 
-    # === Выводим результат боя один раз ===
-    result_text = ""
-    result_color = "#FFFFFF"
-
-    for item in report_data:
-        if item.get("result"):
-            result_text = item["result"]
-            result_color = "#33FF57" if result_text == "Победа" else "#FF5733"
-            break
-
-    if result_text:
+    if user_result:
         result_label = Label(
-            text=f"[b][color={result_color}]{result_text}[/color][/b]",
+            text=f"[b][size={sp(20)}][color={user_result_color}]{user_result}[/color][/size][/b]",
             markup=True,
             size_hint_y=None,
-            height=dp(30),
+            # height=dp(40),
+            font_size=sp(18), # Базовый размер, markup управляет
+            halign='center',
+            valign='middle'
+        )
+        result_label.bind(size=result_label.setter('text_size'), texture_size=result_label.setter('height'))
+        header_layout.add_widget(result_label)
+    else:
+        # Если игрок не участвовал или результат не определен
+        result_label = Label(
+            text=f"[b][size={sp(18)}][color=#FFFFFF]Бой завершен[/color][/size][/b]",
+            markup=True,
+            size_hint_y=None,
             font_size=sp(16),
-            color=(1, 1, 1, 1)
+            halign='center',
+            valign='middle'
         )
-        main_layout.add_widget(result_label)
+        result_label.bind(size=result_label.setter('text_size'), texture_size=result_label.setter('height'))
+        header_layout.add_widget(result_label)
 
-    # Функция для создания таблицы
-    def create_table(data, title):
-        table_layout = GridLayout(
-            cols=4,
-            size_hint_y=None,
-            spacing=dp(10),
-            padding=dp(10)
-        )
-        table_layout.bind(minimum_height=table_layout.setter('height'))
+    content_layout.add_widget(header_layout)
 
-        # Заголовок таблицы
-        header = Label(
-            text=f"[b]{title}[/b]",
-            markup=True,
-            size_hint_y=None,
-            height=dp(40),
-            font_size=sp(15),
-            color=(1, 1, 1, 1)
-        )
-        main_layout.add_widget(header)
-
-        # Заголовки столбцов
-        headers = ["Тип Юнита", "На начало боя", "Потери", "Осталось юнитов"]
-        for header_text in headers:
-            label = Label(
-                text=f"[b]{header_text}[/b]",
-                markup=True,
-                size_hint_y=None,
-                height=dp(40),
-                font_size=sp(14),
-                color=(0.8, 0.8, 0.8, 1)
-            )
-            table_layout.add_widget(label)
-
-        # Данные
-        for unit_data in data:
-            for value in [
-                unit_data['unit_name'],
-                str(unit_data['initial_count']),
-                str(unit_data['losses']),
-                str(unit_data['final_count'])
-            ]:
-                cell = Label(
-                    text=value,
-                    font_size=sp(14),
-                    size_hint_y=None,
-                    height=dp(40)
-                )
-                table_layout.add_widget(cell)
-
-        main_layout.add_widget(table_layout)
-
-    # Разделяем данные по сторонам
+    # === Обработка данных для атакующих и обороняющихся ===
     attacking_data = [item for item in report_data if item['side'] == 'attacking']
     defending_data = [item for item in report_data if item['side'] == 'defending']
 
-    create_table(attacking_data, "Атакующие силы")
-    create_table(defending_data, "Оборонительные силы")
+    # Функция для создания карточки стороны
+    def create_side_card(side_data, side_title, title_color="#4A90E2"): # Синий по умолчанию
+        if not side_data:
+            return None # Не создавать карточку, если данных нет
 
-    # Кнопка закрытия окна
+        card_layout = BoxLayout(orientation='vertical', size_hint_y=None, padding=dp(10), spacing=dp(8))
+        # card_layout.bind(minimum_height=card_layout.setter('height')) # Будет установлено позже
+
+        # Заголовок карточки
+        title_label = Label(
+            text=f"[b][color={title_color}]{side_title}[/color][/b]",
+            markup=True,
+            size_hint_y=None,
+            # height=dp(30),
+            font_size=sp(16),
+            halign='left'
+        )
+        title_label.bind(size=title_label.setter('text_size'), texture_size=title_label.setter('height'))
+        card_layout.add_widget(title_label)
+
+        # Определение уникальных фракций в этой группе (может быть несколько союзников)
+        factions_in_side = list(set(item.get('faction', 'Неизвестно') for item in side_data))
+        if factions_in_side:
+            factions_text = ", ".join(factions_in_side)
+            factions_label = Label(
+                text=f"[color=#AAAAAA]Фракции: {factions_text}[/color]",
+                markup=True,
+                size_hint_y=None,
+                font_size=sp(12),
+                halign='left'
+            )
+            factions_label.bind(size=factions_label.setter('text_size'), texture_size=factions_label.setter('height'))
+            card_layout.add_widget(factions_label)
+
+        # Создание таблицы внутри ScrollView
+        table_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False) # Только вертикальная прокрутка внутри таблицы
+        table_layout = GridLayout(cols=4, spacing=dp(2), size_hint_y=None)
+        # table_layout.bind(minimum_height=table_layout.setter('height')) # Будет установлено позже
+
+        # Заголовки таблицы
+        headers = ["Юнит", "Было", "Стало", "Потери"]
+        for header in headers:
+            header_cell = Label(
+                text=f"[b]{header}[/b]",
+                markup=True,
+                size_hint_y=None,
+                height=dp(35),
+                font_size=sp(12),
+                halign='center',
+                valign='middle',
+                # Цвет фона для заголовка
+            )
+            header_cell.bind(size=header_cell.setter('text_size'))
+            with header_cell.canvas.before:
+                Color(0.2, 0.2, 0.2, 1) # Темно-серый фон для заголовка
+                header_cell.bg_rect = Rectangle(pos=header_cell.pos, size=header_cell.size)
+            header_cell.bind(pos=lambda inst, value: setattr(inst.bg_rect, 'pos', value),
+                             size=lambda inst, value: setattr(inst.bg_rect, 'size', value))
+            table_layout.add_widget(header_cell)
+
+        # Данные таблицы
+        row_colors = [(0.15, 0.15, 0.15, 1), (0.18, 0.18, 0.18, 1)] # Цвета строк зебры
+        for i, item in enumerate(side_data):
+            color_idx = i % 2
+            bg_color = row_colors[color_idx]
+            unit_name = item.get('unit_name', 'Неизвестно')
+            initial_count = str(item.get('initial_count', 0))
+            final_count = str(item.get('final_count', 0))
+            losses = str(item.get('losses', 0))
+
+            # Создание ячеек строки
+            cells = [unit_name, initial_count, final_count, losses]
+            for j, cell_text in enumerate(cells):
+                cell_label = Label(
+                    text=cell_text,
+                    size_hint_y=None,
+                    height=dp(30),
+                    font_size=sp(11),
+                    halign='center' if j > 0 else 'left', # Числа по центру, имя слева
+                    valign='middle'
+                )
+                cell_label.bind(size=cell_label.setter('text_size'))
+                # Фон строки
+                with cell_label.canvas.before:
+                    Color(*bg_color)
+                    cell_label.bg_rect = Rectangle(pos=cell_label.pos, size=cell_label.size)
+                cell_label.bind(pos=lambda inst, value: setattr(inst.bg_rect, 'pos', value),
+                                size=lambda inst, value: setattr(inst.bg_rect, 'size', value))
+                table_layout.add_widget(cell_label)
+
+        # Установка минимальной высоты таблицы и добавление в ScrollView
+        table_layout.bind(minimum_height=table_layout.setter('height'))
+        table_scroll.add_widget(table_layout)
+
+        # Ограничение высоты области прокрутки таблицы (например, до 40% высоты экрана или фиксированной высоты)
+        # Можно адаптировать под разные экраны
+        # max_table_height = Window.height * 0.4 # 40% высоты экрана
+        max_table_height = dp(200) # Или фиксированная высота
+        table_scroll.height = min(table_layout.height, max_table_height)
+        # Если таблица меньше максимальной высоты, ScrollView не будет активен.
+        # Если больше - появится прокрутка внутри этой области.
+
+        card_layout.add_widget(table_scroll)
+
+        # Обновление высоты карточки после добавления всех элементов
+        card_layout.bind(minimum_height=lambda inst, value: setattr(inst, 'height', value))
+
+        # Фон карточки
+        with card_layout.canvas.before:
+            Color(0.1, 0.1, 0.1, 1) # Темно-серый фон карточки
+            card_layout.bg_rect = Rectangle(pos=card_layout.pos, size=card_layout.size)
+        card_layout.bind(pos=lambda inst, value: setattr(inst.bg_rect, 'pos', value),
+                         size=lambda inst, value: setattr(inst.bg_rect, 'size', value))
+
+        return card_layout
+
+
+    # === Создание и добавление карточек ===
+    attacking_card = create_side_card(attacking_data, "Атакующие", "#FF6B6B") # Красноватый для атакующих
+    if attacking_card:
+        content_layout.add_widget(attacking_card)
+
+    defending_card = create_side_card(defending_data, "Обороняющиеся", "#4ECDC4") # Голубоватый для обороняющихся
+    if defending_card:
+        content_layout.add_widget(defending_card)
+
+    # Добавляем основной контент в ScrollView
+    main_scroll.add_widget(content_layout)
+
+    # === Кнопка закрытия ===
     close_button = Button(
         text="Закрыть",
         size_hint_y=None,
-        height=dp(30 if platform == 'android' else 50),
+        height=dp(50), # Фиксированная высота кнопки
         background_color=(0.2, 0.6, 1, 1),
-        font_size=sp(16 if platform == 'android' else 16),
+        font_size=sp(16),
         color=(1, 1, 1, 1)
     )
-    close_button.bind(on_release=lambda instance: popup.dismiss())
+    # Закрытие popup будет обработано позже при его создании
 
-    # ScrollView
-    scroll_view = ScrollView()
-    scroll_view.add_widget(main_layout)
+    # === Основной контейнер для Popup ===
+    popup_layout = BoxLayout(orientation='vertical')
 
-    content.add_widget(scroll_view)
-    content.add_widget(close_button)
+    popup_layout.add_widget(main_scroll) # Основной контент с прокруткой
+    popup_layout.add_widget(close_button) # Кнопка закрытия внизу
+
+    # === Создание и открытие Popup ===
+    popup = Popup(
+        title="Итоги боя",
+        content=popup_layout,
+        size_hint=(0.95, 0.9), # Занимает большую часть экрана
+        # Убираем background_color, если он мешает стилю карточек
+        # background_color=(0.1, 0.1, 0.1, 1)
+    )
+    close_button.bind(on_release=popup.dismiss) # Привязываем закрытие к кнопке
+    popup.open()
 
     # === Обновление досье только если игрок участвовал ===
-    if is_user_involved and user_faction and report_data:
-        is_victory = any(item['result'] == "Победа" for item in report_data)
+    if is_user_involved and user_faction and conn and report_data:
+        # is_victory = any(item['result'] == "Победа" for item in report_data if item.get('faction') == user_faction)
+        # Упрощенная проверка на основе user_result
+        is_victory = (user_result == "Победа")
         try:
             update_dossier_battle_stats(conn, user_faction, is_victory)
         except Exception as e:
             print(f"[Ошибка] Не удалось обновить досье: {e}")
 
-    # Всплывающее окно
-    popup = Popup(
-        title="Итоги боя",
-        content=content,
-        size_hint=(0.9, 0.85 if platform == 'android' else 0.8),
-        background_color=(0.1, 0.1, 0.1, 1)
-    )
-    popup.open()
 
 
 def fight(attacking_city, defending_city, defending_army, attacking_army,
