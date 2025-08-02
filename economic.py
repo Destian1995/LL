@@ -1,6 +1,6 @@
 from lerdon_libraries import *
 from db_lerdon_connect import *
-
+from heroes import open_artifacts_popup
 
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
@@ -2085,6 +2085,8 @@ def start_economy_mode(faction, game_area):
     build_btn = create_styled_button("Статистика", lambda x: open_build_popup(faction))
     trade_btn = create_styled_button("Рынок", lambda x: open_trade_popup(faction))
     tax_btn = create_styled_button("Налоги", lambda x: open_tax_popup(faction))
+
+    economy_layout.add_widget(create_styled_button("Артефакты", lambda x: open_artifacts_popup(faction)))
 
     economy_layout.add_widget(auto_btn)
     economy_layout.add_widget(build_btn)
