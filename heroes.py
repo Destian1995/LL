@@ -146,11 +146,11 @@ def load_hero_image_from_db(faction):
         if row and row[0]:
             return row[0]
         else:
-            return "files/pict/garrisons/default_hero.png"
+            return "files/pict/hero/default_image.png"
 
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке изображения героя: {e}")
-        return "files/pict/garrisons/default_hero.png"
+        return "files/pict/hero/default_image.png"
 
 def format_artifact_description(artifact):
     """
