@@ -1100,39 +1100,44 @@ class FortressInfoPopup(Popup):
 
     def add_to_garrison_with_slider(self, unit_data, name_label):
         """
-        Открывает адаптивное всплывающее окно с ползунком для выбора количества войск.
+        Открывает адаптивное всплывающее окно с ползунком для выбора количества войск
+        или немедленно размещает, если доступен только 1 юнит.
         """
         from kivy.metrics import dp, sp  # Убедитесь, что импортированы
         unit_type = unit_data["unit_type"]
         available_count = unit_data["quantity"]
 
+        # --- НОВАЯ ЛОГИКА: Немедленное размещение, если юнит один ---
+        if available_count == 1:
+            # Немедленно размещаем 1 юнит без открытия popup
+            self.transfer_army_to_garrison(unit_data, 1) # Передаем 1
+            # name_label.color = (0, 1, 0, 1) # Можно изменить цвет кнопки, если нужно
+            return # Выходим из функции
+        # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
         # Определение платформы
         is_mobile = platform == 'android' or platform == 'ios'
-
         # Расчёт ширины окна (95% ширины экрана без ограничения)
         window_width = Window.width * 0.95 if is_mobile else Window.width * 0.7
         # Высота окна с коррекцией для Android
         window_height = Window.height * 0.75 if is_mobile else Window.height * 0.4
         if is_mobile:
             window_height *= 0.9  # Компенсация высоты для Android
-
         # Создание Popup
         popup = Popup(
-            title=f"",
+            title=f"", # Убираем заголовок или делаем пустым
             size_hint=(None, None),
             width=window_width,
             height=window_height,
             title_size=sp(20) if is_mobile else sp(18),
             background_color=(0.1, 0.1, 0.1, 0.95)
         )
-
         # Основной контейнер с адаптированными отступами
         layout = BoxLayout(
             orientation='vertical',
             padding=[dp(20), dp(15)],
             spacing=dp(20)
         )
-
         # === Ползунок с меткой ===
         slider_container = BoxLayout(
             orientation='horizontal',
@@ -1149,7 +1154,6 @@ class FortressInfoPopup(Popup):
             valign='middle'
         )
         slider_label.bind(size=slider_label.setter('text_size'))
-
         slider = Slider(
             min=0,
             max=available_count,
@@ -1158,15 +1162,12 @@ class FortressInfoPopup(Popup):
             size_hint_x=0.6,
             background_width=dp(40) if is_mobile else dp(30)
         )
-
         def update_slider_label(instance, value):
             slider_label.text = f"Количество: {int(value)}"
-
         slider.bind(value=update_slider_label)
         slider_container.add_widget(slider_label)
         slider_container.add_widget(slider)
         layout.add_widget(slider_container)
-
         # === Кнопки подтверждения ===
         button_layout = BoxLayout(
             orientation='horizontal',
@@ -1190,25 +1191,22 @@ class FortressInfoPopup(Popup):
             border=[dp(15), dp(15), dp(15), dp(15)],
             size_hint_x=0.5
         )
-
         def confirm_action(btn):
             try:
                 selected_count = int(slider.value)
                 if 0 < selected_count <= available_count:
                     self.transfer_army_to_garrison(unit_data, selected_count)
                     popup.dismiss()
-                    name_label.color = (0, 1, 0, 1)
+                    # name_label.color = (0, 1, 0, 1) # Можно изменить цвет кнопки, если нужно
                 else:
                     show_popup_message("Ошибка", f"Выберите количество от 1 до {available_count}")
             except ValueError:
                 show_popup_message("Ошибка", "Введите корректное число")
-
         confirm_button.bind(on_release=confirm_action)
         cancel_button.bind(on_release=lambda btn: popup.dismiss())
         button_layout.add_widget(confirm_button)
         button_layout.add_widget(cancel_button)
         layout.add_widget(button_layout)
-
         # === Адаптация размера окна при изменении размера экрана ===
         def adapt_popup_size(*args):
             if is_mobile:
@@ -1217,12 +1215,95 @@ class FortressInfoPopup(Popup):
             else:
                 popup.width = Window.width * 0.7
                 popup.height = Window.height * 0.4
-
         Window.bind(on_resize=adapt_popup_size)
         popup.bind(on_dismiss=lambda _: Window.unbind(on_resize=adapt_popup_size))
-
         popup.content = layout
         popup.open()
+
+    def transfer_army_to_garrison(self, selected_unit, taken_count):
+        """
+        Переносит юнитов из армии в гарнизон и создает слоты экипировки для героев 3 класса.
+        """
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                unit_type = selected_unit.get("unit_type")
+                stats = selected_unit.get("stats", {})
+                unit_image = selected_unit.get("unit_image")
+                faction = self.player_fraction # Предполагается, что это текущая фракция игрока
+                unit_class = stats.get("Класс", None) # Получаем класс из stats
+
+                if not all([unit_type, taken_count, stats, unit_image]):
+                    raise ValueError("Некорректные данные для переноса юнита.")
+
+                # --- ЛОГИКА ДОБАВЛЕНИЯ В ГАРИЗОН ---
+                # Получаем текущее количество юнитов в гарнизоне
+                cursor.execute("""
+                    SELECT unit_count FROM garrisons
+                    WHERE city_name = ? AND unit_name = ?
+                """, (self.city_name, unit_type))
+                existing_unit = cursor.fetchone()
+                if existing_unit:
+                    new_count = existing_unit[0] + taken_count
+                    cursor.execute("""
+                        UPDATE garrisons
+                        SET unit_count = ?
+                        WHERE city_name = ? AND unit_name = ?
+                    """, (new_count, self.city_name, unit_type))
+                else:
+                    cursor.execute("""
+                        INSERT INTO garrisons
+                        (city_name, unit_name, unit_count, unit_image)
+                        VALUES (?, ?, ?, ?)
+                    """, (self.city_name, unit_type, taken_count, unit_image))
+
+                # Уменьшаем количество юнитов в армии
+                cursor.execute("""
+                    UPDATE armies
+                    SET quantity = quantity - ?
+                    WHERE unit_type = ?
+                """, (taken_count, unit_type))
+                cursor.execute("""
+                    DELETE FROM armies
+                    WHERE unit_type = ? AND quantity <= 0
+                """, (unit_type,))
+
+                # Работа с таблицей results
+                cursor.execute("""
+                    INSERT INTO results (faction, Units_Combat)
+                    VALUES (?, ?)
+                    ON CONFLICT(faction) DO UPDATE SET Units_Combat = Units_Combat + excluded.Units_Combat
+                """, (faction, taken_count))
+                # --- КОНЕЦ ЛОГИКИ ДОБАВЛЕНИЯ В ГАРИЗОН ---
+
+                # --- НОВАЯ ЛОГИКА: СОЗДАНИЕ СЛОТОВ ЭКИПИРОВКИ ДЛЯ ГЕРОЕВ 3 КЛАССА ---
+                # Проверяем, является ли юнит героем (класс 3) и был ли он добавлен (taken_count > 0)
+                if unit_class == "3" and taken_count > 0:
+                    # Формируем имя героя (предполагаем, что оно совпадает с unit_type)
+                    hero_name = unit_type
+                    insert_equipment_query = """
+                        INSERT OR IGNORE INTO hero_equipment (faction_name, hero_name, slot_type, artifact_id)
+                        VALUES (?, ?, ?, ?)
+                    """
+                    # Подготавливаем данные для 5 слотов (0-4)
+                    equipment_data = [
+                        (faction, hero_name, slot_type, None) # artifact_id изначально NULL/None
+                        for slot_type in range(5)
+                    ]
+                    # Выполняем множественную вставку
+                    cursor.executemany(insert_equipment_query, equipment_data)
+                    print(f"Созданы 5 слотов экипировки для героя '{hero_name}' фракции '{faction}'.")
+                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
+            # Обновляем отображение гарнизона
+            self.update_garrison()
+            # Закрываем текущее popup окно, если оно открыто
+            self.close_current_popup()
+
+        except sqlite3.Error as e:
+            show_popup_message("Ошибка", f"Не удалось перенести юниты или создать слоты экипировки: {e}")
+        except Exception as e:
+            show_popup_message("Ошибка", f"Произошла ошибка: {e}")
 
     def get_city_owner(self, city_name):
         try:
