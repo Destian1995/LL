@@ -1,7 +1,5 @@
-# army.py
-from lerdon_libraries import *
-from db_lerdon_connect import *
 
+from db_lerdon_connect import *
 from economic import format_number
 
 

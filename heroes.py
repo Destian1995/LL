@@ -1,15 +1,40 @@
 from db_lerdon_connect import *
-from kivy.uix.popup import Popup
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.image import Image
-from kivy.uix.floatlayout import FloatLayout
-from kivy.graphics import Color, RoundedRectangle
-from kivy.clock import Clock
-from kivy.metrics import dp
-import sqlite3
+def format_number(number):
+    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
+    if not isinstance(number, (int, float)):
+        return str(number)
+    if number == 0:
+        return "0"
+
+    absolute = abs(number)
+    sign = -1 if number < 0 else 1
+
+    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:  # 1e36
+        return f"{sign * absolute / 1e36:.1f} андец."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:  # 1e33
+        return f"{sign * absolute / 1e33:.1f} децил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:  # 1e30
+        return f"{sign * absolute / 1e30:.1f} нонил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e27
+        return f"{sign * absolute / 1e27:.1f} октил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000:  # 1e24
+        return f"{sign * absolute / 1e24:.1f} септил."
+    elif absolute >= 1_000_000_000_000_000_000_000:  # 1e21
+        return f"{sign * absolute / 1e21:.1f} секст."
+    elif absolute >= 1_000_000_000_000_000_000:  # 1e18
+        return f"{sign * absolute / 1e18:.1f} квинт."
+    elif absolute >= 1_000_000_000_000_000:  # 1e15
+        return f"{sign * absolute / 1e15:.1f} квадр."
+    elif absolute >= 1_000_000_000_000:  # 1e12
+        return f"{sign * absolute / 1e12:.1f} трлн."
+    elif absolute >= 1_000_000_000:  # 1e9
+        return f"{sign * absolute / 1e9:.1f} млрд."
+    elif absolute >= 1_000_000:  # 1e6
+        return f"{sign * absolute / 1e6:.1f} млн."
+    elif absolute >= 1_000:  # 1e3
+        return f"{sign * absolute / 1e3:.1f} тыс."
+    else:
+        return f"{number}"
 
 # --- Вспомогательные функции ---
 
@@ -22,9 +47,8 @@ def load_artifacts_from_db(faction):
         cursor.execute('''
             SELECT id, name, attack, defense, health, army_consumption,
                    crystal_bonus, coins_bonus, workers_bonus,
-                   season_name, season_bonus_multiplier, image_url, cost
+                   season_name, season_bonus_multiplier, image_url, cost, artifact_type
             FROM artifacts
-            -- WHERE ... -- Добавить условия, если нужно
         ''')
         rows = cursor.fetchall()
         for row in rows:
@@ -41,7 +65,8 @@ def load_artifacts_from_db(faction):
                 "season_name": row[9] if row[9] is not None else "", # Может быть пустой строкой
                 "season_bonus_multiplier": row[10] if row[10] is not None else 1.0,
                 "image_url": row[11] if row[11] is not None else "files/pict/artifacts/default.png",
-                "cost": row[12] if row[12] is not None else 0 # Добавлено поле cost
+                "cost": row[12] if row[12] is not None else 0,
+                "artifact_type": row[13] if row[13] is not None else -1
             }
             #print(f'Загруженный артефакт:{artifact}')
             stats = [
@@ -194,13 +219,222 @@ def open_artifacts_popup(faction):
 
     # --- Левая часть: Список артефактов ---
     left_panel = BoxLayout(orientation='vertical', size_hint=(0.5, 1))
+
+    # --- Фильтры ---
+    # --- Контейнер для фильтров ---
+    filters_container = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(120), spacing=dp(5))
+    # Инициализируем состояния фильтров
+    filter_states = {
+        'season_influence': 'all', # 'all', 'has_influence', 'no_influence'
+        'artifact_type': 'all',   # 'all', 'weapon', 'boots', 'armor', 'helmet', 'accessory'
+        'cost_sort': 'all'       # 'all',
+    }
+
+    # --- Функция для обновления отображаемого списка артефактов ---
+    def update_artifact_list(*args):
+        """Обновляет список артефактов на основе текущих фильтров."""
+        # Очистка текущего списка
+        artifacts_list_layout.clear_widgets()
+
+        # Применение фильтров
+        filtered_artifacts = []
+        for artifact in artifacts_list:
+            # Фильтр по влиянию сезона
+            season_ok = True
+            if filter_states['season_influence'] == 'has_influence':
+                # Считаем, что сезон влияет, если поле season_name не пустое и не None
+                season_name = artifact.get('season_name')
+                season_ok = season_name is not None and season_name != ""
+            elif filter_states['season_influence'] == 'no_influence':
+                # Считаем, что сезон НЕ влияет, если поле season_name пустое или None
+                season_name = artifact.get('season_name')
+                season_ok = season_name is None or season_name == ""
+
+            # Фильтр по типу артефакта
+            type_ok = True
+            if filter_states['artifact_type'] != 'all':
+                # Предположим, у артефакта есть поле 'slot_type'
+                type_ok = artifact.get('artifact_type') == filter_states['artifact_type']
+
+            # Фильтр по стоимости
+            cost_ok = True
+            if filter_states['cost_sort'] == 'asc':
+                filtered_artifacts.sort(key=lambda art: art.get('cost', 0))
+            elif filter_states['cost_sort'] == 'desc':
+                filtered_artifacts.sort(key=lambda art: art.get('cost', 0), reverse=True)
+
+
+            if season_ok and type_ok and cost_ok:
+                filtered_artifacts.append(artifact)
+
+        # --- Заполнение таблицы отфильтрованными артефактами ---
+        for artifact in filtered_artifacts:
+            description = format_artifact_description(artifact)
+            if not description:  # Пропустить, если описание пустое (все бонусы 0)
+                continue
+            # --- Контейнер строки артефакта ---
+            artifact_row_container = BoxLayout(
+                orientation='horizontal',
+                size_hint_y=None,
+                height=dp(90),
+                padding=(dp(5), dp(5)),
+                spacing=dp(10)
+            )
+
+            # --- Контейнер информации об артефакте ---
+            artifact_info_container = BoxLayout(
+                orientation='vertical',
+                size_hint_x=0.75
+            )
+            name_label = Label(
+                text=artifact['name'],
+                halign='left',
+                valign='middle',
+                font_size='16sp',
+                bold=True,
+                size_hint_y=None,
+                height=dp(25)
+            )
+            name_label.bind(size=name_label.setter('text_size'))
+            stats_label = Label(
+                text=description,
+                halign='left',
+                valign='top',
+                font_size='14sp',
+                bold=True,
+                color=(0.8, 0.8, 0.8, 1),
+                size_hint_y=None,
+                height=dp(50)
+            )
+            stats_label.bind(size=stats_label.setter('text_size'))
+            artifact_info_container.add_widget(name_label)
+            artifact_info_container.add_widget(stats_label)
+
+            # --- Кнопка "Купить" ---
+            # Получаем стоимость артефакта (по ключу 'cost'), если ключа нет, используем 0 по умолчанию
+            cost = artifact.get('cost', 0)
+            # Форматируем число стоимости
+            formatted_cost = format_number(cost)  # <-- Теперь правильно: передаем число в format_number
+            buy_button = Button(
+                text=f"Купить\n({formatted_cost})",
+                size_hint_x=None,
+                width=dp(90),
+                height=dp(60),
+            )
+
+            style_buy_button(buy_button) # Предполагается, что эта функция определена в вашем коде
+
+            def make_buy_handler(art_data):
+                def on_buy(instance):
+                    print(f"Покупка артефакта: {art_data['name']} (ID: {art_data['id']})")
+                    slot_equipped = False
+                    # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
+                    for slot_type in ['0', '2', '3', '1', '4']:
+                        if slot_type not in hero_equipment or hero_equipment[slot_type] is None:
+                            save_hero_equipment_to_db(faction, slot_type, art_data['id'])
+                            hero_equipment[slot_type] = art_data['id']
+                            update_equipment_slot(slot_type, art_data)
+                            print(f"Артефакт {art_data['name']} экипирован в {slot_type}")
+                            slot_equipped = True
+                            break
+                    if not slot_equipped:
+                        print(f"Нет свободных слотов для артефакта {art_data['name']}")
+                return on_buy
+
+            buy_button.bind(on_release=make_buy_handler(artifact))
+
+            # --- Добавление виджетов в строку ---
+            artifact_row_container.add_widget(artifact_info_container)
+            button_wrapper = BoxLayout(size_hint_x=None, width=dp(90), padding=(0, dp(15), 0, dp(15)))
+            button_wrapper.add_widget(buy_button)
+            artifact_row_container.add_widget(button_wrapper)
+
+            # --- Добавить строку в таблицу ---
+            artifacts_list_layout.add_widget(artifact_row_container)
+            # artifact_widgets[artifact['id']] = artifact_row_container # Можно сохранить, если нужно
+
+        # Обновляем высоту контейнера
+        artifacts_list_layout.height = len(artifacts_list_layout.children) * dp(90) + (len(artifacts_list_layout.children) - 1) * dp(5) if artifacts_list_layout.children else dp(1)
+
+    # --- Виджеты фильтров ---
+    # 1. Фильтр по сезону
+    season_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
+    season_filter_layout.add_widget(Label(text="Сезон:", size_hint_x=None, width=dp(60), halign='left'))
+    season_spinner = Spinner(
+        text='Все',
+        values=('Все', 'Есть влияние', 'Нет влияния'),
+        size_hint=(1, None),
+        height=dp(30)
+    )
+    def on_season_spinner_select(spinner, text):
+        mapping = {'Все': 'all', 'Есть влияние': 'has_influence', 'Нет влияния': 'no_influence'}
+        filter_states['season_influence'] = mapping.get(text, 'all')
+        update_artifact_list()
+    season_spinner.bind(text=on_season_spinner_select)
+    season_filter_layout.add_widget(season_spinner)
+    filters_container.add_widget(season_filter_layout)
+
+    # 2. Фильтр по типу
+    type_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
+    type_filter_layout.add_widget(Label(text="Тип:", size_hint_x=None, width=dp(60), halign='left'))
+    type_spinner = Spinner(
+        text='Все',
+        values=('Все', 'Оружие', 'Сапоги', 'Туловище', 'Голова', 'Аксессуар'),
+        size_hint=(1, None),
+        height=dp(30)
+    )
+
+    def on_type_spinner_select(spinner, text):
+        # Используем числовые значения для фильтрации, соответствующие artifact_type в БД
+        # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
+        mapping = {
+            'Все': 'all',
+            'Оружие': 0,
+            'Голова': 1,
+            'Сапоги': 2,
+            'Туловище': 3,
+            'Аксессуар': 4
+        }
+        # filter_states['artifact_type'] должен быть числом или 'all'
+        selected_value = mapping.get(text, 'all')
+        filter_states['artifact_type'] = selected_value
+        update_artifact_list()
+    type_spinner.bind(text=on_type_spinner_select)
+    type_filter_layout.add_widget(type_spinner)
+    filters_container.add_widget(type_filter_layout)
+
+    # 3. Фильтр по стоимости (изменен на сортировку)
+    cost_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
+    cost_filter_layout.add_widget(Label(text="Цена:", size_hint_x=None, width=dp(60), halign='left'))
+    # Изменяем значения спиннера для сортировки
+    cost_spinner = Spinner(
+        text='Все',
+        values=('Все', 'По возрастанию', 'По убыванию'), # <-- ИЗМЕНЕНЫ значения
+        size_hint=(1, None),
+        height=dp(30)
+    )
+    def on_cost_spinner_select(spinner, text):
+        # Используем 'asc' и 'desc' для сортировки
+        mapping = {'Все': 'all', 'По возрастанию': 'asc', 'По убыванию': 'desc'}
+        filter_states['cost_sort'] = mapping.get(text, 'all') # ИЗМЕНЕНО с cost_range на cost_sort
+        update_artifact_list()
+    cost_spinner.bind(text=on_cost_spinner_select)
+    cost_filter_layout.add_widget(cost_spinner)
+    filters_container.add_widget(cost_filter_layout)
+
+    # Добавляем контейнер с фильтрами на левую панель
+    left_panel.add_widget(filters_container)
+
+    # --- Заголовок списка артефактов ---
     left_panel.add_widget(Label(text="Артефакты", size_hint_y=None, height=dp(40), bold=True, font_size='18sp'))
 
+    # --- Список артефактов (ScrollView) ---
     scroll_view = ScrollView(do_scroll_x=False)
     artifacts_list_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
-    # Привязка высоты будет обновлена позже
-    # artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
-
+    # Привязка высоты
+    artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
+    scroll_view.add_widget(artifacts_list_layout)
+    left_panel.add_widget(scroll_view)
     # --- Создание виджетов для артефактов ---
     artifact_widgets = {}
     equipment_slots = {}  # Ссылки на виджеты слотов будут храниться здесь
@@ -268,13 +502,15 @@ def open_artifacts_popup(faction):
         artifact_info_container.add_widget(stats_label)
 
         # --- Кнопка "Купить" ---
+        # Получаем стоимость артефакта (по ключу 'cost'), если ключа нет, используем 0 по умолчанию
+        cost = artifact.get('cost', 0)
+        # Форматируем число стоимости
+        formatted_cost = format_number(cost)  # <-- Теперь правильно: передаем число в format_number
         buy_button = Button(
-            text=f"Купить\n({artifact.get('cost', 0)})",
+            text=f"Купить\n({formatted_cost})",
             size_hint_x=None,
-            width=dp(90),  # Увеличил ширину
-            height=dp(60),  # Установил фиксированную высоту
-            # valign='middle',
-            # halign='center'
+            width=dp(90),
+            height=dp(60),
         )
         # Применяем стиль к кнопке
         style_buy_button(buy_button)
@@ -294,7 +530,8 @@ def open_artifacts_popup(faction):
 
                 # Простая логика: экипируем в первый свободный слот из списка
                 slot_equipped = False
-                for slot_type in ['weapon', 'boots', 'armor', 'helmet', 'accessory']:
+                # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
+                for slot_type in ['0', '2', '3', '1', '4']:
                     if slot_type not in hero_equipment or hero_equipment[slot_type] is None:
                         save_hero_equipment_to_db(faction, slot_type, art_data['id'])
                         hero_equipment[slot_type] = art_data['id']
@@ -326,8 +563,7 @@ def open_artifacts_popup(faction):
 
     # --- Обновление ScrollView ---
     artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
-    scroll_view.add_widget(artifacts_list_layout)
-    left_panel.add_widget(scroll_view)
+
 
     # --- Правая часть: Герой и экипировка ---
     right_panel = FloatLayout(size_hint=(0.5, 1))
@@ -389,7 +625,7 @@ def open_artifacts_popup(faction):
                 slot_widget.add_widget(Label(text=f"[{slot_type[:3].upper()}]", markup=True, font_size='10sp'))
 
     # --- Создание слотов экипировки ---
-    for slot_type in ['weapon', 'boots', 'armor', 'helmet', 'accessory']:
+    for slot_type in ['0', '2', '3', '1', '4']:
         # Создаем виджет кнопки для слота
         slot_widget = Button(
             size_hint=(None, None),
@@ -414,12 +650,13 @@ def open_artifacts_popup(faction):
 
         # --- Добавление подписи слота ---
         # Словарь для сопоставления типа слота с его подписью
+        # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
         slot_labels = {
-            'weapon': 'Оружие',
-            'boots': 'Сапоги',
-            'armor': 'Туловище',
-            'helmet': 'Голова',
-            'accessory': 'Аксессуар'
+            '0': 'Оружие',
+            '2': 'Сапоги',
+            '3': 'Туловище',
+            '1': 'Голова',
+            '4': 'Аксессуар'
         }
         # Создаем Label с подписью
         slot_label = Label(
@@ -481,18 +718,18 @@ def open_artifacts_popup(faction):
                                   min_distance_from_center)  # Убедимся, что не меньше dp(200) или рассчитанного значения
         distance_vertical = max(dp(200), min_distance_from_center)  # То же для вертикали
         distance_above_head = distance_vertical + dp(80)  # Аксессуар немного выше, чем шлем
-
+        # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
         slot_positions = {
             # Слева от героя (Оружие)
-            'weapon': (center_x - distance_horizontal, center_y - slot_size[1] / 2),
+            '0': (center_x - distance_horizontal, center_y - slot_size[1] / 2),
             # Снизу от героя (Сапоги)
-            'boots': (center_x - slot_size[0] / 2, center_y - distance_vertical),
+            '2': (center_x - slot_size[0] / 2, center_y - distance_vertical),
             # Справа от героя (Туловище)
-            'armor': (center_x + distance_horizontal - slot_size[0], center_y - slot_size[1] / 2),
+            '3': (center_x + distance_horizontal - slot_size[0], center_y - slot_size[1] / 2),
             # Сверху от героя (Голова)
-            'helmet': (center_x - slot_size[0] / 2, center_y + distance_vertical - slot_size[1]),
+            '1': (center_x - slot_size[0] / 2, center_y + distance_vertical - slot_size[1]),
             # Сверху справа от героя (Аксессуар)
-            'accessory': (center_x + distance_horizontal - slot_size[0], center_y + distance_above_head - slot_size[1]),
+            '4': (center_x + distance_horizontal - slot_size[0], center_y + distance_above_head - slot_size[1]),
         }
         # -------------------------------
 
