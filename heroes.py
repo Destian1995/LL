@@ -1,3 +1,5 @@
+from kivy.graphics import PopMatrix, PushMatrix
+
 from db_lerdon_connect import *
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
@@ -176,9 +178,9 @@ def format_artifact_description(artifact):
                     effective_value = int(effective_value)
                 else:
                     effective_value = round(effective_value, 1)
-                stats.append(f"{label} +{effective_value}%")
+                stats.append(f"{label} {effective_value}%")
             else:
-                stats.append(f"{label} +{value}%")
+                stats.append(f"{label} {value}%")
 
     if not stats:
         return None  # Пропустить артефакт, если все характеристики нулевые
@@ -203,157 +205,257 @@ def create_artifact_button_style(btn):
     btn.bind(pos=update_rect, size=update_rect)
     return btn
 
+
+def load_hero_stats_from_db(faction):
+    """
+    Загружает базовые характеристики героя.
+    Сначала проверяет наличие героя в таблице garrisons, связанного с фракцией игрока.
+    Если герой найден, загружает его характеристики из таблицы units.
+    Герой определяется как юнит с unit_class = '3'.
+    """
+    stats = {
+        "attack": 0,
+        "defense": 0,
+        "durability": 0, # Или health, в зависимости от вашей БД
+
+    }
+
+    try:
+        cursor = faction.conn.cursor()
+
+        cursor.execute('''
+            SELECT DISTINCT g.unit_name 
+            FROM garrisons g
+            LEFT JOIN units u ON g.unit_name = u.unit_name
+            WHERE u.faction = ? AND u.unit_class = "3"
+            LIMIT 1
+        ''', (faction.faction,))
+
+        row = cursor.fetchone()
+
+        if row:
+            hero_unit_name = row[0]
+            print(f"Найден герой в garrisons/units: {hero_unit_name} для фракции {faction.faction}")
+
+            # 2. Загрузить характеристики найденного героя из таблицы units
+            cursor.execute('''
+                SELECT attack, defense, durability
+                FROM units
+                WHERE unit_name = ? AND faction = ? AND unit_class = "3"
+                LIMIT 1
+            ''', (hero_unit_name, faction.faction)) # Добавляем проверку faction для безопасности
+
+            stats_row = cursor.fetchone()
+            if stats_row:
+                # Предполагаем, что столбцы идут в порядке SELECT
+                stats['attack'] = stats_row[0] if stats_row[0] is not None else 0
+                stats['defense'] = stats_row[1] if stats_row[1] is not None else 0
+                # Предполагая, что в БД поле называется 'durability', а не 'health'
+                stats['durability'] = stats_row[2] if stats_row[2] is not None else 0
+                # Добавьте обработку других столбцов, если добавили их в SELECT
+                print(f"Характеристики загружены: {stats}")
+            else:
+                print(f"Характеристики для героя {hero_unit_name} не найдены в units.")
+        else:
+            print(f"Герой (unit_class='3', связанный с garrisons) не найден для фракции {faction.faction}")
+
+    except sqlite3.Error as e:
+        print(f"Ошибка при загрузке характеристик героя: {e}")
+
+    return stats
+
+
+def format_hero_stats(stats_dict):
+    """
+    Форматирует словарь характеристик в строку для отображения.
+    """
+    if not stats_dict:
+        return "Нет данных"
+
+    # Пример форматирования, адаптируйте под свои нужды
+    lines = []
+    if 'attack' in stats_dict:
+        lines.append(f"Атака: {stats_dict['attack']}")
+    if 'defense' in stats_dict:
+        lines.append(f"Защита: {stats_dict['defense']}")
+    if 'durability' in stats_dict:
+        lines.append(f"Здоровье: {stats_dict['durability']}")
+    # Добавьте другие характеристики при необходимости
+
+    if not lines:
+        return "Характеристики отсутствуют"
+
+    return '\n'.join(lines)
+
+
 # --- Основная функция открытия попапа ---
+def create_gradient_background(widget, color1, color2, direction='vertical'):
+    """Создает градиентный фон для виджета."""
+    widget.canvas.before.clear()
+    with widget.canvas.before:
+        from kivy.graphics import Mesh
+        PushMatrix()
+        # Создаем простой вертикальный или горизонтальный градиент с помощью Mesh
+        if direction == 'vertical':
+            vertices = [widget.x, widget.y, 0, 0,  # x, y, u, v
+                        widget.x + widget.width, widget.y, 1, 0,
+                        widget.x + widget.width, widget.y + widget.height, 1, 1,
+                        widget.x, widget.y + widget.height, 0, 1]
+        else: # horizontal
+            vertices = [widget.x, widget.y, 0, 0,
+                        widget.x + widget.width, widget.y, 1, 0,
+                        widget.x + widget.width, widget.y + widget.height, 1, 1,
+                        widget.x, widget.y + widget.height, 0, 1]
+
+        indices = [0, 1, 2, 3] # Треугольники
+        mode = 'triangle_fan'
+        # Используем Mesh для градиента (упрощенный подход)
+        # Лучше использовать Shader или несколько прямоугольников с разными цветами
+        # Но для простоты используем Mesh с двумя цветами
+        mesh = Mesh(vertices=vertices, indices=indices, mode=mode, fmt=[('v_pos', 2, 'float'), ('v_tex', 2, 'float')])
+        PopMatrix()
+
+def style_rounded_button(button, bg_color=(0.2, 0.6, 0.8, 1), radius=dp(10), has_shadow=True):
+    """Применяет стиль скругленной кнопки с тенью."""
+    button.background_normal = ''
+    button.background_color = (0, 0, 0, 0) # Прозрачный фон по умолчанию
+    button.canvas.before.clear()
+    with button.canvas.before:
+        from kivy.graphics import Color, RoundedRectangle, PushMatrix, PopMatrix, Translate
+        if has_shadow:
+            # Тень (немного смещенная и затемненная копия)
+            Color(0, 0, 0, 0.3) # Цвет тени
+            shadow_offset = dp(2)
+            RoundedRectangle(pos=(button.pos[0] + shadow_offset, button.pos[1] - shadow_offset),
+                             size=button.size, radius=[radius])
+
+        # Основной фон кнопки
+        Color(*bg_color)
+        button.rect = RoundedRectangle(pos=button.pos, size=button.size, radius=[radius])
+
+    def update_button_graphics(*args):
+        button.canvas.before.clear()
+        with button.canvas.before:
+            from kivy.graphics import Color, RoundedRectangle, PushMatrix, PopMatrix, Translate
+            if has_shadow:
+                Color(0, 0, 0, 0.3)
+                shadow_offset = dp(2)
+                RoundedRectangle(pos=(button.pos[0] + shadow_offset, button.pos[1] - shadow_offset),
+                                 size=button.size, radius=[radius])
+            Color(*bg_color)
+            if hasattr(button, 'rect'):
+                button.rect.pos = button.pos
+                button.rect.size = button.size
+            else:
+                button.rect = RoundedRectangle(pos=button.pos, size=button.size, radius=[radius])
+
+    button.bind(pos=update_button_graphics, size=update_button_graphics)
+
+def style_rounded_spinner(spinner, bg_color=(0.4, 0.4, 0.4, 1), text_color=(1, 1, 1, 1), radius=dp(8)):
+    """Применяет стиль скругленного спиннера."""
+    spinner.background_normal = ''
+    spinner.background_color = (0, 0, 0, 0) # Прозрачный фон
+    spinner.color = text_color
+    spinner.canvas.before.clear()
+    with spinner.canvas.before:
+        from kivy.graphics import Color, RoundedRectangle
+        Color(*bg_color)
+        spinner.rect = RoundedRectangle(pos=spinner.pos, size=spinner.size, radius=[radius])
+
+    def update_spinner_graphics(*args):
+        spinner.canvas.before.clear()
+        with spinner.canvas.before:
+            from kivy.graphics import Color, RoundedRectangle
+            Color(*bg_color)
+            if hasattr(spinner, 'rect'):
+                spinner.rect.pos = spinner.pos
+                spinner.rect.size = spinner.size
+            else:
+                spinner.rect = RoundedRectangle(pos=spinner.pos, size=spinner.size, radius=[radius])
+
+    spinner.bind(pos=update_spinner_graphics, size=update_spinner_graphics)
+
+# --- Основная функция ---
 def open_artifacts_popup(faction):
     """
     Открывает Popup с артефактами и экипировкой героя.
     :param faction: Экземпляр класса Faction
     """
-    # --- Загрузка данных ---
     artifacts_list = load_artifacts_from_db(faction)
     hero_equipment = load_hero_equipment_from_db(faction)
     hero_image_path = load_hero_image_from_db(faction)
-
-    # --- Создание Popup ---
     popup_layout = BoxLayout(orientation='horizontal', padding=dp(10), spacing=dp(10))
-
-    # --- Левая часть: Список артефактов ---
     left_panel = BoxLayout(orientation='vertical', size_hint=(0.5, 1))
-
-    # --- Фильтры ---
-    # --- Контейнер для фильтров ---
     filters_container = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(120), spacing=dp(5))
-    # Инициализируем состояния фильтров
-    filter_states = {
-        'season_influence': 'all', # 'all', 'has_influence', 'no_influence'
-        'artifact_type': 'all',   # 'all', 'weapon', 'boots', 'armor', 'helmet', 'accessory'
-        'cost_sort': 'all'       # 'all',
-    }
+    filter_states = {'season_influence': 'all', 'artifact_type': 'all', 'cost_sort': 'all'}
 
-    # --- Функция для обновления отображаемого списка артефактов ---
     def update_artifact_list(*args):
-        """Обновляет список артефактов на основе текущих фильтров."""
-        # Очистка текущего списка
         artifacts_list_layout.clear_widgets()
-
-        # Применение фильтров
         filtered_artifacts = []
         for artifact in artifacts_list:
-            # Фильтр по влиянию сезона
             season_ok = True
             if filter_states['season_influence'] == 'has_influence':
-                # Считаем, что сезон влияет, если поле season_name не пустое и не None
                 season_name = artifact.get('season_name')
                 season_ok = season_name is not None and season_name != ""
             elif filter_states['season_influence'] == 'no_influence':
-                # Считаем, что сезон НЕ влияет, если поле season_name пустое или None
                 season_name = artifact.get('season_name')
                 season_ok = season_name is None or season_name == ""
-
-            # Фильтр по типу артефакта
             type_ok = True
             if filter_states['artifact_type'] != 'all':
-                # Предположим, у артефакта есть поле 'slot_type'
                 type_ok = artifact.get('artifact_type') == filter_states['artifact_type']
-
-            # Фильтр по стоимости
             cost_ok = True
-            if filter_states['cost_sort'] == 'asc':
-                filtered_artifacts.sort(key=lambda art: art.get('cost', 0))
-            elif filter_states['cost_sort'] == 'desc':
-                filtered_artifacts.sort(key=lambda art: art.get('cost', 0), reverse=True)
-
-
             if season_ok and type_ok and cost_ok:
                 filtered_artifacts.append(artifact)
-
-        # --- Заполнение таблицы отфильтрованными артефактами ---
+        if filter_states['cost_sort'] == 'asc':
+            filtered_artifacts.sort(key=lambda art: art.get('cost', 0))
+        elif filter_states['cost_sort'] == 'desc':
+            filtered_artifacts.sort(key=lambda art: art.get('cost', 0), reverse=True)
         for artifact in filtered_artifacts:
             description = format_artifact_description(artifact)
-            if not description:  # Пропустить, если описание пустое (все бонусы 0)
+            if not description:
                 continue
-            # --- Контейнер строки артефакта ---
-            artifact_row_container = BoxLayout(
-                orientation='horizontal',
-                size_hint_y=None,
-                height=dp(90),
-                padding=(dp(5), dp(5)),
-                spacing=dp(10)
-            )
+            artifact_row_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(90), padding=(dp(5), dp(5)), spacing=dp(10))
 
-            # --- Контейнер информации об артефакте ---
-            artifact_info_container = BoxLayout(
-                orientation='vertical',
-                size_hint_x=0.75
-            )
-            name_label = Label(
-                text=artifact['name'],
-                halign='left',
-                valign='middle',
-                font_size='16sp',
-                bold=True,
-                size_hint_y=None,
-                height=dp(25)
-            )
+            artifact_info_container = BoxLayout(orientation='vertical', size_hint_x=0.75)
+            name_label = Label(text=artifact['name'], halign='left', valign='middle', font_size='16sp', bold=True, size_hint_y=None, height=dp(25), color=(1, 1, 0.6, 1))
             name_label.bind(size=name_label.setter('text_size'))
-            stats_label = Label(
-                text=description,
-                halign='left',
-                valign='top',
-                font_size='14sp',
-                bold=True,
-                color=(0.8, 0.8, 0.8, 1),
-                size_hint_y=None,
-                height=dp(50)
-            )
+            stats_label = Label(text=description, halign='left', valign='top', font_size='14sp', bold=True, color=(0.9, 0.9, 0.9, 1), size_hint_y=None, height=dp(50))
             stats_label.bind(size=stats_label.setter('text_size'))
             artifact_info_container.add_widget(name_label)
             artifact_info_container.add_widget(stats_label)
-
-            # --- Кнопка "Купить" ---
-            # Получаем стоимость артефакта (по ключу 'cost'), если ключа нет, используем 0 по умолчанию
             cost = artifact.get('cost', 0)
-            # Форматируем число стоимости
-            formatted_cost = format_number(cost)  # <-- Теперь правильно: передаем число в format_number
+            formatted_cost = format_number(cost)
             buy_button = Button(
                 text=f"Купить\n({formatted_cost})",
                 size_hint_x=None,
                 width=dp(90),
                 height=dp(60),
+                font_size='14sp',
+                bold=True
             )
-
-            style_buy_button(buy_button) # Предполагается, что эта функция определена в вашем коде
+            # Применяем стиль к кнопке "Купить"
+            style_rounded_button(buy_button, bg_color=(0.2, 0.7, 0.3, 1), radius=dp(8), has_shadow=True) # Зеленоватый градиент
 
             def make_buy_handler(art_data):
                 def on_buy(instance):
                     print(f"Покупка артефакта: {art_data['name']} (ID: {art_data['id']})")
                     slot_equipped = False
-                    # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
                     for slot_type in ['0', '2', '3', '1', '4']:
                         if slot_type not in hero_equipment or hero_equipment[slot_type] is None:
                             save_hero_equipment_to_db(faction, slot_type, art_data['id'])
                             hero_equipment[slot_type] = art_data['id']
                             update_equipment_slot(slot_type, art_data)
-                            print(f"Артефакт {art_data['name']} экипирован в {slot_type}")
                             slot_equipped = True
                             break
                     if not slot_equipped:
                         print(f"Нет свободных слотов для артефакта {art_data['name']}")
                 return on_buy
-
             buy_button.bind(on_release=make_buy_handler(artifact))
-
-            # --- Добавление виджетов в строку ---
             artifact_row_container.add_widget(artifact_info_container)
             button_wrapper = BoxLayout(size_hint_x=None, width=dp(90), padding=(0, dp(15), 0, dp(15)))
             button_wrapper.add_widget(buy_button)
             artifact_row_container.add_widget(button_wrapper)
-
-            # --- Добавить строку в таблицу ---
             artifacts_list_layout.add_widget(artifact_row_container)
-            # artifact_widgets[artifact['id']] = artifact_row_container # Можно сохранить, если нужно
-
-        # Обновляем высоту контейнера
         artifacts_list_layout.height = len(artifacts_list_layout.children) * dp(90) + (len(artifacts_list_layout.children) - 1) * dp(5) if artifacts_list_layout.children else dp(1)
 
     # --- Виджеты фильтров ---
@@ -366,6 +468,8 @@ def open_artifacts_popup(faction):
         size_hint=(1, None),
         height=dp(30)
     )
+    # Применяем стиль к спиннеру
+    style_rounded_spinner(season_spinner, bg_color=(0.3, 0.5, 0.7, 1), text_color=(1, 1, 1, 1), radius=dp(6))
     def on_season_spinner_select(spinner, text):
         mapping = {'Все': 'all', 'Есть влияние': 'has_influence', 'Нет влияния': 'no_influence'}
         filter_states['season_influence'] = mapping.get(text, 'all')
@@ -383,10 +487,9 @@ def open_artifacts_popup(faction):
         size_hint=(1, None),
         height=dp(30)
     )
-
+    # Применяем стиль к спиннеру
+    style_rounded_spinner(type_spinner, bg_color=(0.3, 0.5, 0.7, 1), text_color=(1, 1, 1, 1), radius=dp(6))
     def on_type_spinner_select(spinner, text):
-        # Используем числовые значения для фильтрации, соответствующие artifact_type в БД
-        # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
         mapping = {
             'Все': 'all',
             'Оружие': 0,
@@ -395,7 +498,6 @@ def open_artifacts_popup(faction):
             'Туловище': 3,
             'Аксессуар': 4
         }
-        # filter_states['artifact_type'] должен быть числом или 'all'
         selected_value = mapping.get(text, 'all')
         filter_states['artifact_type'] = selected_value
         update_artifact_list()
@@ -403,183 +505,44 @@ def open_artifacts_popup(faction):
     type_filter_layout.add_widget(type_spinner)
     filters_container.add_widget(type_filter_layout)
 
-    # 3. Фильтр по стоимости (изменен на сортировку)
+    # 3. Фильтр по стоимости (сортировка)
     cost_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
     cost_filter_layout.add_widget(Label(text="Цена:", size_hint_x=None, width=dp(60), halign='left'))
-    # Изменяем значения спиннера для сортировки
     cost_spinner = Spinner(
         text='Все',
-        values=('Все', 'По возрастанию', 'По убыванию'), # <-- ИЗМЕНЕНЫ значения
+        values=('Все', 'По возрастанию', 'По убыванию'),
         size_hint=(1, None),
         height=dp(30)
     )
+    # Применяем стиль к спиннеру
+    style_rounded_spinner(cost_spinner, bg_color=(0.3, 0.5, 0.7, 1), text_color=(1, 1, 1, 1), radius=dp(6))
     def on_cost_spinner_select(spinner, text):
-        # Используем 'asc' и 'desc' для сортировки
         mapping = {'Все': 'all', 'По возрастанию': 'asc', 'По убыванию': 'desc'}
-        filter_states['cost_sort'] = mapping.get(text, 'all') # ИЗМЕНЕНО с cost_range на cost_sort
+        filter_states['cost_sort'] = mapping.get(text, 'all')
         update_artifact_list()
     cost_spinner.bind(text=on_cost_spinner_select)
     cost_filter_layout.add_widget(cost_spinner)
     filters_container.add_widget(cost_filter_layout)
 
-    # Добавляем контейнер с фильтрами на левую панель
     left_panel.add_widget(filters_container)
-
-    # --- Заголовок списка артефактов ---
     left_panel.add_widget(Label(text="Артефакты", size_hint_y=None, height=dp(40), bold=True, font_size='18sp'))
-
-    # --- Список артефактов (ScrollView) ---
     scroll_view = ScrollView(do_scroll_x=False)
     artifacts_list_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
-    # Привязка высоты
     artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
     scroll_view.add_widget(artifacts_list_layout)
     left_panel.add_widget(scroll_view)
-    # --- Создание виджетов для артефактов ---
-    artifact_widgets = {}
-    equipment_slots = {}  # Ссылки на виджеты слотов будут храниться здесь
-
-    # --- Функция для стилизации кнопки "Купить" ---
-    def style_buy_button(button):
-        """Применяет стиль к кнопке 'Купить'."""
-        # Пример стиля, вы можете настроить его по своему вкусу
-        button.background_color = (0.2, 0.6, 0.8, 1)  # Сине-зеленый
-        button.color = (1, 1, 1, 1)  # Белый текст
-        button.bold = True
-        # Можно также изменить background_normal и background_down для картинок
-        return button
-
-    # --- Заполнение таблицы артефактами ---
-    for artifact in artifacts_list:
-        description = format_artifact_description(artifact)
-        if not description:  # Пропустить, если описание пустое (все бонусы 0)
-            continue
-
-        # --- Контейнер строки артефакта ---
-        artifact_row_container = BoxLayout(
-            orientation='horizontal',
-            size_hint_y=None,
-            # height будет рассчитана динамически или установлена фиксированная
-            height=dp(90),  # Увеличил высоту для лучшего размещения
-            padding=(dp(5), dp(5)),
-            spacing=dp(10)  # Увеличил отступ между информацией и кнопкой
-        )
-        # Применяем общий стиль к строке, если нужно
-        # artifact_row_container = create_artifact_button_style(artifact_row_container)
-
-        # --- Контейнер информации об артефакте ---
-        artifact_info_container = BoxLayout(
-            orientation='vertical',
-            size_hint_x=0.75  # Занимает 75% ширины строки
-        )
-
-        # Название артефакта
-        name_label = Label(
-            text=artifact['name'],
-            halign='left',
-            valign='middle',
-            font_size='16sp',
-            bold=True,
-            size_hint_y=None,
-            height=dp(25)
-        )
-        name_label.bind(size=name_label.setter('text_size'))
-
-        # Характеристики артефакта
-        stats_label = Label(
-            text=description,
-            halign='left',
-            valign='top',
-            font_size='14sp',  # <-- Увеличенный размер шрифта
-            bold=True,  # <-- Сделан жирным
-            color=(0.8, 0.8, 0.8, 1),
-            size_hint_y=None,
-            height=dp(50)  # <-- Возможно, стоит немного увеличить высоту, чтобы текст помещался
-        )
-        stats_label.bind(size=stats_label.setter('text_size'))
-
-        artifact_info_container.add_widget(name_label)
-        artifact_info_container.add_widget(stats_label)
-
-        # --- Кнопка "Купить" ---
-        # Получаем стоимость артефакта (по ключу 'cost'), если ключа нет, используем 0 по умолчанию
-        cost = artifact.get('cost', 0)
-        # Форматируем число стоимости
-        formatted_cost = format_number(cost)  # <-- Теперь правильно: передаем число в format_number
-        buy_button = Button(
-            text=f"Купить\n({formatted_cost})",
-            size_hint_x=None,
-            width=dp(90),
-            height=dp(60),
-        )
-        # Применяем стиль к кнопке
-        style_buy_button(buy_button)
-
-        # Обработчик нажатия кнопки "Купить"
-        def make_buy_handler(art_data):
-            def on_buy(instance):
-                """Обработчик нажатия кнопки 'Купить'."""
-                print(f"Покупка артефакта: {art_data['name']} (ID: {art_data['id']})")
-                # --- Здесь должна быть логика покупки ---
-                # Например: проверка денег, вызов save_hero_equipment_to_db или другой функции
-
-                # Для примера, просто экипируем в первый свободный подходящий слот
-                # Предположим, артефакт имеет поле 'slot_type' или мы определяем его по имени
-                # Если такого поля нет, нужно определить логику определения слота
-                # Например, можно передать slot_type как аргумент или определить его внутри on_buy
-
-                # Простая логика: экипируем в первый свободный слот из списка
-                slot_equipped = False
-                # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
-                for slot_type in ['0', '2', '3', '1', '4']:
-                    if slot_type not in hero_equipment or hero_equipment[slot_type] is None:
-                        save_hero_equipment_to_db(faction, slot_type, art_data['id'])
-                        hero_equipment[slot_type] = art_data['id']
-                        # Обновляем виджет слота
-                        update_equipment_slot(slot_type, art_data)
-                        print(f"Артефакт {art_data['name']} экипирован в {slot_type}")
-                        slot_equipped = True
-                        break  # Экипировали и вышли
-
-                if not slot_equipped:
-                    print(f"Нет свободных слотов для артефакта {art_data['name']}")
-
-                # --- Конец логики покупки ---
-
-            return on_buy
-
-        buy_button.bind(on_release=make_buy_handler(artifact))
-
-        # --- Добавление виджетов в строку ---
-        artifact_row_container.add_widget(artifact_info_container)
-        # Добавляем виджет с кнопкой, чтобы центрировать кнопку по вертикали
-        button_wrapper = BoxLayout(size_hint_x=None, width=dp(90), padding=(0, dp(15), 0, dp(15)))
-        button_wrapper.add_widget(buy_button)
-        artifact_row_container.add_widget(button_wrapper)
-
-        # --- Добавить строку в таблицу ---
-        artifacts_list_layout.add_widget(artifact_row_container)
-        artifact_widgets[artifact['id']] = artifact_row_container  # Сохраняем ссылку
-
-    # --- Обновление ScrollView ---
-    artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
-
 
     # --- Правая часть: Герой и экипировка ---
     right_panel = FloatLayout(size_hint=(0.5, 1))
-
-    # --- Загрузка изображения героя ---
     try:
         hero_image_width = dp(450)
         hero_image_height = dp(450)
         hero_image = Image(source=hero_image_path, size_hint=(None, None), size=(hero_image_width, hero_image_height))
         hero_image_size = (hero_image_width, hero_image_height)
-
         hero_image.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         right_panel.add_widget(hero_image)
     except Exception as e:
         print(f"Ошибка загрузки изображения героя {hero_image_path}: {e}")
-        # Создаем placeholder, если изображение не загрузилось
         hero_placeholder = Label(
             text="[b]Изображение\nГероя[/b]",
             markup=True,
@@ -588,118 +551,114 @@ def open_artifacts_popup(faction):
         )
         hero_placeholder.size_hint = (None, None)
         hero_placeholder.size = (dp(450), dp(450))
-        # Устанавливаем центр, учитывая возможную задержку в получении размеров right_panel
-        hero_placeholder.center = (dp(100), dp(100))  # Значение по умолчанию
-
-        # Попробуем обновить позицию позже, если right_panel уже готов
         def set_placeholder_center(*args):
             if hasattr(right_panel, 'center_x') and hasattr(right_panel, 'center_y'):
                 hero_placeholder.center_x = right_panel.center_x
                 hero_placeholder.center_y = right_panel.center_y
-
-        right_panel.bind(parent=set_placeholder_center)  # Привязываем к родителю, как пример
+        right_panel.bind(parent=set_placeholder_center)
         right_panel.add_widget(hero_placeholder)
-        # hero_image = hero_placeholder # Не нужно, если мы не используем hero_image ниже
 
     slot_size = (dp(90), dp(90))
+    equipment_slots = {}
 
-    # --- Функция обновления слота экипировки ---
     def update_equipment_slot(slot_type, artifact_data=None):
         """Обновляет виджет слота экипировки."""
         if slot_type in equipment_slots:
             slot_widget = equipment_slots[slot_type]
             slot_widget.clear_widgets()
+            slot_widget.canvas.before.clear() # Очищаем старый стиль
             if artifact_data:
                 try:
                     img_source = artifact_data.get('image_url')
                     if not img_source:
-                        img_source = "files/pict/artifacts/default.png"  # Путь по умолчанию
+                        img_source = "files/pict/artifacts/default.png"
                     slot_image = Image(source=img_source, allow_stretch=True, keep_ratio=True)
                     slot_widget.add_widget(slot_image)
                 except Exception as e:
                     print(f"Ошибка загрузки изображения для слота {slot_type}: {e}")
-                    # Если изображение не загрузилось, показываем знак вопроса
                     slot_widget.add_widget(Label(text="?", font_size='20sp'))
             else:
-                # Если слот пуст, показываем тип слота
                 slot_widget.add_widget(Label(text=f"[{slot_type[:3].upper()}]", markup=True, font_size='10sp'))
+            # Применяем стиль к слоту после очистки
+            apply_slot_style(slot_widget)
+
+    def apply_slot_style(slot_widget):
+        """Применяет стиль к слоту экипировки."""
+        slot_widget.background_normal = ''
+        slot_widget.background_color = (0, 0, 0, 0)
+        with slot_widget.canvas.before:
+            from kivy.graphics import Color, RoundedRectangle
+            Color(0.4, 0.4, 0.4, 1) # Серый фон
+            slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size, radius=[dp(8)])
+
+        def update_slot_rect(instance, value):
+            if hasattr(instance, 'rect'):
+                instance.rect.pos = instance.pos
+                instance.rect.size = instance.size
+            else:
+                with instance.canvas.before:
+                    from kivy.graphics import Color, RoundedRectangle
+                    Color(0.4, 0.4, 0.4, 1)
+                    instance.rect = RoundedRectangle(pos=instance.pos, size=instance.size, radius=[dp(8)])
+        slot_widget.bind(pos=update_slot_rect, size=update_slot_rect)
 
     # --- Создание слотов экипировки ---
     for slot_type in ['0', '2', '3', '1', '4']:
-        # Создаем виджет кнопки для слота
         slot_widget = Button(
             size_hint=(None, None),
             size=slot_size,
-            pos=(0, 0),  # Позиция будет установлена позже
-            background_color=(0.3, 0.3, 0.3, 1),  # Серый фон по умолчанию
-            background_normal='',  # Убираем стандартный фон
-            # text=f"[{slot_type[:3].upper()}]" # Можно добавить текст по умолчанию
+            pos=(0, 0),
+            # background_color и background_normal будут установлены в apply_slot_style
         )
-        # Добавляем скругленные углы
-        with slot_widget.canvas.before:
-            from kivy.graphics import Color, RoundedRectangle
-            Color(0.4, 0.4, 0.4, 1)  # Цвет рамки/фона
-            slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size, radius=[8])
+        apply_slot_style(slot_widget) # Применяем стиль сразу
 
-        # Обновляем позицию и размер прямоугольника при изменении виджета
-        def update_slot_rect(instance, value):
-            instance.rect.pos = instance.pos
-            instance.rect.size = instance.size
 
-        slot_widget.bind(pos=update_slot_rect, size=update_slot_rect)
 
-        # --- Добавление подписи слота ---
-        # Словарь для сопоставления типа слота с его подписью
-        # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
-        slot_labels = {
-            '0': 'Оружие',
-            '2': 'Сапоги',
-            '3': 'Туловище',
-            '1': 'Голова',
-            '4': 'Аксессуар'
-        }
-        # Создаем Label с подписью
-        slot_label = Label(
-            text=slot_labels.get(slot_type, slot_type),  # Получаем подпись или используем тип слота по умолчанию
-            color=(1, 1, 1, 1),  # Белый цвет текста
-            font_size='10sp',  # Размер шрифта
-            halign='center',
-            valign='middle'
-        )
-        slot_label.bind(size=slot_label.setter('text_size'))  # Позволяет выравнивание текста
-        # Добавляем Label в slot_widget
-        slot_widget.add_widget(slot_label)
-
-        # Инициализация слота текущим артефактом (если есть)
         artifact_id_in_slot = hero_equipment.get(slot_type)
         artifact_data_in_slot = next((a for a in artifacts_list if a['id'] == artifact_id_in_slot),
                                      None) if artifact_id_in_slot else None
         update_equipment_slot(slot_type, artifact_data_in_slot)
 
-        # Добавляем виджет слота на правую панель
         right_panel.add_widget(slot_widget)
-        # Сохраняем ссылку на слот для последующего обновления
         equipment_slots[slot_type] = slot_widget
 
-    # --- Сборка основного макета ---
+        # --- Создание блока характеристик героя ---
+        hero_stats_container = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, None),
+            height=dp(150),
+            padding=dp(15),
+            spacing=dp(25)
+        )
+        hero_stats_label = Label(
+            text="",
+            halign='right',
+            valign='top',
+            font_size='27sp',
+            bold=False,
+            color=(1, 1, 1, 1),
+            markup=True
+        )
+        hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
+        hero_stats_container.add_widget(hero_stats_label)
+        hero_stats_container.pos_hint = {'x': -0.43, 'y': 0}
+        right_panel.add_widget(hero_stats_container)
+        hero_stats_widget = hero_stats_label
+
     popup_layout.add_widget(left_panel)
     popup_layout.add_widget(right_panel)
 
-    # --- Создание и открытие Popup ---
     artifacts_popup = Popup(
         title="Артефакты и Герой",
         content=popup_layout,
         size_hint=(0.95, 0.95),
         title_align='center',
-        separator_color=(0.5, 0.3, 0.7, 1)  # Фиолетовый разделитель
+        separator_color=(0.5, 0.3, 0.7, 1)
     )
 
-    # --- Функция позиционирования слотов ---
     def position_slots(dt):
-        """Позиционирует слоты экипировки относительно центра правой панели."""
-        # Проверка, готова ли панель (имеет размеры)
         if not right_panel or not hasattr(right_panel, 'width') or right_panel.width == 0:
-            return  # Ждем, пока панель не будет готова
+            return
         right_panel_width = right_panel.width
         right_panel_height = right_panel.height
         right_panel_x = right_panel.x
@@ -707,42 +666,42 @@ def open_artifacts_popup(faction):
         center_x = right_panel_x + right_panel_width / 2
         center_y = right_panel_y + right_panel_height / 2
 
-        # --- Скорректированные позиции ---
-        # Добавляем небольшой отступ (например, dp(10)) между героем и слотом.
         half_hero_width = hero_image_size[0] / 2
         half_slot_width = slot_size[0] / 2
-        min_distance_from_center = half_hero_width + half_slot_width + dp(10)  # Минимальное расстояние до центра слота
+        min_distance_from_center = half_hero_width + half_slot_width + dp(10)
+        distance_horizontal = max(dp(200), min_distance_from_center)
+        distance_vertical = max(dp(200), min_distance_from_center)
+        distance_above_head = distance_vertical + dp(80)
 
-        # Можно использовать это расстояние или немного больше для esthetics
-        distance_horizontal = max(dp(200),
-                                  min_distance_from_center)  # Убедимся, что не меньше dp(200) или рассчитанного значения
-        distance_vertical = max(dp(200), min_distance_from_center)  # То же для вертикали
-        distance_above_head = distance_vertical + dp(80)  # Аксессуар немного выше, чем шлем
-        # 0 - Оружие, 1 - Головные уборы, 2 - Сапоги, 3 - Туловище, 4 - Аксессуары
         slot_positions = {
-            # Слева от героя (Оружие)
             '0': (center_x - distance_horizontal, center_y - slot_size[1] / 2),
-            # Снизу от героя (Сапоги)
             '2': (center_x - slot_size[0] / 2, center_y - distance_vertical),
-            # Справа от героя (Туловище)
             '3': (center_x + distance_horizontal - slot_size[0], center_y - slot_size[1] / 2),
-            # Сверху от героя (Голова)
             '1': (center_x - slot_size[0] / 2, center_y + distance_vertical - slot_size[1]),
-            # Сверху справа от героя (Аксессуар)
             '4': (center_x + distance_horizontal - slot_size[0], center_y + distance_above_head - slot_size[1]),
         }
-        # -------------------------------
 
-        # Установка позиций для каждого слота
         for slot_type, pos in slot_positions.items():
             if slot_type in equipment_slots:
                 equipment_slots[slot_type].pos = pos
 
-    # Планируем позиционирование слотов
-    # Приоритет -1 для выполнения как можно раньше после открытия
+    def update_hero_stats_display():
+        if hero_stats_widget:
+            try:
+                hero_stats_data = load_hero_stats_from_db(faction)
+                formatted_stats = format_hero_stats(hero_stats_data)
+                hero_stats_widget.text = formatted_stats
+            except Exception as e:
+                print(f"Ошибка обновления характеристик героя: {e}")
+                hero_stats_widget.text = "Ошибка загрузки"
+
+    Clock.schedule_once(lambda dt: update_hero_stats_display(), 0)
     Clock.schedule_once(position_slots, -1)
-    # Также привязываем к событию on_open попапа на случай, если позиционирование не сработает сразу
     artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
 
-    # --- Открытие Popup ---
+    # Вызываем update_artifact_list один раз в конце, чтобы заполнить список с начальными стилями
+    update_artifact_list()
+
     artifacts_popup.open()
+
+
