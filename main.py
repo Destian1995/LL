@@ -451,7 +451,8 @@ def clear_tables(conn):
         "queries",
         "results",
         "auto_build_settings",
-        "interface_coord"
+        "interface_coord",
+        "hero_equipment"
     ]
 
     cursor = conn.cursor()

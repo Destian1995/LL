@@ -1220,91 +1220,6 @@ class FortressInfoPopup(Popup):
         popup.content = layout
         popup.open()
 
-    def transfer_army_to_garrison(self, selected_unit, taken_count):
-        """
-        Переносит юнитов из армии в гарнизон и создает слоты экипировки для героев 3 класса.
-        """
-        try:
-            with self.conn:
-                cursor = self.conn.cursor()
-                unit_type = selected_unit.get("unit_type")
-                stats = selected_unit.get("stats", {})
-                unit_image = selected_unit.get("unit_image")
-                faction = self.player_fraction # Предполагается, что это текущая фракция игрока
-                unit_class = stats.get("Класс", None) # Получаем класс из stats
-
-                if not all([unit_type, taken_count, stats, unit_image]):
-                    raise ValueError("Некорректные данные для переноса юнита.")
-
-                # --- ЛОГИКА ДОБАВЛЕНИЯ В ГАРИЗОН ---
-                # Получаем текущее количество юнитов в гарнизоне
-                cursor.execute("""
-                    SELECT unit_count FROM garrisons
-                    WHERE city_name = ? AND unit_name = ?
-                """, (self.city_name, unit_type))
-                existing_unit = cursor.fetchone()
-                if existing_unit:
-                    new_count = existing_unit[0] + taken_count
-                    cursor.execute("""
-                        UPDATE garrisons
-                        SET unit_count = ?
-                        WHERE city_name = ? AND unit_name = ?
-                    """, (new_count, self.city_name, unit_type))
-                else:
-                    cursor.execute("""
-                        INSERT INTO garrisons
-                        (city_name, unit_name, unit_count, unit_image)
-                        VALUES (?, ?, ?, ?)
-                    """, (self.city_name, unit_type, taken_count, unit_image))
-
-                # Уменьшаем количество юнитов в армии
-                cursor.execute("""
-                    UPDATE armies
-                    SET quantity = quantity - ?
-                    WHERE unit_type = ?
-                """, (taken_count, unit_type))
-                cursor.execute("""
-                    DELETE FROM armies
-                    WHERE unit_type = ? AND quantity <= 0
-                """, (unit_type,))
-
-                # Работа с таблицей results
-                cursor.execute("""
-                    INSERT INTO results (faction, Units_Combat)
-                    VALUES (?, ?)
-                    ON CONFLICT(faction) DO UPDATE SET Units_Combat = Units_Combat + excluded.Units_Combat
-                """, (faction, taken_count))
-                # --- КОНЕЦ ЛОГИКИ ДОБАВЛЕНИЯ В ГАРИЗОН ---
-
-                # --- НОВАЯ ЛОГИКА: СОЗДАНИЕ СЛОТОВ ЭКИПИРОВКИ ДЛЯ ГЕРОЕВ 3 КЛАССА ---
-                # Проверяем, является ли юнит героем (класс 3) и был ли он добавлен (taken_count > 0)
-                if unit_class == "3" and taken_count > 0:
-                    # Формируем имя героя (предполагаем, что оно совпадает с unit_type)
-                    hero_name = unit_type
-                    insert_equipment_query = """
-                        INSERT OR IGNORE INTO hero_equipment (faction_name, hero_name, slot_type, artifact_id)
-                        VALUES (?, ?, ?, ?)
-                    """
-                    # Подготавливаем данные для 5 слотов (0-4)
-                    equipment_data = [
-                        (faction, hero_name, slot_type, None) # artifact_id изначально NULL/None
-                        for slot_type in range(5)
-                    ]
-                    # Выполняем множественную вставку
-                    cursor.executemany(insert_equipment_query, equipment_data)
-                    print(f"Созданы 5 слотов экипировки для героя '{hero_name}' фракции '{faction}'.")
-                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
-
-            # Обновляем отображение гарнизона
-            self.update_garrison()
-            # Закрываем текущее popup окно, если оно открыто
-            self.close_current_popup()
-
-        except sqlite3.Error as e:
-            show_popup_message("Ошибка", f"Не удалось перенести юниты или создать слоты экипировки: {e}")
-        except Exception as e:
-            show_popup_message("Ошибка", f"Произошла ошибка: {e}")
-
     def get_city_owner(self, city_name):
         try:
             cursor = self.conn.cursor()
@@ -1916,50 +1831,64 @@ class FortressInfoPopup(Popup):
             return False
 
     def transfer_army_to_garrison(self, selected_unit, taken_count):
+        """
+        Переносит юнитов из армии в гарнизон и создает слоты экипировки для героев 3 класса.
+        """
         try:
             with self.conn:
-
                 cursor = self.conn.cursor()
                 unit_type = selected_unit.get("unit_type")
                 stats = selected_unit.get("stats", {})
                 unit_image = selected_unit.get("unit_image")
-                faction = self.player_fraction
+                faction = self.player_fraction  # Предполагается, что это текущая фракция игрока
+                # unit_class из stats будет числом, если данные берутся из armies
+                unit_class = stats.get("Класс", None)  # Получаем класс из stats
+
+                print(f"[DEBUG] transfer_army_to_garrison called with:")
+                print(f"  unit_type: {unit_type}")
+                print(f"  taken_count: {taken_count}")
+                print(f"  unit_class from stats: {unit_class} (type: {type(unit_class)})")
+                print(f"  faction: {faction}")
 
                 if not all([unit_type, taken_count, stats, unit_image]):
                     raise ValueError("Некорректные данные для переноса юнита.")
 
+                # --- ЛОГИКА ДОБАВЛЕНИЯ В ГАРИЗОН ---
                 # Получаем текущее количество юнитов в гарнизоне
                 cursor.execute("""
-                    SELECT unit_count FROM garrisons 
+                    SELECT unit_count FROM garrisons
                     WHERE city_name = ? AND unit_name = ?
                 """, (self.city_name, unit_type))
                 existing_unit = cursor.fetchone()
-
                 if existing_unit:
                     new_count = existing_unit[0] + taken_count
                     cursor.execute("""
-                        UPDATE garrisons 
-                        SET unit_count = ? 
+                        UPDATE garrisons
+                        SET unit_count = ?
                         WHERE city_name = ? AND unit_name = ?
                     """, (new_count, self.city_name, unit_type))
+                    print(f"[DEBUG] Updated garrisons: {unit_type} count to {new_count}")
                 else:
                     cursor.execute("""
-                        INSERT INTO garrisons 
-                        (city_name, unit_name, unit_count, unit_image) 
+                        INSERT INTO garrisons
+                        (city_name, unit_name, unit_count, unit_image)
                         VALUES (?, ?, ?, ?)
                     """, (self.city_name, unit_type, taken_count, unit_image))
+                    print(f"[DEBUG] Inserted new unit into garrisons: {unit_type}, count {taken_count}")
 
                 # Уменьшаем количество юнитов в армии
                 cursor.execute("""
-                    UPDATE armies 
-                    SET quantity = quantity - ? 
+                    UPDATE armies
+                    SET quantity = quantity - ?
                     WHERE unit_type = ?
                 """, (taken_count, unit_type))
+                print(f"[DEBUG] Decreased army quantity for {unit_type} by {taken_count}")
 
                 cursor.execute("""
-                    DELETE FROM armies 
+                    DELETE FROM armies
                     WHERE unit_type = ? AND quantity <= 0
                 """, (unit_type,))
+                print(f"[DEBUG] Cleaned up armies table for {unit_type} if quantity <= 0")
 
                 # Работа с таблицей results
                 cursor.execute("""
@@ -1967,14 +1896,77 @@ class FortressInfoPopup(Popup):
                     VALUES (?, ?)
                     ON CONFLICT(faction) DO UPDATE SET Units_Combat = Units_Combat + excluded.Units_Combat
                 """, (faction, taken_count))
+                print(f"[DEBUG] Updated results table for faction {faction} with +{taken_count} Units_Combat")
+                # --- КОНЕЦ ЛОГИКИ ДОБАВЛЕНИЯ В ГАРИЗОН ---
 
+                # --- НОВАЯ ЛОГИКА: СОЗДАНИЕ СЛОТОВ ЭКИПИРОВКИ ДЛЯ ГЕРОЕВ 3 КЛАССА ---
+                # Проверяем, является ли юнит героем (класс 3) и был ли он добавлен (taken_count > 0)
+                # Сравниваем с числом, так как unit_class из БД обычно INTEGER
+                if unit_class == "3" and taken_count > 0:
+                    print(f"[DEBUG] Detected Hero (Class 3) being added: {unit_type}")
+                    # Формируем имя героя (предполагаем, что оно совпадает с unit_type)
+                    hero_name = unit_type
+
+                    # 1. Убедимся, что таблица hero_equipment существует с правильной структурой
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS hero_equipment (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            faction_name TEXT NOT NULL,
+                            hero_name TEXT NOT NULL,
+                            slot_type INTEGER NOT NULL, -- 0 to 4
+                            artifact_id INTEGER,
+                            UNIQUE(faction_name, hero_name, slot_type)
+                        );
+                    """)
+                    print("[DEBUG] Ensured hero_equipment table exists")
+
+                    # 2. Подготовим запрос для вставки слотов
+                    insert_equipment_query = """
+                        INSERT OR IGNORE INTO hero_equipment (faction_name, hero_name, slot_type, artifact_id)
+                        VALUES (?, ?, ?, ?)
+                    """
+
+                    # 3. Подготавливаем данные для 5 слотов (0-4)
+                    equipment_data = [
+                        (faction, hero_name, slot_type, None)  # artifact_id изначально NULL
+                        for slot_type in range(5)
+                    ]
+                    print(f"[DEBUG] Prepared equipment data for {hero_name}: {equipment_data}")
+
+                    # 4. Выполняем множественную вставку
+                    cursor.executemany(insert_equipment_query, equipment_data)
+                    print(f"[DEBUG] Attempted to insert 5 equipment slots for hero '{hero_name}'.")
+
+                    # 5. Проверим, были ли вставлены строки
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM hero_equipment 
+                        WHERE faction_name = ? AND hero_name = ?
+                    """, (faction, hero_name))
+                    count_result = cursor.fetchone()
+                    print(
+                        f"[DEBUG] Total equipment slots for {hero_name} after operation: {count_result[0] if count_result else 0}")
+
+                    print(f"Созданы/проверены 5 слотов экипировки для героя '{hero_name}' фракции '{faction}'.")
+                else:
+                    print(
+                        f"[DEBUG] Unit is not a hero (Class 3) or taken_count is 0. unit_class={unit_class}, taken_count={taken_count}")
+                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
+            # Обновляем отображение гарнизона
             self.update_garrison()
+            # Закрываем текущее popup окно, если оно открыто
             self.close_current_popup()
 
         except sqlite3.Error as e:
-            show_popup_message("Ошибка", f"Не удалось перенести юниты: {e}")
+            error_msg = f"Не удалось перенести юниты или создать слоты экипировки: {e}"
+            print(f"[ERROR] SQLite Error: {error_msg}")
+            show_popup_message("Ошибка", error_msg)
         except Exception as e:
-            show_popup_message("Ошибка", f"Произошла ошибка: {e}")
+            error_msg = f"Произошла ошибка: {e}"
+            print(f"[ERROR] General Error: {error_msg}")
+            import traceback
+            traceback.print_exc()  # Печатаем полный стек вызовов для лучшей отладки
+            show_popup_message("Ошибка", error_msg)
 
     def close_current_popup(self):
         """Закрывает текущее всплывающее окно."""
