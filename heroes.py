@@ -106,26 +106,38 @@ def load_hero_equipment_from_db(faction):
 
 def save_hero_equipment_to_db(faction, slot_type, artifact_id):
     """
-    Сохраняет/обновляет экипировку героя в БД.
+    Обновляет экипировку героя в БД, устанавливая artifact_id для заданного слота.
+    Предполагается, что запись (faction_name, hero_name, slot_type) уже существует.
     """
     try:
         cursor = faction.conn.cursor()
-        if artifact_id is None:
-            # Удаление записи, если artifact_id None
-            cursor.execute('''
-                 DELETE FROM hero_equipment
-                 WHERE faction_name = ? AND slot_type = ?
-             ''', (faction.faction, slot_type))
+        # 1. Обновляем запись, устанавливая новый artifact_id или NULL
+        # Используем UPDATE, чтобы изменить только artifact_id
+        cursor.execute('''UPDATE hero_equipment 
+                          SET artifact_id = ?
+                          WHERE faction_name = ?  AND slot_type = ?''',
+                       (artifact_id, faction.faction, slot_type))
+
+        # Проверим, была ли затронута строка (на случай, если запись не существует)
+        if cursor.rowcount == 0:
+            print(f"[WARNING] save_hero_equipment_to_db: Запись для {faction.faction}/слот {slot_type} не найдена в hero_equipment. Ничего не обновлено.")
         else:
-            # Используем INSERT OR REPLACE для обновления или вставки
-            cursor.execute('''
-                INSERT OR REPLACE INTO hero_equipment (faction_name, slot_type, artifact_id)
-                VALUES (?, ?, ?)
-            ''', (faction.faction, slot_type, artifact_id))
-        faction.conn.commit()
+            faction.conn.commit()
+            print(f"[DEBUG] save_hero_equipment_to_db: Экипировка обновлена для {faction.faction}/, слот {slot_type}, артефакт {artifact_id}")
+
     except sqlite3.Error as e:
-        print(f"Ошибка при сохранении экипировки героя: {e}")
-        faction.conn.rollback()
+        print(f"[ERROR] save_hero_equipment_to_db: Ошибка при обновлении экипировки героя: {e}")
+        try:
+            faction.conn.rollback()
+        except:
+            pass # Игнорируем ошибки отката
+    except Exception as e:
+        print(f"[ERROR] save_hero_equipment_to_db: Неожиданная ошибка: {e}")
+        try:
+            faction.conn.rollback()
+        except:
+            pass
+
 
 def load_hero_image_from_db(faction):
     """
@@ -437,18 +449,199 @@ def open_artifacts_popup(faction):
             style_rounded_button(buy_button, bg_color=(0.2, 0.7, 0.3, 1), radius=dp(8), has_shadow=True) # Зеленоватый градиент
 
             def make_buy_handler(art_data):
+                """Создает обработчик для кнопки покупки артефакта."""
+
                 def on_buy(instance):
-                    print(f"Покупка артефакта: {art_data['name']} (ID: {art_data['id']})")
-                    slot_equipped = False
-                    for slot_type in ['0', '2', '3', '1', '4']:
-                        if slot_type not in hero_equipment or hero_equipment[slot_type] is None:
-                            save_hero_equipment_to_db(faction, slot_type, art_data['id'])
-                            hero_equipment[slot_type] = art_data['id']
-                            update_equipment_slot(slot_type, art_data)
-                            slot_equipped = True
-                            break
-                    if not slot_equipped:
-                        print(f"Нет свободных слотов для артефакта {art_data['name']}")
+                    # Проверяем, что fraction_instance доступен
+                    if 'fraction_instance' not in locals() and 'fraction_instance' not in globals():
+                        pass  # Логика получения будет ниже
+                    current_fraction_instance = faction  # Предполагаем, что faction уже правильный объект
+                    # Если это не так, замените строку выше на правильное получение объекта
+
+                    print(
+                        f"[DEBUG] Покупка артефакта: {art_data['name']} (ID: {art_data['id']}, Тип: {art_data['artifact_type']})")
+
+                    # 1. Определяем slot_type на основе типа артефакта
+                    artifact_type_to_slot = {
+                        0: '0',  # Оружие -> slot_type 0
+                        1: '1',  # Голова -> slot_type 1
+                        2: '2',  # Сапоги -> slot_type 2
+                        3: '3',  # Туловище -> slot_type 3
+                        4: '4'  # Аксессуар -> slot_type 4
+                    }
+                    slot_type = artifact_type_to_slot.get(art_data['artifact_type'])
+
+                    if slot_type is None:
+                        print(f"[ERROR] Неизвестный тип артефакта: {art_data['artifact_type']}")
+                        show_popup_message("Ошибка", "Невозможно экипировать этот артефакт.")
+                        return
+
+                    print(f"[DEBUG] Целевой слот: {slot_type}")
+
+                    # 2. Проверяем, есть ли уже артефакт в этом слоте
+                    current_artifact_id_in_slot = hero_equipment.get(slot_type)
+                    print(f"[DEBUG] Текущий артефакт в слоте {slot_type}: {current_artifact_id_in_slot}")
+
+                    # --- Вспомогательные функции для работы с деньгами ---
+                    # Работаем напрямую с экземпляром Fraction
+                    def deduct_coins_local(fraction_obj, amount):
+                        """Списывает монеты, если хватает. Возвращает True при успехе."""
+                        try:
+                            # Получаем текущее количество монет НАПРЯМУЮ из объекта Fraction
+                            current_money = getattr(fraction_obj, 'money', 0)
+                            print(f"[DEBUG] [deduct_coins_local] Текущие монеты: {current_money}, Списание: {amount}")
+                            if current_money >= amount:
+                                new_amount = current_money - amount
+                                # Вызываем метод update_resource_now ЭКЗЕМПЛЯРА Fraction
+                                fraction_obj.update_resource_now('Кроны', new_amount)
+                                print(f"[DEBUG] [deduct_coins_local] Новые монеты: {new_amount}")
+                                return True
+                            else:
+                                print(
+                                    f"[INFO] [deduct_coins_local] Недостаточно крон. Нужно: {amount}, Есть: {current_money}")
+                                return False
+                        except Exception as e:
+                            print(f"[ERROR] [deduct_coins_local] Ошибка при списании: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            return False
+
+                    def add_coins_local(fraction_obj, amount):
+                        """Начисляет монеты. Возвращает True при успехе."""
+                        try:
+                            current_money = getattr(fraction_obj, 'money', 0)
+                            print(f"[DEBUG] [add_coins_local] Текущие кроны: {current_money}, Начисление: {amount}")
+                            new_amount = current_money + amount
+                            fraction_obj.update_resource_now('Кроны', new_amount)
+                            print(f"[DEBUG] [add_coins_local] Новые кроны: {new_amount}")
+                            # fraction_obj.money = new_amount # если update_resource_now не делает это
+                            return True
+                        except Exception as e:
+                            print(f"[ERROR] [add_coins_local] Ошибка при начислении: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            return False
+
+                    # --- Конец вспомогательных функций ---
+
+                    # 3. Логика покупки/замены
+                    try:
+                        artifact_cost = art_data['cost']
+                        print(f"[DEBUG] Цена нового артефакта: {artifact_cost}")
+
+                        if current_artifact_id_in_slot is None:
+                            # --- Сценарий 1: Слот пуст, просто покупаем ---
+                            print("[DEBUG] Слот пуст. Покупаем новый артефакт.")
+                            if deduct_coins_local(current_fraction_instance,
+                                                  artifact_cost):  # Используем current_fraction_instance
+                                # Сохраняем в БД
+                                save_hero_equipment_to_db(current_fraction_instance, slot_type,
+                                                          art_data['id'])  # Передаем экземпляр
+                                # Обновляем локальный словарь hero_equipment
+                                hero_equipment[slot_type] = art_data['id']
+                                # Обновляем отображение слота
+                                update_equipment_slot(slot_type, art_data)
+                                print(f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type}.")
+                                show_popup_message("Успех", f"Артефакт {art_data['name']} куплен!")
+                            else:
+                                print("[INFO] Недостаточно монет для покупки.")
+                                show_popup_message("Ошибка", "Недостаточно Крон!")
+
+                        else:
+                            # --- Сценарий 2: Слот занят, предлагаем замену ---
+                            print(f"[DEBUG] Слот {slot_type} занят. Запрашиваем подтверждение замены.")
+
+                            # Получаем данные старого артефакта из БД
+                            old_artifact_data = None
+                            try:
+                                # Используем соединение из экземпляра Fraction
+                                cursor = current_fraction_instance.conn.cursor()
+                                cursor.execute("SELECT * FROM artifacts WHERE id = ?", (current_artifact_id_in_slot,))
+                                old_artifact_row = cursor.fetchone()
+                                if old_artifact_row:
+                                    # Предполагаем, что cost находится в 13-м столбце (index 12)
+                                    old_artifact_data = {
+                                        "id": old_artifact_row[0],
+                                        "name": old_artifact_row[1],
+                                        "cost": old_artifact_row[12] if len(old_artifact_row) > 12 else 0
+                                    }
+                                    print(f"[DEBUG] Данные старого артефакта: {old_artifact_data}")
+                            except sqlite3.Error as e:
+                                print(f"[ERROR] Ошибка при получении данных старого артефакта: {e}")
+                                show_popup_message("Ошибка", "Ошибка при проверке старого артефакта.")
+                                return
+
+                            if not old_artifact_data:
+                                print(
+                                    f"[WARNING] Данные старого артефакта (ID: {current_artifact_id_in_slot}) не найдены. Заменяем без возврата.")
+                                old_artifact_cost = 0
+                            else:
+                                old_artifact_cost = old_artifact_data.get('cost', 0)
+
+                            sell_price = int(old_artifact_cost * 0.65)
+                            net_cost = artifact_cost - sell_price
+                            print(
+                                f"[DEBUG] Цена старого артефакта: {old_artifact_cost}, Цена продажи: {sell_price}, Чистая стоимость: {net_cost}")
+
+                            def confirm_replace(instance):
+                                confirm_popup.dismiss()
+                                if deduct_coins_local(current_fraction_instance, net_cost):  # Используем экземпляр
+                                    if sell_price > 0:
+                                        add_coins_local(current_fraction_instance, sell_price)  # Используем экземпляр
+                                        print(f"[DEBUG] Вернули {sell_price} монет за старый артефакт.")
+
+                                    save_hero_equipment_to_db(current_fraction_instance, slot_type,
+                                                              art_data['id'])  # Используем экземпляр
+                                    hero_equipment[slot_type] = art_data['id']
+                                    update_equipment_slot(slot_type, art_data)
+                                    # update_hero_stats_display()
+                                    print(
+                                        f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type} (старый заменен).")
+                                    show_popup_message("Успех",
+                                                       f"Артефакт {art_data['name']} куплен! Старый артефакт продан.")
+                                else:
+                                    print("[INFO] Недостаточно монет для замены.")
+                                    show_popup_message("Ошибка", "Недостаточно Крон для замены!")
+
+                            def cancel_replace(instance):
+                                confirm_popup.dismiss()
+                                print("[INFO] Замена артефакта отменена пользователем.")
+
+                            content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+                            old_art_name = old_artifact_data.get('name',
+                                                                 'Неизвестный артефакт') if old_artifact_data else 'Неизвестный артефакт'
+                            message = (f"Заменить артефакт '{old_art_name}'\n"
+                                       f"на '{art_data['name']}'?\n"
+                                       f"Цена нового: {artifact_cost}\n"
+                                       f"Вы получите за старый: {sell_price}\n"
+                                       f"К оплате: {net_cost}")
+                            message_label = Label(text=message, text_size=(None, None), halign='center')
+                            message_label.bind(
+                                size=lambda instance, value: setattr(instance, 'text_size', (value[0] * 0.9, None)))
+                            content.add_widget(message_label)
+
+                            btn_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+                            btn_yes = Button(text="Да", background_color=(0.4, 0.7, 0.4, 1))
+                            btn_no = Button(text="Нет", background_color=(0.7, 0.4, 0.4, 1))
+                            btn_yes.bind(on_release=confirm_replace)
+                            btn_no.bind(on_release=cancel_replace)
+                            btn_layout.add_widget(btn_yes)
+                            btn_layout.add_widget(btn_no)
+                            content.add_widget(btn_layout)
+
+                            confirm_popup = Popup(title="Подтверждение замены",
+                                                  content=content,
+                                                  size_hint=(0.8, 0.6),
+                                                  auto_dismiss=False)
+                            confirm_popup.open()
+
+                    except Exception as e:
+                        error_msg = f"Произошла ошибка при покупке артефакта: {e}"
+                        print(f"[ERROR] {error_msg}")
+                        import traceback
+                        traceback.print_exc()
+                        show_popup_message("Ошибка", error_msg)
+
                 return on_buy
             buy_button.bind(on_release=make_buy_handler(artifact))
             artifact_row_container.add_widget(artifact_info_container)
@@ -564,23 +757,39 @@ def open_artifacts_popup(faction):
     def update_equipment_slot(slot_type, artifact_data=None):
         """Обновляет виджет слота экипировки."""
         if slot_type in equipment_slots:
-            slot_widget = equipment_slots[slot_type]
-            slot_widget.clear_widgets()
-            slot_widget.canvas.before.clear() # Очищаем старый стиль
-            if artifact_data:
-                try:
-                    img_source = artifact_data.get('image_url')
-                    if not img_source:
-                        img_source = "files/pict/artifacts/default.png"
-                    slot_image = Image(source=img_source, allow_stretch=True, keep_ratio=True)
-                    slot_widget.add_widget(slot_image)
-                except Exception as e:
-                    print(f"Ошибка загрузки изображения для слота {slot_type}: {e}")
-                    slot_widget.add_widget(Label(text="?", font_size='20sp'))
-            else:
-                slot_widget.add_widget(Label(text=f"[{slot_type[:3].upper()}]", markup=True, font_size='10sp'))
-            # Применяем стиль к слоту после очистки
-            apply_slot_style(slot_widget)
+            def _update(dt):
+                slot_widget = equipment_slots[slot_type]
+                slot_widget.clear_widgets()
+                slot_widget.canvas.before.clear()  # Очищаем старый стиль
+
+                if artifact_data:
+                    try:
+                        img_source = artifact_data.get('image_url')
+                        print(f'[DEBUG] Загружаем изображение для слота {slot_type}: {img_source}')
+                        if not img_source:
+                            img_source = "files/pict/artifacts/default.png"
+
+                        # Создаем Image-виджет
+                        slot_image = Image(source=img_source, allow_stretch=True, keep_ratio=True)
+
+                        # Проверяем, загружено ли изображение
+                        if not slot_image.texture:
+                            print(f'[WARNING] Изображение {img_source} не загружено')
+                            slot_widget.add_widget(Label(text="?", font_size='20sp'))
+                        else:
+                            print(f'[DEBUG] Изображение {img_source} успешно загружено')
+                            slot_widget.add_widget(slot_image)
+                    except Exception as e:
+                        print(f"Ошибка загрузки изображения для слота {slot_type}: {e}")
+                        slot_widget.add_widget(Label(text="?", font_size='20sp'))
+                else:
+                    slot_widget.add_widget(Label(text=f"[{slot_type[:3].upper()}]", markup=True, font_size='10sp'))
+
+                # Применяем стиль к слоту после очистки
+                apply_slot_style(slot_widget)
+
+            # Выполняем обновление UI через главный поток
+            Clock.schedule_once(_update)
 
     def apply_slot_style(slot_widget):
         """Применяет стиль к слоту экипировки."""
@@ -612,11 +821,11 @@ def open_artifacts_popup(faction):
         )
         apply_slot_style(slot_widget) # Применяем стиль сразу
 
-
-
         artifact_id_in_slot = hero_equipment.get(slot_type)
+        print(f"[DEBUG] Слот {slot_type}: artifact_id = {artifact_id_in_slot}")
         artifact_data_in_slot = next((a for a in artifacts_list if a['id'] == artifact_id_in_slot),
                                      None) if artifact_id_in_slot else None
+        print(f"[DEBUG] Слот {slot_type}: artifact_data = {artifact_data_in_slot}")
         update_equipment_slot(slot_type, artifact_data_in_slot)
 
         right_panel.add_widget(slot_widget)
@@ -705,3 +914,94 @@ def open_artifacts_popup(faction):
     artifacts_popup.open()
 
 
+def show_popup_message(title, message):
+    """
+    Отображает всплывающее окно с сообщением, расположенным по центру,
+    с белым цветом текста и стандартным размером шрифта.
+    :param title: Заголовок окна.
+    :param message: Текст сообщения.
+    """
+    # Основной контейнер: заполняет всё пространство popup
+    content = BoxLayout(
+        orientation='vertical',
+        padding=dp(15),
+        spacing=dp(10),
+        size_hint=(1, 1)
+    )
+
+    # Label с сообщением: белый цвет, по центру
+    message_label = Label(
+        text=message,
+        size_hint=(1, 1),
+        # Используем dp для размера шрифта для лучшей адаптации
+        font_size=dp(18),
+        color=(1, 1, 1, 1), # Чисто белый
+        halign='center',
+        valign='middle'
+    )
+    # Чтобы текст правильно оборачивался и центрировался внутри Label:
+    # связываем text_size с размером самой метки
+    message_label.bind(size=lambda instance, value: setattr(instance, 'text_size', (value[0], None)))
+    # Или более явно:
+    # message_label.bind(size=message_label.setter('text_size'))
+    content.add_widget(message_label)
+
+    # Кнопка «Закрыть» внизу
+    close_button = Button(
+        text="Закрыть",
+        size_hint_y=None,
+        height=dp(50),
+        background_color=get_color_from_hex("#4CAF50"), # Зеленоватый цвет по умолчанию
+        background_normal='',
+        color=(1, 1, 1, 1),
+        font_size=dp(16),
+        bold=True
+    )
+    content.add_widget(close_button)
+
+    # --- Определение размера Popup ---
+    from kivy.core.window import Window
+    # Размер popup: максимум 90% ширины и 70% высоты экрана, но с ограничениями
+    popup_width = min(dp(500), Window.width * 0.9)
+    popup_height = min(dp(600), Window.height * 0.7)
+
+    # Создаём само окно. Фон сделаем тёмным, чтобы белый текст был хорошо виден.
+    popup = Popup(
+        title=title,
+        title_size=dp(18),
+        title_align='center',
+        title_color=get_color_from_hex("#FFFFFF"), # Белый заголовок
+        content=content,
+
+        separator_color=get_color_from_hex("#FFFFFF"), # Белая линия под заголовком
+        separator_height=dp(1),
+
+        size_hint=(None, None),
+        size=(popup_width, popup_height),
+
+        background_color=(0.15, 0.15, 0.15, 1), # тёмно-серый фон (чтобы белый текст читался)
+        overlay_color=(0, 0, 0, 0.5), # Полупрозрачный чёрный оверлей
+
+        auto_dismiss=False # Запрещаем закрытие кликом вне окна
+    )
+
+    # --- Обработчик изменения размера окна ---
+    # (если пользователь повернёт экран или сменит размер)
+    def update_size(*args):
+        new_w = min(dp(500), Window.width * 0.9)
+        new_h = min(dp(600), Window.height * 0.7)
+        popup.size = (new_w, new_h)
+        # Центрируем окно после изменения размера
+        popup.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+
+    # Привязываем обработчик к событию изменения размера окна
+    from kivy.core.window import Window
+    Window.bind(on_resize=update_size)
+    # Отвязываем обработчик при закрытии popup, чтобы избежать утечек памяти
+    popup.bind(on_dismiss=lambda *x: Window.unbind(on_resize=update_size))
+
+    # --- Привязываем действие к кнопке закрытия ---
+    close_button.bind(on_release=popup.dismiss)
+
+    # --- Открываем popup ---
+    popup.open()
