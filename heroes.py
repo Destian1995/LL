@@ -85,54 +85,43 @@ def load_artifacts_from_db(faction):
 def load_hero_equipment_from_db(faction):
     """
     Загружает текущую экипировку героя.
-    Предполагается существование таблицы hero_equipment
-    с полями: faction_name, slot_type, artifact_id.
-    slot_type: 'weapon', 'boots', 'armor', 'helmet', 'accessory'
+    Теперь включает image_url.
     """
     equipment = {}
     try:
         cursor = faction.conn.cursor()
         cursor.execute('''
-            SELECT slot_type, artifact_id
+            SELECT slot_type, artifact_id, image_url
             FROM hero_equipment
             WHERE faction_name = ?
         ''', (faction.faction,))
         rows = cursor.fetchall()
-        for slot_type, artifact_id in rows:
-            equipment[slot_type] = artifact_id
+        for slot_type, artifact_id, image_url in rows:
+            equipment[slot_type] = {"id": artifact_id, "image_url": image_url}
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке экипировки героя: {e}")
     return equipment
 
 def save_hero_equipment_to_db(faction, slot_type, artifact_id):
     """
-    Обновляет экипировку героя в БД, устанавливая artifact_id для заданного слота.
-    Предполагается, что запись (faction_name, hero_name, slot_type) уже существует.
+    Обновляет экипировку героя в БД, устанавливая artifact_id и image_url для заданного слота.
     """
     try:
         cursor = faction.conn.cursor()
-        # 1. Обновляем запись, устанавливая новый artifact_id или NULL
-        # Используем UPDATE, чтобы изменить только artifact_id
-        cursor.execute('''UPDATE hero_equipment 
-                          SET artifact_id = ?
-                          WHERE faction_name = ?  AND slot_type = ?''',
-                       (artifact_id, faction.faction, slot_type))
-
-        # Проверим, была ли затронута строка (на случай, если запись не существует)
-        if cursor.rowcount == 0:
-            print(f"[WARNING] save_hero_equipment_to_db: Запись для {faction.faction}/слот {slot_type} не найдена в hero_equipment. Ничего не обновлено.")
-        else:
-            faction.conn.commit()
-            print(f"[DEBUG] save_hero_equipment_to_db: Экипировка обновлена для {faction.faction}/, слот {slot_type}, артефакт {artifact_id}")
-
+        # Получаем image_url для артефакта
+        cursor.execute("SELECT image_url FROM artifacts WHERE id = ?", (artifact_id,))
+        row = cursor.fetchone()
+        image_url = row[0] if row and row[0] else "files/pict/artifacts/default.png"
+        # Обновляем запись
+        cursor.execute('''
+            UPDATE hero_equipment 
+            SET artifact_id = ?, image_url = ?
+            WHERE faction_name = ? AND slot_type = ?
+        ''', (artifact_id, image_url, faction.faction, slot_type))
+        faction.conn.commit()
+        print(f"[DEBUG] save_hero_equipment_to_db: Экипировка обновлена для {faction.faction}/, слот {slot_type}, артефакт {artifact_id}")
     except sqlite3.Error as e:
         print(f"[ERROR] save_hero_equipment_to_db: Ошибка при обновлении экипировки героя: {e}")
-        try:
-            faction.conn.rollback()
-        except:
-            pass # Игнорируем ошибки отката
-    except Exception as e:
-        print(f"[ERROR] save_hero_equipment_to_db: Неожиданная ошибка: {e}")
         try:
             faction.conn.rollback()
         except:
@@ -333,7 +322,7 @@ def style_rounded_button(button, bg_color=(0.2, 0.6, 0.8, 1), radius=dp(10), has
     button.background_color = (0, 0, 0, 0) # Прозрачный фон по умолчанию
     button.canvas.before.clear()
     with button.canvas.before:
-        from kivy.graphics import Color, RoundedRectangle, PushMatrix, PopMatrix, Translate
+        from kivy.graphics import Color, RoundedRectangle
         if has_shadow:
             # Тень (немного смещенная и затемненная копия)
             Color(0, 0, 0, 0.3) # Цвет тени
@@ -348,7 +337,7 @@ def style_rounded_button(button, bg_color=(0.2, 0.6, 0.8, 1), radius=dp(10), has
     def update_button_graphics(*args):
         button.canvas.before.clear()
         with button.canvas.before:
-            from kivy.graphics import Color, RoundedRectangle, PushMatrix, PopMatrix, Translate
+            from kivy.graphics import Color, RoundedRectangle
             if has_shadow:
                 Color(0, 0, 0, 0.3)
                 shadow_offset = dp(2)
@@ -479,7 +468,10 @@ def open_artifacts_popup(faction):
                     print(f"[DEBUG] Целевой слот: {slot_type}")
 
                     # 2. Проверяем, есть ли уже артефакт в этом слоте
-                    current_artifact_id_in_slot = hero_equipment.get(slot_type)
+                    artifact_entry = hero_equipment.get(slot_type)
+                    current_artifact_id_in_slot = None
+                    if isinstance(artifact_entry, dict):
+                        current_artifact_id_in_slot = artifact_entry.get('id')
                     print(f"[DEBUG] Текущий артефакт в слоте {slot_type}: {current_artifact_id_in_slot}")
 
                     # --- Вспомогательные функции для работы с деньгами ---
