@@ -808,7 +808,6 @@ def open_artifacts_popup(faction):
         slot_widget = Button(
             size_hint=(None, None),
             size=slot_size,
-            pos=(0, 0),
         )
         apply_slot_style(slot_widget) # Применяем стиль сразу
 
@@ -845,9 +844,17 @@ def open_artifacts_popup(faction):
         right_panel.add_widget(hero_stats_container)
         hero_stats_widget = hero_stats_label
 
+    def initial_position_slots(dt):
+        # Функция position_slots должна быть определена выше или здесь
+        # Убедимся, что она имеет доступ к необходимым переменным
+        if not right_panel or not hasattr(right_panel, 'to_parent'):  # Простая проверка
+            return
+        # Вызываем функцию позиционирования
+        position_slots(0)  # Передаем фиктивный dt
+
     popup_layout.add_widget(left_panel)
     popup_layout.add_widget(right_panel)
-
+    Clock.schedule_once(initial_position_slots, 0)  # Вызов в следующем кадре
     artifacts_popup = Popup(
         title="Артефакты и Герой",
         content=popup_layout,
