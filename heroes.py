@@ -809,7 +809,6 @@ def open_artifacts_popup(faction):
             size_hint=(None, None),
             size=slot_size,
             pos=(0, 0),
-            # background_color и background_normal будут установлены в apply_slot_style
         )
         apply_slot_style(slot_widget) # Применяем стиль сразу
 
