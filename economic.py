@@ -1,3 +1,5 @@
+from kivy.uix.checkbox import CheckBox
+
 from lerdon_libraries import *
 from db_lerdon_connect import *
 from heroes import open_artifacts_popup
@@ -1232,13 +1234,18 @@ class Faction:
             population_valid = isinstance(self.population, int) and self.population >= 0
             city_count_valid = isinstance(self.get_city_count(), int) and self.get_city_count() >= 0
 
+            if not population_valid and self.raw_material >= 0:
+                message = "Слишком мало больниц было построено на текущем этапе, население накрыла неизвестная болезнь..."
+                print(message)
+                return False, message
+
             if not population_valid or not city_count_valid:
                 message = "Города опустели, уровень налогов распугал всех граждан..."
                 print(message)
                 return False, message
 
             # Условия завершения игры
-            if self.population == 0:
+            if self.population == 0 and self.raw_material <= 0:
                 message = "Города опустели из-за отсутствия еды...."
                 print(message)
                 return False, message
@@ -1673,27 +1680,46 @@ def open_build_popup(faction):
 def open_trade_popup(game_instance):
     game_instance.get_resources()
     game_instance.generate_raw_material_price()
+    # === ПОЛЕ ВВОДА (вверху) ===
+    input_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(1, None), height=dp(80))
+    # === ГАЛОЧКА "ПРОДАТЬ ВСЁ" ===
+    sell_all_checkbox = CheckBox(size_hint=(None, None), size=(dp(30), dp(30)), active=False)
+    sell_all_label = Label(
+        text="Продать всё",
+        font_size=sp(16),
+        color=(1, 1, 1, 1),
+        halign="left",
+        size_hint_x=None,
+        width=dp(120)
+    )
 
+    checkbox_layout = BoxLayout(
+        orientation='horizontal',
+        size_hint=(1, None),
+        height=dp(40),
+        spacing=dp(10)
+    )
+    checkbox_layout.add_widget(sell_all_checkbox)
+    checkbox_layout.add_widget(sell_all_label)
+    checkbox_layout.add_widget(Widget())  # Заполнитель справа
+
+    input_box.add_widget(checkbox_layout)
+
+    # === ЛОГИКА БЛОКИРОВКИ ПОЛЯ ВВОДА ===
+    def toggle_input(*args):
+        quantity_input.disabled = sell_all_checkbox.active
+        if sell_all_checkbox.active:
+            quantity_input.text = ""
+            quantity_input.hint_text = "Продажа всех лотов"
+        else:
+            quantity_input.hint_text = "Введите количество лотов, например: 3"
+
+    sell_all_checkbox.bind(active=toggle_input)
     trade_layout = BoxLayout(
         orientation='vertical',
         padding=dp(16),
         spacing=dp(12)
     )
-
-    # === ПОЛЕ ВВОДА (вверху) ===
-    input_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(1, None), height=dp(80))
-
-    # Сначала создаём Label
-    available_label = Label(
-        text=f"Доступно для продажи: {game_instance.get_available_raw_material_lots()} лотов (1 лот = 10 тыс.)",
-        font_size=sp(16),
-        color=(1, 1, 1, 1),
-        halign="center"
-    )
-    available_label.bind(size=available_label.setter('text_size'))
-
-    # Добавляем Label в input_box
-    input_box.add_widget(available_label)
 
     quantity_input = TextInput(
         hint_text="Введите количество лотов, например: 3",
@@ -1709,7 +1735,17 @@ def open_trade_popup(game_instance):
     )
     input_box.add_widget(quantity_input)
     trade_layout.add_widget(input_box)
+    # Сначала создаём Label
+    available_label = Label(
+        text=f"Доступно для продажи: {game_instance.get_available_raw_material_lots()} лотов (1 лот = 10 тыс.)",
+        font_size=sp(16),
+        color=(1, 1, 1, 1),
+        halign="center"
+    )
+    available_label.bind(size=available_label.setter('text_size'))
 
+    # Добавляем Label в input_box
+    input_box.add_widget(available_label)
     # === ТЕКУЩАЯ ЦЕНА (между полем ввода и кнопками) ===
     current_price = game_instance.current_raw_material_price
     prev_price = game_instance.raw_material_price_history[-2] if len(game_instance.raw_material_price_history) > 1 else current_price
@@ -1761,7 +1797,7 @@ def open_trade_popup(game_instance):
 
     def on_press_wrapper(action):
         def handler(instance):
-            handle_trade(game_instance, action, quantity_input.text, popup)
+            handle_trade(game_instance, action, quantity_input.text, popup, sell_all=sell_all_checkbox.active)
         return handler
 
     buy_btn.bind(on_release=on_press_wrapper('buy'))
@@ -1783,15 +1819,22 @@ def open_trade_popup(game_instance):
     popup.open()
 
 
-def handle_trade(game_instance, action, quantity, trade_popup):
+def handle_trade(game_instance, action, quantity, trade_popup, sell_all=False):
     """Обработка торговли (покупка/продажа Кристаллы)"""
     try:
-        # Проверяем, что количество введено
-        if not quantity or int(quantity) <= 0:
-            raise ValueError("Не было введено количество лотов. Пожалуйста, введите количество лотов.")
-
-        quantity = int(quantity)
         price_per_lot = game_instance.current_raw_material_price  # Цена за 1 лот
+
+        if action == 'sell' and sell_all:
+            # Продажа всех доступных лотов
+            available_lots = game_instance.get_available_raw_material_lots()
+            if available_lots <= 0:
+                raise ValueError("Нет доступных лотов для продажи.")
+            quantity = available_lots
+        else:
+            # Обычная логика
+            if not quantity or int(quantity) <= 0:
+                raise ValueError("Не было введено количество лотов. Пожалуйста, введите количество лотов.")
+            quantity = int(quantity)
 
         # Проверяем, что количество Кристаллы для продажи не превышает доступное
         if action == 'sell' and quantity * 10000 > game_instance.resources["Кристаллы"]:
@@ -1799,9 +1842,7 @@ def handle_trade(game_instance, action, quantity, trade_popup):
 
         result = game_instance.trade_raw_material(action, quantity)
         if result:  # Если торговля прошла успешно
-
-            # Рассчитываем экономическую эффективность
-            economic_efficiency = round(price_per_lot / 10000, 2)  # Цена за единицу Кристаллы
+            economic_efficiency = round(price_per_lot / 10000, 2)
             game_instance.update_economic_efficiency(economic_efficiency)
 
             if action == 'buy':
@@ -1810,13 +1851,12 @@ def handle_trade(game_instance, action, quantity, trade_popup):
             elif action == 'sell':
                 profit = price_per_lot * quantity
                 show_message("Успех", f"Получено: {format_number(profit)} крон\n(Соотношение: {economic_efficiency} крон/ед. Кристалла)")
-
         else:
             show_message("Ошибка", "Не удалось завершить операцию.")
     except ValueError as e:
         show_message("Ошибка", str(e))
 
-    trade_popup.dismiss()  # Закрываем попап после операции
+    trade_popup.dismiss()
 
 # -----------------------------------
 def open_tax_popup(faction):
@@ -1838,7 +1878,7 @@ def open_tax_popup(faction):
 
     main_layout = FloatLayout()
 
-    # Получаем текущий уровень налогов
+
     try:
         current_tax_rate = int(faction.current_tax_rate.strip('%')) \
             if isinstance(faction.current_tax_rate, str) else int(faction.current_tax_rate)

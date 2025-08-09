@@ -39,6 +39,97 @@ def format_number(number):
         return f"{number}"
 
 # --- Вспомогательные функции ---
+def show_popup_message(title, message):
+    """
+    Отображает всплывающее окно с сообщением, расположенным по центру,
+    с белым цветом текста и стандартным размером шрифта.
+    :param title: Заголовок окна.
+    :param message: Текст сообщения.
+    """
+    # Основной контейнер: заполняет всё пространство popup
+    content = BoxLayout(
+        orientation='vertical',
+        padding=dp(15),
+        spacing=dp(10),
+        size_hint=(1, 1)
+    )
+
+    # Label с сообщением: белый цвет, по центру
+    message_label = Label(
+        text=message,
+        size_hint=(1, 1),
+        # Используем dp для размера шрифта для лучшей адаптации
+        font_size=dp(18),
+        color=(1, 1, 1, 1), # Чисто белый
+        halign='center',
+        valign='middle'
+    )
+    # Чтобы текст правильно оборачивался и центрировался внутри Label:
+    # связываем text_size с размером самой метки
+    message_label.bind(size=lambda instance, value: setattr(instance, 'text_size', (value[0], None)))
+    # Или более явно:
+    # message_label.bind(size=message_label.setter('text_size'))
+    content.add_widget(message_label)
+
+    # Кнопка «Закрыть» внизу
+    close_button = Button(
+        text="Закрыть",
+        size_hint_y=None,
+        height=dp(50),
+        background_color=get_color_from_hex("#4CAF50"), # Зеленоватый цвет по умолчанию
+        background_normal='',
+        color=(1, 1, 1, 1),
+        font_size=dp(16),
+        bold=True
+    )
+    content.add_widget(close_button)
+
+    # --- Определение размера Popup ---
+    from kivy.core.window import Window
+    # Размер popup: максимум 90% ширины и 70% высоты экрана, но с ограничениями
+    popup_width = min(dp(500), Window.width * 0.9)
+    popup_height = min(dp(600), Window.height * 0.7)
+
+    # Создаём само окно. Фон сделаем тёмным, чтобы белый текст был хорошо виден.
+    popup = Popup(
+        title=title,
+        title_size=dp(18),
+        title_align='center',
+        title_color=get_color_from_hex("#FFFFFF"), # Белый заголовок
+        content=content,
+
+        separator_color=get_color_from_hex("#FFFFFF"), # Белая линия под заголовком
+        separator_height=dp(1),
+
+        size_hint=(None, None),
+        size=(popup_width, popup_height),
+
+        background_color=(0.15, 0.15, 0.15, 1), # тёмно-серый фон (чтобы белый текст читался)
+        overlay_color=(0, 0, 0, 0.5), # Полупрозрачный чёрный оверлей
+
+        auto_dismiss=False # Запрещаем закрытие кликом вне окна
+    )
+
+    # --- Обработчик изменения размера окна ---
+    # (если пользователь повернёт экран или сменит размер)
+    def update_size(*args):
+        new_w = min(dp(500), Window.width * 0.9)
+        new_h = min(dp(600), Window.height * 0.7)
+        popup.size = (new_w, new_h)
+        # Центрируем окно после изменения размера
+        popup.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+
+    # Привязываем обработчик к событию изменения размера окна
+    from kivy.core.window import Window
+    Window.bind(on_resize=update_size)
+    # Отвязываем обработчик при закрытии popup, чтобы избежать утечек памяти
+    popup.bind(on_dismiss=lambda *x: Window.unbind(on_resize=update_size))
+
+    # --- Привязываем действие к кнопке закрытия ---
+    close_button.bind(on_release=popup.dismiss)
+
+    # --- Открываем popup ---
+    popup.open()
 
 def load_artifacts_from_db(faction):
     """Загружает список артефактов из таблицы artifacts."""
@@ -385,7 +476,9 @@ def style_rounded_spinner(spinner, bg_color=(0.4, 0.4, 0.4, 1), text_color=(1, 1
 
     spinner.bind(pos=update_spinner_graphics, size=update_spinner_graphics)
 
-# --- Основная функция ---
+# --- Основная функция сборки и построения интерфейса артефактов---
+
+
 def open_artifacts_popup(faction):
     """
     Открывает Popup с артефактами и экипировкой героя.
@@ -413,8 +506,9 @@ def open_artifacts_popup(faction):
             type_ok = True
             if filter_states['artifact_type'] != 'all':
                 type_ok = artifact.get('artifact_type') == filter_states['artifact_type']
-            cost_ok = True
-            if season_ok and type_ok and cost_ok:
+            # cost_ok = True # Переменная определена, но не используется в логике
+            # if season_ok and type_ok and cost_ok: # cost_ok всегда True
+            if season_ok and type_ok: # Упрощаем условие
                 filtered_artifacts.append(artifact)
         if filter_states['cost_sort'] == 'asc':
             filtered_artifacts.sort(key=lambda art: art.get('cost', 0))
@@ -457,8 +551,7 @@ def open_artifacts_popup(faction):
                     # Проверяем, что fraction_instance доступен
                     if 'fraction_instance' not in locals() and 'fraction_instance' not in globals():
                         pass  # Логика получения будет ниже
-                    current_fraction_instance = faction  # Предполагаем, что faction уже правильный объект
-                    # Если это не так, замените строку выше на правильное получение объекта
+                    current_fraction_instance = faction
 
                     print(
                         f"[DEBUG] Покупка артефакта: {art_data['name']} (ID: {art_data['id']}, Тип: {art_data['artifact_type']})")
@@ -538,9 +631,6 @@ def open_artifacts_popup(faction):
                             # --- Сценарий 1: Слот пуст, просто покупаем ---
                             print("[DEBUG] Слот пуст. Покупаем новый артефакт.")
                             if deduct_coins_local(current_fraction_instance, artifact_cost):
-                                # --- Обновление вызова save_hero_equipment_to_db ---
-                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None,
-                                                          None)
                                 # Обновляем локальный словарь hero_equipment
                                 hero_equipment[slot_type] = {
                                     "id": art_data['id'],
@@ -548,9 +638,13 @@ def open_artifacts_popup(faction):
                                     "pos_x": None,  # Будет обновлено позже
                                     "pos_y": None  # Будет обновлено позже
                                 }
-
+                                update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
+                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None,
+                                                          None)
                                 print(f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type}.")
                                 show_popup_message("Успех", f"Артефакт {art_data['name']} куплен!")
+                                # Обновляем характеристики героя после покупки
+                                update_hero_stats_display()
                             else:
                                 print("[INFO] Недостаточно монет для покупки.")
                                 show_popup_message("Ошибка", "Недостаточно Крон!")
@@ -606,12 +700,15 @@ def open_artifacts_popup(faction):
                                         "pos_x": None,  # Будет обновлено позже
                                         "pos_y": None  # Будет обновлено позже
                                     }
-                            
-                                    # update_hero_stats_display()
+
+                                    update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
+
                                     print(
                                         f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type} (старый заменен).")
                                     show_popup_message("Успех",
                                                        f"Артефакт {art_data['name']} куплен! Старый артефакт продан.")
+                                    # Обновляем характеристики героя после замены
+                                    update_hero_stats_display()
                                 else:
                                     print("[INFO] Недостаточно монет для замены.")
                                     show_popup_message("Ошибка", "Недостаточно Крон для замены!")
@@ -748,46 +845,25 @@ def open_artifacts_popup(faction):
 
     # --- Правая часть: Герой и экипировка ---
     right_panel = FloatLayout(size_hint=(0.5, 1))
-    try:
-        hero_image_width = dp(450)
-        hero_image_height = dp(450)
-        hero_image = Image(source=hero_image_path, size_hint=(None, None), size=(hero_image_width, hero_image_height))
-        hero_image_size = (hero_image_width, hero_image_height)
-        hero_image.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-        right_panel.add_widget(hero_image)
-    except Exception as e:
-        print(f"Ошибка загрузки изображения героя {hero_image_path}: {e}")
-        hero_placeholder = Label(
-            text="[b]Изображение\nГероя[/b]",
-            markup=True,
-            halign='center',
-            valign='middle'
-        )
-        hero_placeholder.size_hint = (None, None)
-        hero_placeholder.size = (dp(450), dp(450))
+    hero_image_widget = None  # Сохраняем ссылку на виджет изображения героя
+    equipment_slots = {}      # Словарь для хранения слотов
 
-        def set_placeholder_center(*args):
-            if hasattr(right_panel, 'center_x') and hasattr(right_panel, 'center_y'):
-                hero_placeholder.center_x = right_panel.center_x
-                hero_placeholder.center_y = right_panel.center_y
-
-        right_panel.bind(parent=set_placeholder_center)
-        right_panel.add_widget(hero_placeholder)
-
-    slot_size = (dp(90), dp(90))
-    equipment_slots = {}
-
+    # --- Стили для слотов экипировки ---
+    # Определяем apply_slot_style ЗАРАНЕЕ, до её использования
     def apply_slot_style(slot_widget):
         """Применяет стиль к слоту экипировки."""
         slot_widget.background_normal = ''
         slot_widget.background_color = (0, 0, 0, 0)
-        with slot_widget.canvas.before:
-            from kivy.graphics import Color, RoundedRectangle
-            Color(0.4, 0.4, 0.4, 1)  # Серый фон
-            slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size, radius=[dp(8)])
+
+        # Проверяем, существует ли уже rect
+        if not hasattr(slot_widget, 'rect') or slot_widget.rect is None:
+            with slot_widget.canvas.before:
+                from kivy.graphics import Color, RoundedRectangle
+                Color(0.4, 0.4, 0.4, 1)  # Серый фон
+                slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size, radius=[dp(8)])
 
         def update_slot_rect(instance, value):
-            if hasattr(instance, 'rect'):
+            if hasattr(instance, 'rect') and instance.rect is not None:
                 instance.rect.pos = instance.pos
                 instance.rect.size = instance.size
             else:
@@ -796,60 +872,252 @@ def open_artifacts_popup(faction):
                     Color(0.4, 0.4, 0.4, 1)
                     instance.rect = RoundedRectangle(pos=instance.pos, size=instance.size, radius=[dp(8)])
 
+        # Удаляем предыдущие биндинги, если они были
+        slot_widget.unbind(pos=update_slot_rect, size=update_slot_rect)
         slot_widget.bind(pos=update_slot_rect, size=update_slot_rect)
 
-    # --- Создание слотов экипировки ---
-    for slot_type in ['0', '2', '3', '1', '4']:
-        slot_widget = Button(
-            size_hint=(None, None),
-            size=slot_size,
+    # --- Создание интерфейса правой панели ---
+    # Проверяем, есть ли изображение героя
+    if hero_image_path and os.path.exists(hero_image_path):
+        try:
+            hero_image_width = dp(300)
+            hero_image_height = dp(300)
+            hero_image_size = (hero_image_width, hero_image_height)
+
+            hero_image_widget = Image(
+                source=hero_image_path,
+                size_hint=(None, None),
+                size=hero_image_size
+            )
+            hero_image_widget.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            right_panel.add_widget(hero_image_widget)
+
+            # === ЕДИНСТВЕННОЕ СОЗДАНИЕ СЛОТОВ ===
+            # Создаем слоты ТОЛЬКО один раз, если герой есть
+            slot_size = (dp(90), dp(90))
+            # Создаем слоты для каждого типа (пустые, без позиционирования)
+            slot_types = ['0', '2', '3', '1', '4']
+            for slot_type in slot_types:
+                slot_widget = Button(
+                    size_hint=(None, None),
+                    size=slot_size,
+                )
+                apply_slot_style(slot_widget)
+                # Добавляем слот на панель, позиционировать будем позже
+                right_panel.add_widget(slot_widget)
+                equipment_slots[slot_type] = slot_widget
+
+            # --- Инициализация визуального состояния слотов ---
+            # После создания всех слотов, обновляем их визуальное состояние
+            # Это отобразит уже купленные артефакты
+            def initialize_equipment_visual(dt):
+                print("[DEBUG] initialize_equipment_visual: Вызываем update_all_equipment_slots")
+                update_all_equipment_slots()
+
+            Clock.schedule_once(initialize_equipment_visual, 0.2) # Немного задержим
+
+        except Exception as e:
+            print(f"Ошибка загрузки изображения героя {hero_image_path}: {e}")
+            import traceback
+            traceback.print_exc()
+            hero_image_widget = None
+            # Создаем placeholder в случае ошибки загрузки и ДОБАВЛЯЕМ его
+            hero_placeholder = Label(
+                text="[b]Ошибка загрузки\nизображения[/b]",
+                markup=True,
+                halign='center',
+                valign='middle',
+                font_size='16sp'
+            )
+            hero_placeholder.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+            right_panel.add_widget(hero_placeholder)
+
+    else:
+        # Если героя нет - показываем сообщение
+        no_hero_label = Label(
+            text="[b]Герой не нанят[/b]\nНаймите героя\nдля доступа к экипировке",
+            markup=True,
+            halign='center',
+            valign='middle',
+            font_size='16sp'
         )
-        apply_slot_style(slot_widget)  # Применяем стиль сразу
-        # --- Изменение логики загрузки начального состояния ---
-        # Получаем данные из hero_equipment, включая координаты
-        artifact_entry = hero_equipment.get(slot_type)
-        artifact_id_in_slot = artifact_entry.get('id') if isinstance(artifact_entry, dict) else None
-        artifact_data_in_slot = next((a for a in artifacts_list if a['id'] == artifact_id_in_slot),
-                                     None) if artifact_id_in_slot else None
+        no_hero_label.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        right_panel.add_widget(no_hero_label)
+        hero_image_widget = None
 
+    # --- Блок характеристик героя ---
+    hero_stats_container = BoxLayout(
+        orientation='vertical',
+        size_hint=(1, None),
+        height=dp(150),
+        padding=dp(15),
+        spacing=dp(25)
+    )
+    hero_stats_label = Label(
+        text="",
+        halign='right',
+        valign='top',
+        font_size='27sp',
+        bold=False,
+        color=(1, 1, 1, 1),
+        markup=True
+    )
+    hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
+    hero_stats_container.add_widget(hero_stats_label)
+    hero_stats_container.pos_hint = {'x': -0.43, 'y': 0}
+    right_panel.add_widget(hero_stats_container)
+    hero_stats_widget = hero_stats_label
 
-        right_panel.add_widget(slot_widget)
-        equipment_slots[slot_type] = slot_widget
-
-        # --- Создание блока характеристик героя ---
-        hero_stats_container = BoxLayout(
-            orientation='vertical',
-            size_hint=(1, None),
-            height=dp(150),
-            padding=dp(15),
-            spacing=dp(25)
-        )
-        hero_stats_label = Label(
-            text="",
-            halign='right',
-            valign='top',
-            font_size='27sp',
-            bold=False,
-            color=(1, 1, 1, 1),
-            markup=True
-        )
-        hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
-        hero_stats_container.add_widget(hero_stats_label)
-        hero_stats_container.pos_hint = {'x': -0.43, 'y': 0}
-        right_panel.add_widget(hero_stats_container)
-        hero_stats_widget = hero_stats_label
-
-    def initial_position_slots(dt):
-        # Функция position_slots должна быть определена выше или здесь
-        # Убедимся, что она имеет доступ к необходимым переменным
-        if not right_panel or not hasattr(right_panel, 'to_parent'):  # Простая проверка
+    # --- Функции управления слотами ---
+    def position_slots(dt):
+        """
+        Позиционирует слоты экипировки относительно центра изображения героя.
+        """
+        # Проверяем, есть ли герой (и виджет изображения)
+        if not hero_image_widget:
+            print("[DEBUG] position_slots: Герой отсутствует, позиционирование пропущено.")
             return
-        # Вызываем функцию позиционирования
-        position_slots(0)  # Передаем фиктивный dt
 
+        if not right_panel or not hasattr(right_panel, 'width') or right_panel.width == 0:
+            # Если размеры еще не известны — ждем
+            print("[DEBUG] position_slots: Размеры панели не готовы, повтор через 0.1с.")
+            Clock.schedule_once(position_slots, 0.1)
+            return
+
+        # Получаем реальные размеры и позицию панели
+        panel_width = right_panel.width
+        panel_height = right_panel.height
+        panel_x = right_panel.x
+        panel_y = right_panel.y
+
+        # Центр панели
+        center_x = panel_x + panel_width / 2
+        center_y = panel_y + panel_height / 2
+
+        # Размеры героя (уже известны, если герой есть)
+        hero_width, hero_height = hero_image_size
+
+        # Размер слота
+        slot_w, slot_h = slot_size
+
+        # Половины для центрирования
+        half_hero_w = hero_width / 2
+        half_hero_h = hero_height / 2
+        half_slot_w = slot_w / 2
+        half_slot_h = slot_h / 2
+
+        offset = dp(20)  # Отступ от края героя
+
+        # Позиции слотов (вокруг героя)
+        slot_positions = {
+            '0': (center_x - half_hero_w - slot_w - offset, center_y - half_slot_h),  # Лево
+            '3': (center_x + half_hero_w + offset, center_y - half_slot_h),           # Право
+            '1': (center_x - half_slot_w, center_y + half_hero_h + offset),           # Верх
+            '2': (center_x - half_slot_w, center_y - half_hero_h - slot_h - offset),  # Низ
+            '4': (center_x + half_hero_w + offset, center_y + half_hero_h + offset),  # Аксессуар (вверху справа)
+        }
+
+        # Применяем позиции к слотам
+        print("[DEBUG] position_slots: Установка позиций слотов...")
+        for slot_type, pos in slot_positions.items():
+            if slot_type in equipment_slots:
+                widget = equipment_slots[slot_type]
+                widget.pos = pos
+                print(f"[DEBUG] position_slots: Слот {slot_type} позиционирован в {pos}")
+
+                # Если в слоте есть артефакт — сохраняем позицию в hero_equipment и БД
+                artifact_entry = hero_equipment.get(slot_type)
+                if isinstance(artifact_entry, dict) and artifact_entry.get('id'):
+                    pos_x, pos_y = pos
+                    # Обновляем координаты в локальном словаре
+                    hero_equipment[slot_type]['pos_x'] = pos_x
+                    hero_equipment[slot_type]['pos_y'] = pos_y
+                    # Сохраняем координаты в БД
+                    save_hero_equipment_to_db(faction, slot_type, artifact_entry['id'], pos_x, pos_y)
+                    print(
+                        f"[DEBUG] position_slots: Позиции для слота {slot_type} с артефактом {artifact_entry['id']} сохранены в БД: ({pos_x}, {pos_y})")
+
+        print("[DEBUG] position_slots: Завершено.")
+
+    def update_equipment_slot_visual(slot_type, artifact_data):
+        """
+        Обновляет визуальное представление слота экипировки.
+        :param slot_type: Тип слота ('0', '1', '2', '3', '4')
+        :param artifact_data: Словарь с данными артефакта или None, если слот пуст.
+        """
+        slot_widget = equipment_slots.get(slot_type)
+        if not slot_widget:
+            print(f"[WARNING] Слот типа {slot_type} не найден для обновления.")
+            return
+
+        # Очищаем предыдущее содержимое слота (если было, например, Label)
+        slot_widget.clear_widgets()
+        # slot_widget.canvas.after.clear()  # Обычно не нужно, если мы используем background_normal
+
+        if artifact_data and artifact_data.get('image_url'):
+            # Устанавливаем изображение артефакта как фон кнопки
+            image_url = artifact_data['image_url']
+            slot_widget.background_normal = image_url
+            slot_widget.background_down = image_url  # На случай, если кнопка нажимается
+            # Убедимся, что фон не цветной
+            slot_widget.background_color = (1, 1, 1, 1) # Белый цвет для корректного отображения изображения
+            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} обновлен изображением: {image_url}")
+        else:
+            # Если артефакта нет, сбрасываем слот к стилю по умолчанию
+            slot_widget.background_normal = ''  # Очищаем фон
+            slot_widget.background_down = ''
+            slot_widget.background_color = (1, 1, 1, 1) # Белый
+            apply_slot_style(slot_widget) # Применяем базовый стиль (серый фон)
+            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} очищен и сброшен.")
+
+    def update_hero_stats_display():
+        if hero_stats_widget:
+            try:
+                hero_stats_data = load_hero_stats_from_db(faction)
+                formatted_stats = format_hero_stats(hero_stats_data)
+                hero_stats_widget.text = formatted_stats
+                print(f"[DEBUG] update_hero_stats_display: Характеристики обновлены: {formatted_stats}")
+            except Exception as e:
+                print(f"Ошибка обновления характеристик героя: {e}")
+                import traceback
+                traceback.print_exc()
+                hero_stats_widget.text = "Ошибка загрузки"
+
+    def update_all_equipment_slots():
+        """Обновляет визуальное состояние всех слотов экипировки."""
+        print(f"[DEBUG] update_all_equipment_slots: Начало обновления. hero_equipment={ {k: v.get('id') for k, v in hero_equipment.items()} }")
+        updated_slots = []
+        for slot_type_key in ['0', '1', '2', '3', '4']:
+            # Получаем данные артефакта для этого слота из hero_equipment
+            artifact_entry = hero_equipment.get(slot_type_key)
+            # print(f"[DEBUG] update_all_equipment_slots: slot {slot_type_key}, artifact_entry={artifact_entry}")
+
+            # artifact_entry может быть None или словарем
+            if isinstance(artifact_entry, dict) and artifact_entry.get('id'):
+                # Если есть ID, значит артефакт экипирован
+                # Нам нужен полный объект артефакта для получения image_url
+                artifact_id = artifact_entry['id']
+                # Ищем полные данные артефакта в artifacts_list
+                full_artifact_data = next((a for a in artifacts_list if a['id'] == artifact_id), None)
+                if full_artifact_data:
+                    update_equipment_slot_visual(slot_type_key, full_artifact_data)
+                    updated_slots.append(slot_type_key)
+                else:
+                    # Если не нашли в списке, используем данные из hero_equipment
+                    print(
+                        f"[WARNING] Артефакт ID {artifact_id} для слота {slot_type_key} не найден в artifacts_list. Используются данные из hero_equipment.")
+                    update_equipment_slot_visual(slot_type_key, artifact_entry)
+                    updated_slots.append(slot_type_key)
+            else:
+                # Если артефакта нет, передаем None или пустой словарь
+                update_equipment_slot_visual(slot_type_key, None)
+        print(f"[DEBUG] update_all_equipment_slots: Обновление завершено. Обновлены слоты: {updated_slots}")
+
+    # --- Добавление виджетов в layout ---
     popup_layout.add_widget(left_panel)
     popup_layout.add_widget(right_panel)
-    Clock.schedule_once(initial_position_slots, 0)  # Вызов в следующем кадре
+
+    # --- Создание Popup ---
     artifacts_popup = Popup(
         title="Лавка артефактов",
         content=popup_layout,
@@ -858,177 +1126,28 @@ def open_artifacts_popup(faction):
         separator_color=(0.5, 0.3, 0.7, 1)
     )
 
-    def position_slots(dt):
-        """
-        Позиционирует слоты экипировки и сохраняет их координаты в БД,
-        если в слоте есть артефакт.
-        """
-        if not right_panel or not hasattr(right_panel, 'width') or right_panel.width == 0:
-            # Повторная попытка позже
-            Clock.schedule_once(position_slots, 0.1)
-            return
-
-        # --- Вычисление позиций ---
-        right_panel_width = right_panel.width
-        right_panel_height = right_panel.height
-        right_panel_x = right_panel.x
-        right_panel_y = right_panel.y
-        center_x = right_panel_x + right_panel_width / 2
-        center_y = right_panel_y + right_panel_height / 2
-        half_hero_width = hero_image_size[0] / 2
-        # Исправлено: размер слота, а не 1/4 ширины
-        half_slot_width = slot_size[0] / 2
-        min_distance_from_center = half_hero_width + half_slot_width + dp(10)
-        distance_horizontal = max(dp(200), min_distance_from_center)
-        distance_vertical = max(dp(200), min_distance_from_center)
-        distance_above_head = distance_vertical + dp(80)
-
-        slot_positions = {
-            '0': (center_x - distance_horizontal, center_y - slot_size[1] / 2),
-            '2': (center_x - slot_size[0] / 2, center_y - distance_vertical),
-            '3': (center_x + distance_horizontal - slot_size[0], center_y - slot_size[1] / 2),
-            '1': (center_x - slot_size[0] / 2, center_y + distance_vertical - slot_size[1]),
-            '4': (center_x + distance_horizontal - slot_size[0], center_y + distance_above_head - slot_size[1]),
-        }
-
-        # --- Установка позиций и сохранение координат ---
-        for slot_type, pos in slot_positions.items():
-            if slot_type in equipment_slots:
-                slot_widget = equipment_slots[slot_type]
-                slot_widget.pos = pos
-
-                # --- Проверка и сохранение координат для экипированных артефактов ---
-                # Получаем текущие данные артефакта в слоте из локального кэша
-                artifact_entry = hero_equipment.get(slot_type)
-
-                # Проверяем, есть ли артефакт в слоте (id не None)
-                if isinstance(artifact_entry, dict) and artifact_entry.get('id') is not None:
-                    # Извлекаем координаты из вычисленной позиции
-                    pos_x, pos_y = pos
-
-                    # Обновляем локальный кэш hero_equipment
-                    hero_equipment[slot_type]['pos_x'] = pos_x
-                    hero_equipment[slot_type]['pos_y'] = pos_y
-
-                    # Сохраняем в БД текущую экипировку и новые позиции
-                    # Передаем текущий artifact_id и новые координаты
-                    save_hero_equipment_to_db(
-                        faction,
-                        slot_type,
-                        artifact_entry['id'],  # Передаем ID текущего артефакта
-                        pos_x,
-                        pos_y
-                    )
-                    print(
-                        f"[DEBUG] position_slots: Позиции для слота {slot_type} с артефактом {artifact_entry['id']} сохранены в БД: ({pos_x}, {pos_y})")
-
-    def update_hero_stats_display():
-        if hero_stats_widget:
-            try:
-                hero_stats_data = load_hero_stats_from_db(faction)
-                formatted_stats = format_hero_stats(hero_stats_data)
-                hero_stats_widget.text = formatted_stats
-            except Exception as e:
-                print(f"Ошибка обновления характеристик героя: {e}")
-                hero_stats_widget.text = "Ошибка загрузки"
-
+    # --- Планирование обновлений ---
+    # Планируем обновление характеристик
     Clock.schedule_once(lambda dt: update_hero_stats_display(), 0)
-    Clock.schedule_once(position_slots, -1)
-    artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
+
+    # Планируем позиционирование слотов (только если есть герой)
+    # Вызов позиционирования после открытия окна
+    if hero_image_widget:
+        print("[DEBUG] artifacts_popup: Привязка on_open для position_slots")
+        artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
 
     # Вызываем update_artifact_list один раз в конце, чтобы заполнить список с начальными стилями
     update_artifact_list()
 
     artifacts_popup.open()
 
-def show_popup_message(title, message):
-    """
-    Отображает всплывающее окно с сообщением, расположенным по центру,
-    с белым цветом текста и стандартным размером шрифта.
-    :param title: Заголовок окна.
-    :param message: Текст сообщения.
-    """
-    # Основной контейнер: заполняет всё пространство popup
-    content = BoxLayout(
-        orientation='vertical',
-        padding=dp(15),
-        spacing=dp(10),
-        size_hint=(1, 1)
-    )
+# --- Конец open_artifacts_popup ---
 
-    # Label с сообщением: белый цвет, по центру
-    message_label = Label(
-        text=message,
-        size_hint=(1, 1),
-        # Используем dp для размера шрифта для лучшей адаптации
-        font_size=dp(18),
-        color=(1, 1, 1, 1), # Чисто белый
-        halign='center',
-        valign='middle'
-    )
-    # Чтобы текст правильно оборачивался и центрировался внутри Label:
-    # связываем text_size с размером самой метки
-    message_label.bind(size=lambda instance, value: setattr(instance, 'text_size', (value[0], None)))
-    # Или более явно:
-    # message_label.bind(size=message_label.setter('text_size'))
-    content.add_widget(message_label)
 
-    # Кнопка «Закрыть» внизу
-    close_button = Button(
-        text="Закрыть",
-        size_hint_y=None,
-        height=dp(50),
-        background_color=get_color_from_hex("#4CAF50"), # Зеленоватый цвет по умолчанию
-        background_normal='',
-        color=(1, 1, 1, 1),
-        font_size=dp(16),
-        bold=True
-    )
-    content.add_widget(close_button)
 
-    # --- Определение размера Popup ---
-    from kivy.core.window import Window
-    # Размер popup: максимум 90% ширины и 70% высоты экрана, но с ограничениями
-    popup_width = min(dp(500), Window.width * 0.9)
-    popup_height = min(dp(600), Window.height * 0.7)
 
-    # Создаём само окно. Фон сделаем тёмным, чтобы белый текст был хорошо виден.
-    popup = Popup(
-        title=title,
-        title_size=dp(18),
-        title_align='center',
-        title_color=get_color_from_hex("#FFFFFF"), # Белый заголовок
-        content=content,
 
-        separator_color=get_color_from_hex("#FFFFFF"), # Белая линия под заголовком
-        separator_height=dp(1),
 
-        size_hint=(None, None),
-        size=(popup_width, popup_height),
 
-        background_color=(0.15, 0.15, 0.15, 1), # тёмно-серый фон (чтобы белый текст читался)
-        overlay_color=(0, 0, 0, 0.5), # Полупрозрачный чёрный оверлей
 
-        auto_dismiss=False # Запрещаем закрытие кликом вне окна
-    )
 
-    # --- Обработчик изменения размера окна ---
-    # (если пользователь повернёт экран или сменит размер)
-    def update_size(*args):
-        new_w = min(dp(500), Window.width * 0.9)
-        new_h = min(dp(600), Window.height * 0.7)
-        popup.size = (new_w, new_h)
-        # Центрируем окно после изменения размера
-        popup.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-
-    # Привязываем обработчик к событию изменения размера окна
-    from kivy.core.window import Window
-    Window.bind(on_resize=update_size)
-    # Отвязываем обработчик при закрытии popup, чтобы избежать утечек памяти
-    popup.bind(on_dismiss=lambda *x: Window.unbind(on_resize=update_size))
-
-    # --- Привязываем действие к кнопке закрытия ---
-    close_button.bind(on_release=popup.dismiss)
-
-    # --- Открываем popup ---
-    popup.open()
