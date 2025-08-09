@@ -5,7 +5,7 @@
 # ---------------------------------
 
 # Название (отображаемое в лаунчере)
-title = Лэрдон-Легенды
+title = Легенды Лэрдона
 
 # Уникальное имя пакета (без пробелов)
 package.name = lerdonlegends
@@ -35,7 +35,7 @@ presplash.filename = %(source.dir)s/assets/splash.png
 description = Стратегическая игра Lerdon с элементами экономики и политики.
 
 # Версия приложения (формат X.Y.Z)
-version = 1.0.0
+version = 1.7.1
 
 # Автор(ы)
 author = Vladislav Lerdon Team
