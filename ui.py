@@ -281,22 +281,22 @@ class FortressInfoPopup(Popup):
                                 # Обработка случаев, когда один из параметров равен 0
                                 if defense == 0:
                                     if attack > 0:
-                                        specialization_icon_path = r"files\pict\hero_type\sword.png"
+                                        specialization_icon_path = "files/pict/hero_type/sword.png"
                                     # Если оба 0, остается None
                                 elif attack == 0:
                                     if defense > 0:
-                                        specialization_icon_path = r"files\pict\hero_type\shield.png"
+                                        specialization_icon_path = "files/pict/hero_type/shield.png"
                                     # Если оба 0, остается None
                                 else:
                                     # Основная логика определения специализации
                                     attack_to_defense_ratio = attack / defense
                                     defense_to_attack_ratio = defense / attack
                                     if attack_to_defense_ratio >= 2.0:
-                                        specialization_icon_path = r"files\pict\hero_type\sword.png"
+                                        specialization_icon_path = "files/pict/hero_type/sword.png"
                                     elif defense_to_attack_ratio >= 2.0:
-                                        specialization_icon_path = r"files\pict\hero_type\shield.png"
+                                        specialization_icon_path = "files/pict/hero_type/shield.png"
                                     else:
-                                        specialization_icon_path = r"files\pict\hero_type\sword-shield.png"
+                                        specialization_icon_path = "files/pict/hero_type/sword-shield.png"
                             except Exception as spec_error:
                                 print(f"Ошибка при определении специализации для '{unit_name}': {spec_error}")
                                 # Оставляем specialization_icon_path как None в случае ошибки вычисления
@@ -323,9 +323,14 @@ class FortressInfoPopup(Popup):
                 # Создаем макет для одного юнита
                 unit_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=100, spacing=10)
 
-                # Изображение юнита
+                # Изображение юнита - проверяем существование файла
+                unit_image_source = unit_image
+                if unit_image_source and not os.path.exists(unit_image_source):
+                    print(f"Файл изображения не найден: {unit_image_source}")
+                    unit_image_source = "files/pict/placeholder.png"  # Файл-заглушка
+
                 unit_image_widget = Image(
-                    source=unit_image,
+                    source=unit_image_source,
                     size_hint=(None, None),
                     size=(120, 120)  # Увеличиваем размер изображения
                 )
@@ -358,13 +363,17 @@ class FortressInfoPopup(Popup):
 
                 # Добавляем иконку специализации, если путь определен
                 if specialization_icon_path:
-                    icon_image = Image(
-                        source=specialization_icon_path,
-                        size_hint=(None, None),
-                        size=(30, 30),  # Размер иконки
-                        pos_hint={'center_y': 0.5},  # Выравнивание по вертикали
-                    )
-                    text_container.add_widget(icon_image)
+                    # Проверяем существование файла иконки
+                    if os.path.exists(specialization_icon_path):
+                        icon_image = Image(
+                            source=specialization_icon_path,
+                            size_hint=(None, None),
+                            size=(30, 30),  # Размер иконки
+                            pos_hint={'center_y': 0.5},  # Выравнивание по вертикали
+                        )
+                        text_container.add_widget(icon_image)
+                    else:
+                        print(f"Файл иконки специализации не найден: {specialization_icon_path}")
 
                 unit_layout.add_widget(text_container)
 
@@ -373,6 +382,8 @@ class FortressInfoPopup(Popup):
 
         except Exception as e:
             print(f"Ошибка при получении гарнизона: {e}")
+            import traceback
+            traceback.print_exc()  # Добавляем трассировку для лучшего понимания ошибки
             # Можно показать сообщение об ошибке в интерфейсе
             error_label = Label(
                 text="Ошибка загрузки гарнизона",
