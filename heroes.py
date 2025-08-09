@@ -485,12 +485,55 @@ def open_artifacts_popup(faction):
     Открывает Popup с артефактами и экипировкой героя.
     :param faction: Экземпляр класса Faction
     """
+    from kivy.metrics import dp
+    from kivy.utils import platform
+
+    # Проверяем, запущено ли приложение на Android
+    is_android = platform == 'android'
+
+    # Адаптируем размеры под мобильные устройства
+    if is_android:
+        artifact_row_height = dp(70)
+        button_width = dp(70)
+        button_height = dp(50)
+        font_size_large = '14sp'
+        font_size_medium = '12sp'
+        font_size_small = '11sp'
+        filter_height = dp(100)
+        filter_spacing = dp(3)
+        slot_size = (dp(70), dp(70))
+        name_label_height = dp(15)
+        offset = dp(10)
+        padding_small = dp(5)
+        padding_medium = dp(10)
+        spacing_small = dp(5)
+        spacing_medium = dp(10)
+    else:
+        artifact_row_height = dp(90)
+        button_width = dp(90)
+        button_height = dp(60)
+        font_size_large = '16sp'
+        font_size_medium = '14sp'
+        font_size_small = '14sp'
+        filter_height = dp(120)
+        filter_spacing = dp(5)
+        slot_size = (dp(90), dp(90))
+        name_label_height = dp(20)
+        offset = dp(20)
+        padding_small = dp(5)
+        padding_medium = dp(10)
+        spacing_small = dp(5)
+        spacing_medium = dp(10)
+
     artifacts_list = load_artifacts_from_db(faction)
     hero_equipment = load_hero_equipment_from_db(faction)
     hero_image_path = load_hero_image_from_db(faction)
-    popup_layout = BoxLayout(orientation='horizontal', padding=dp(10), spacing=dp(10))
+    popup_layout = BoxLayout(orientation='horizontal', padding=padding_small if is_android else padding_medium,
+                             spacing=spacing_small if is_android else spacing_medium)
     left_panel = BoxLayout(orientation='vertical', size_hint=(0.5, 1))
-    filters_container = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(120), spacing=dp(5))
+    filters_container = BoxLayout(orientation='vertical', size_hint_y=None,
+                                  height=filter_height, spacing=filter_spacing)
+
     filter_states = {'season_influence': 'all', 'artifact_type': 'all', 'cost_sort': 'all'}
 
     def update_artifact_list(*args):
@@ -507,9 +550,7 @@ def open_artifacts_popup(faction):
             type_ok = True
             if filter_states['artifact_type'] != 'all':
                 type_ok = artifact.get('artifact_type') == filter_states['artifact_type']
-            # cost_ok = True # Переменная определена, но не используется в логике
-            # if season_ok and type_ok and cost_ok: # cost_ok всегда True
-            if season_ok and type_ok: # Упрощаем условие
+            if season_ok and type_ok:
                 filtered_artifacts.append(artifact)
         if filter_states['cost_sort'] == 'asc':
             filtered_artifacts.sort(key=lambda art: art.get('cost', 0))
@@ -519,15 +560,23 @@ def open_artifacts_popup(faction):
             description = format_artifact_description(artifact)
             if not description:
                 continue
-            artifact_row_container = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(90),
-                                               padding=(dp(5), dp(5)), spacing=dp(10))
+            artifact_row_container = BoxLayout(orientation='horizontal', size_hint_y=None,
+                                               height=artifact_row_height,
+                                               padding=(dp(3) if is_android else dp(5),
+                                                        dp(3) if is_android else dp(5)),
+                                               spacing=dp(5) if is_android else dp(10))
 
             artifact_info_container = BoxLayout(orientation='vertical', size_hint_x=0.75)
-            name_label = Label(text=artifact['name'], halign='left', valign='middle', font_size='16sp', bold=True,
-                               size_hint_y=None, height=dp(25), color=(1, 1, 0.6, 1))
+            name_label = Label(text=artifact['name'], halign='left', valign='middle',
+                               font_size=font_size_large, bold=True,
+                               size_hint_y=None, height=dp(20) if is_android else dp(25),
+                               color=(1, 1, 0.6, 1))
             name_label.bind(size=name_label.setter('text_size'))
-            stats_label = Label(text=description, halign='left', valign='top', font_size='14sp', bold=True,
-                                color=(0.9, 0.9, 0.9, 1), size_hint_y=None, height=dp(50))
+            stats_label = Label(text=description, halign='left', valign='top',
+                                font_size=font_size_medium if is_android else font_size_medium,
+                                bold=True,
+                                color=(0.9, 0.9, 0.9, 1), size_hint_y=None,
+                                height=dp(40) if is_android else dp(50))
             stats_label.bind(size=stats_label.setter('text_size'))
             artifact_info_container.add_widget(name_label)
             artifact_info_container.add_widget(stats_label)
@@ -536,28 +585,23 @@ def open_artifacts_popup(faction):
             buy_button = Button(
                 text=f"Купить\n({formatted_cost})",
                 size_hint_x=None,
-                width=dp(90),
-                height=dp(60),
-                font_size='14sp',
+                width=button_width,
+                height=button_height,
+                font_size=font_size_small if is_android else font_size_medium,
                 bold=True
             )
-            # Применяем стиль к кнопке "Купить"
-            style_rounded_button(buy_button, bg_color=(0.2, 0.7, 0.3, 1), radius=dp(8),
-                                 has_shadow=True)  # Зеленоватый градиент
+            style_rounded_button(buy_button, bg_color=(0.2, 0.7, 0.3, 1),
+                                 radius=dp(6) if is_android else dp(8),
+                                 has_shadow=True)
 
             def make_buy_handler(art_data):
-                """Создает обработчик для кнопки покупки артефакта."""
-
                 def on_buy(instance):
-                    # Проверяем, что fraction_instance доступен
                     if 'fraction_instance' not in locals() and 'fraction_instance' not in globals():
-                        pass  # Логика получения будет ниже
+                        pass
                     current_fraction_instance = faction
 
-                    print(
-                        f"[DEBUG] Покупка артефакта: {art_data['name']} (ID: {art_data['id']}, Тип: {art_data['artifact_type']})")
+                    print(f"[DEBUG] Покупка артефакта: {art_data['name']} (ID: {art_data['id']}, Тип: {art_data['artifact_type']})")
 
-                    # --- НОВАЯ ПРОВЕРКА: Есть ли у фракции герой? ---
                     try:
                         check_cursor = current_fraction_instance.conn.cursor()
                         check_cursor.execute(
@@ -573,15 +617,13 @@ def open_artifacts_popup(faction):
                         print(f"[ERROR] Ошибка при проверке наличия героя: {e}")
                         show_popup_message("Ошибка", "Ошибка проверки данных героя.")
                         return
-                    # --- КОНЕЦ НОВОЙ ПРОВЕРКИ ---
 
-                    # 1. Определяем slot_type на основе типа артефакта
                     artifact_type_to_slot = {
-                        0: '0',  # Оружие -> slot_type 0
-                        1: '1',  # Голова -> slot_type 1
-                        2: '2',  # Сапоги -> slot_type 2
-                        3: '3',  # Туловище -> slot_type 3
-                        4: '4'  # Аксессуар -> slot_type 4
+                        0: '0',
+                        1: '1',
+                        2: '2',
+                        3: '3',
+                        4: '4'
                     }
                     slot_type = artifact_type_to_slot.get(art_data['artifact_type'])
 
@@ -592,30 +634,23 @@ def open_artifacts_popup(faction):
 
                     print(f"[DEBUG] Целевой слот: {slot_type}")
 
-                    # 2. Проверяем, есть ли уже артефакт в этом слоте
                     artifact_entry = hero_equipment.get(slot_type)
                     current_artifact_id_in_slot = None
                     if isinstance(artifact_entry, dict):
                         current_artifact_id_in_slot = artifact_entry.get('id')
                     print(f"[DEBUG] Текущий артефакт в слоте {slot_type}: {current_artifact_id_in_slot}")
 
-                    # --- Вспомогательные функции для работы с деньгами ---
-                    # Работаем напрямую с экземпляром Fraction
                     def deduct_coins_local(fraction_obj, amount):
-                        """Списывает монеты, если хватает. Возвращает True при успехе."""
                         try:
-                            # Получаем текущее количество монет НАПРЯМУЮ из объекта Fraction
                             current_money = getattr(fraction_obj, 'money', 0)
                             print(f"[DEBUG] [deduct_coins_local] Текущие монеты: {current_money}, Списание: {amount}")
                             if current_money >= amount:
                                 new_amount = current_money - amount
-                                # Вызываем метод update_resource_now ЭКЗЕМПЛЯРА Fraction
                                 fraction_obj.update_resource_now('Кроны', new_amount)
                                 print(f"[DEBUG] [deduct_coins_local] Новые монеты: {new_amount}")
                                 return True
                             else:
-                                print(
-                                    f"[INFO] [deduct_coins_local] Недостаточно крон. Нужно: {amount}, Есть: {current_money}")
+                                print(f"[INFO] [deduct_coins_local] Недостаточно крон. Нужно: {amount}, Есть: {current_money}")
                                 return False
                         except Exception as e:
                             print(f"[ERROR] [deduct_coins_local] Ошибка при списании: {e}")
@@ -624,14 +659,12 @@ def open_artifacts_popup(faction):
                             return False
 
                     def add_coins_local(fraction_obj, amount):
-                        """Начисляет монеты. Возвращает True при успехе."""
                         try:
                             current_money = getattr(fraction_obj, 'money', 0)
                             print(f"[DEBUG] [add_coins_local] Текущие кроны: {current_money}, Начисление: {amount}")
                             new_amount = current_money + amount
                             fraction_obj.update_resource_now('Кроны', new_amount)
                             print(f"[DEBUG] [add_coins_local] Новые кроны: {new_amount}")
-                            # fraction_obj.money = new_amount # если update_resource_now не делает это
                             return True
                         except Exception as e:
                             print(f"[ERROR] [add_coins_local] Ошибка при начислении: {e}")
@@ -639,48 +672,37 @@ def open_artifacts_popup(faction):
                             traceback.print_exc()
                             return False
 
-                    # --- Конец вспомогательных функций ---
-
-                    # 3. Логика покупки/замены
                     try:
                         artifact_cost = art_data['cost']
                         print(f"[DEBUG] Цена нового артефакта: {artifact_cost}")
 
                         if current_artifact_id_in_slot is None:
-                            # --- Сценарий 1: Слот пуст, просто покупаем ---
                             print("[DEBUG] Слот пуст. Покупаем новый артефакт.")
                             if deduct_coins_local(current_fraction_instance, artifact_cost):
-                                # Обновляем локальный словарь hero_equipment
                                 hero_equipment[slot_type] = {
                                     "id": art_data['id'],
                                     "image_url": art_data.get('image_url'),
-                                    "pos_x": None,  # Будет обновлено позже
-                                    "pos_y": None  # Будет обновлено позже
+                                    "pos_x": None,
+                                    "pos_y": None
                                 }
                                 update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
-                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None,
-                                                          None)
+                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None, None)
                                 print(f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type}.")
                                 show_popup_message("Успех", f"Артефакт {art_data['name']} куплен!")
-                                # Обновляем характеристики героя после покупки
                                 update_hero_stats_display()
                             else:
                                 print("[INFO] Недостаточно монет для покупки.")
                                 show_popup_message("Ошибка", "Недостаточно Крон!")
 
                         else:
-                            # --- Сценарий 2: Слот занят, предлагаем замену ---
                             print(f"[DEBUG] Слот {slot_type} занят. Запрашиваем подтверждение замены.")
 
-                            # Получаем данные старого артефакта из БД
                             old_artifact_data = None
                             try:
-                                # Используем соединение из экземпляра Fraction
                                 cursor = current_fraction_instance.conn.cursor()
                                 cursor.execute("SELECT * FROM artifacts WHERE id = ?", (current_artifact_id_in_slot,))
                                 old_artifact_row = cursor.fetchone()
                                 if old_artifact_row:
-                                    # Предполагаем, что cost находится в 13-м столбце (index 12)
                                     old_artifact_data = {
                                         "id": old_artifact_row[0],
                                         "name": old_artifact_row[1],
@@ -693,16 +715,14 @@ def open_artifacts_popup(faction):
                                 return
 
                             if not old_artifact_data:
-                                print(
-                                    f"[WARNING] Данные старого артефакта (ID: {current_artifact_id_in_slot}) не найдены. Заменяем без возврата.")
+                                print(f"[WARNING] Данные старого артефакта (ID: {current_artifact_id_in_slot}) не найдены. Заменяем без возврата.")
                                 old_artifact_cost = 0
                             else:
                                 old_artifact_cost = old_artifact_data.get('cost', 0)
 
                             sell_price = int(old_artifact_cost * 0.65)
                             net_cost = artifact_cost - sell_price
-                            print(
-                                f"[DEBUG] Цена старого артефакта: {old_artifact_cost}, Цена продажи: {sell_price}, Чистая стоимость: {net_cost}")
+                            print(f"[DEBUG] Цена старого артефакта: {old_artifact_cost}, Цена продажи: {sell_price}, Чистая стоимость: {net_cost}")
 
                             def confirm_replace(instance):
                                 confirm_popup.dismiss()
@@ -710,23 +730,18 @@ def open_artifacts_popup(faction):
                                     if sell_price > 0:
                                         add_coins_local(current_fraction_instance, sell_price)
                                         print(f"[DEBUG] Вернули {sell_price} монет за старый артефакт.")
-                                    # --- Обновление вызова save_hero_equipment_to_db ---
-                                    save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'],
-                                                              None, None)
+                                    save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None, None)
                                     hero_equipment[slot_type] = {
                                         "id": art_data['id'],
                                         "image_url": art_data.get('image_url'),
-                                        "pos_x": None,  # Будет обновлено позже
-                                        "pos_y": None  # Будет обновлено позже
+                                        "pos_x": None,
+                                        "pos_y": None
                                     }
 
                                     update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
 
-                                    print(
-                                        f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type} (старый заменен).")
-                                    show_popup_message("Успех",
-                                                       f"Артефакт {art_data['name']} куплен! Старый артефакт продан.")
-                                    # Обновляем характеристики героя после замены
+                                    print(f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type} (старый заменен).")
+                                    show_popup_message("Успех", f"Артефакт {art_data['name']} куплен! Старый артефакт продан.")
                                     update_hero_stats_display()
                                 else:
                                     print("[INFO] Недостаточно монет для замены.")
@@ -736,22 +751,26 @@ def open_artifacts_popup(faction):
                                 confirm_popup.dismiss()
                                 print("[INFO] Замена артефакта отменена пользователем.")
 
-                            content = BoxLayout(orientation='vertical', padding=10, spacing=10)
-                            old_art_name = old_artifact_data.get('name',
-                                                                 'Неизвестный артефакт') if old_artifact_data else 'Неизвестный артефакт'
+                            content = BoxLayout(orientation='vertical', padding=5 if is_android else 10,
+                                                spacing=5 if is_android else 10)
+                            old_art_name = old_artifact_data.get('name', 'Неизвестный артефакт') if old_artifact_data else 'Неизвестный артефакт'
                             message = (f"Заменить артефакт '{old_art_name}'\n"
                                        f"на '{art_data['name']}'?\n"
                                        f"Цена нового: {format_number(artifact_cost)}\n"
                                        f"Вы получите за старый: {format_number(sell_price)}\n"
                                        f"К оплате: {format_number(net_cost)}")
-                            message_label = Label(text=message, text_size=(None, None), halign='center')
+                            message_label = Label(text=message, text_size=(None, None), halign='center',
+                                                  font_size=font_size_small if is_android else '15sp')
                             message_label.bind(
                                 size=lambda instance, value: setattr(instance, 'text_size', (value[0] * 0.9, None)))
                             content.add_widget(message_label)
 
-                            btn_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-                            btn_yes = Button(text="Да", background_color=(0.4, 0.7, 0.4, 1))
-                            btn_no = Button(text="Нет", background_color=(0.7, 0.4, 0.4, 1))
+                            btn_layout = BoxLayout(size_hint_y=None, height=dp(40) if is_android else dp(50),
+                                                   spacing=dp(5) if is_android else dp(10))
+                            btn_yes = Button(text="Да", background_color=(0.4, 0.7, 0.4, 1),
+                                             font_size=font_size_small if is_android else '15sp')
+                            btn_no = Button(text="Нет", background_color=(0.7, 0.4, 0.4, 1),
+                                            font_size=font_size_small if is_android else '15sp')
                             btn_yes.bind(on_release=confirm_replace)
                             btn_no.bind(on_release=cancel_replace)
                             btn_layout.add_widget(btn_yes)
@@ -760,7 +779,7 @@ def open_artifacts_popup(faction):
 
                             confirm_popup = Popup(title="Подтверждение замены",
                                                   content=content,
-                                                  size_hint=(0.8, 0.6),
+                                                  size_hint=(0.9 if is_android else 0.8, 0.7 if is_android else 0.6),
                                                   auto_dismiss=False)
                             confirm_popup.open()
 
@@ -775,25 +794,29 @@ def open_artifacts_popup(faction):
 
             buy_button.bind(on_release=make_buy_handler(artifact))
             artifact_row_container.add_widget(artifact_info_container)
-            button_wrapper = BoxLayout(size_hint_x=None, width=dp(90), padding=(0, dp(15), 0, dp(15)))
+            button_wrapper = BoxLayout(size_hint_x=None, width=button_width,
+                                       padding=(0, dp(10) if is_android else dp(15), 0, dp(10) if is_android else dp(15)))
             button_wrapper.add_widget(buy_button)
             artifact_row_container.add_widget(button_wrapper)
             artifacts_list_layout.add_widget(artifact_row_container)
-        artifacts_list_layout.height = len(artifacts_list_layout.children) * dp(90) + (
-                len(artifacts_list_layout.children) - 1) * dp(5) if artifacts_list_layout.children else dp(1)
+        artifacts_list_layout.height = len(artifacts_list_layout.children) * artifact_row_height + (
+                len(artifacts_list_layout.children) - 1) * (dp(3) if is_android else dp(5)) if artifacts_list_layout.children else dp(1)
 
-    # --- Виджеты фильтров ---
-    # 1. Фильтр по сезону
-    season_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
-    season_filter_layout.add_widget(Label(text="Сезон:", size_hint_x=None, width=dp(60), halign='left'))
+    # Фильтры
+    season_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None,
+                                     height=dp(25) if is_android else dp(30))
+    season_filter_layout.add_widget(Label(text="Сезон:", size_hint_x=None,
+                                          width=dp(50) if is_android else dp(60), halign='left',
+                                          font_size=font_size_small if is_android else '15sp'))
     season_spinner = Spinner(
         text='Все',
         values=('Все', 'Есть влияние', 'Нет влияния'),
         size_hint=(1, None),
-        height=dp(30)
+        height=dp(25) if is_android else dp(30),
+        font_size=font_size_small if is_android else '15sp'
     )
-    # Применяем стиль к спиннеру
-    style_rounded_spinner(season_spinner, bg_color=(0.3, 0.5, 0.7, 1), text_color=(1, 1, 1, 1), radius=dp(6))
+    style_rounded_spinner(season_spinner, bg_color=(0.3, 0.5, 0.7, 1),
+                          text_color=(1, 1, 1, 1), radius=dp(4) if is_android else dp(6))
 
     def on_season_spinner_select(spinner, text):
         mapping = {'Все': 'all', 'Есть влияние': 'has_influence', 'Нет влияния': 'no_influence'}
@@ -804,17 +827,20 @@ def open_artifacts_popup(faction):
     season_filter_layout.add_widget(season_spinner)
     filters_container.add_widget(season_filter_layout)
 
-    # 2. Фильтр по типу
-    type_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
-    type_filter_layout.add_widget(Label(text="Тип:", size_hint_x=None, width=dp(60), halign='left'))
+    type_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None,
+                                   height=dp(25) if is_android else dp(30))
+    type_filter_layout.add_widget(Label(text="Тип:", size_hint_x=None,
+                                        width=dp(50) if is_android else dp(60), halign='left',
+                                        font_size=font_size_small if is_android else '15sp'))
     type_spinner = Spinner(
         text='Все',
         values=('Все', 'Оружие', 'Сапоги', 'Туловище', 'Голова', 'Аксессуар'),
         size_hint=(1, None),
-        height=dp(30)
+        height=dp(25) if is_android else dp(30),
+        font_size=font_size_small if is_android else '15sp'
     )
-    # Применяем стиль к спиннеру
-    style_rounded_spinner(type_spinner, bg_color=(0.3, 0.5, 0.7, 1), text_color=(1, 1, 1, 1), radius=dp(6))
+    style_rounded_spinner(type_spinner, bg_color=(0.3, 0.5, 0.7, 1),
+                          text_color=(1, 1, 1, 1), radius=dp(4) if is_android else dp(6))
 
     def on_type_spinner_select(spinner, text):
         mapping = {
@@ -833,17 +859,20 @@ def open_artifacts_popup(faction):
     type_filter_layout.add_widget(type_spinner)
     filters_container.add_widget(type_filter_layout)
 
-    # 3. Фильтр по стоимости (сортировка)
-    cost_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30))
-    cost_filter_layout.add_widget(Label(text="Цена:", size_hint_x=None, width=dp(60), halign='left'))
+    cost_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None,
+                                   height=dp(25) if is_android else dp(30))
+    cost_filter_layout.add_widget(Label(text="Цена:", size_hint_x=None,
+                                        width=dp(50) if is_android else dp(60), halign='left',
+                                        font_size=font_size_small if is_android else '15sp'))
     cost_spinner = Spinner(
         text='Все',
         values=('Все', 'По возрастанию', 'По убыванию'),
         size_hint=(1, None),
-        height=dp(30)
+        height=dp(25) if is_android else dp(30),
+        font_size=font_size_small if is_android else '15sp'
     )
-    # Применяем стиль к спиннеру
-    style_rounded_spinner(cost_spinner, bg_color=(0.3, 0.5, 0.7, 1), text_color=(1, 1, 1, 1), radius=dp(6))
+    style_rounded_spinner(cost_spinner, bg_color=(0.3, 0.5, 0.7, 1),
+                          text_color=(1, 1, 1, 1), radius=dp(4) if is_android else dp(6))
 
     def on_cost_spinner_select(spinner, text):
         mapping = {'Все': 'all', 'По возрастанию': 'asc', 'По убыванию': 'desc'}
@@ -855,31 +884,32 @@ def open_artifacts_popup(faction):
     filters_container.add_widget(cost_filter_layout)
 
     left_panel.add_widget(filters_container)
-    left_panel.add_widget(Label(text="Артефакты", size_hint_y=None, height=dp(40), bold=True, font_size='18sp'))
+    left_panel.add_widget(Label(text="Артефакты", size_hint_y=None,
+                                height=dp(30) if is_android else dp(40), bold=True,
+                                font_size=font_size_large if is_android else '18sp'))
     scroll_view = ScrollView(do_scroll_x=False)
-    artifacts_list_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+    artifacts_list_layout = BoxLayout(orientation='vertical', size_hint_y=None,
+                                      spacing=dp(3) if is_android else dp(5))
     artifacts_list_layout.bind(minimum_height=artifacts_list_layout.setter('height'))
     scroll_view.add_widget(artifacts_list_layout)
     left_panel.add_widget(scroll_view)
 
-    # --- Правая часть: Герой и экипировка ---
+    # Правая панель
     right_panel = FloatLayout(size_hint=(0.5, 1))
-    hero_image_widget = None  # Сохраняем ссылку на виджет изображения героя
-    equipment_slots = {}      # Словарь для хранения слотов
+    hero_image_widget = None
+    equipment_slots = {}
     slot_name_labels = {}
-    # --- Стили для слотов экипировки ---
-    # Определяем apply_slot_style ЗАРАНЕЕ, до её использования
+
     def apply_slot_style(slot_widget):
-        """Применяет стиль к слоту экипировки."""
         slot_widget.background_normal = ''
         slot_widget.background_color = (0, 0, 0, 0)
 
-        # Проверяем, существует ли уже rect
         if not hasattr(slot_widget, 'rect') or slot_widget.rect is None:
             with slot_widget.canvas.before:
                 from kivy.graphics import Color, RoundedRectangle
-                Color(0.4, 0.4, 0.4, 1)  # Серый фон
-                slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size, radius=[dp(8)])
+                Color(0.4, 0.4, 0.4, 1)
+                slot_widget.rect = RoundedRectangle(pos=slot_widget.pos, size=slot_widget.size,
+                                                    radius=[dp(6) if is_android else dp(8)])
 
         def update_slot_rect(instance, value):
             if hasattr(instance, 'rect') and instance.rect is not None:
@@ -889,18 +919,16 @@ def open_artifacts_popup(faction):
                 with instance.canvas.before:
                     from kivy.graphics import Color, RoundedRectangle
                     Color(0.4, 0.4, 0.4, 1)
-                    instance.rect = RoundedRectangle(pos=instance.pos, size=instance.size, radius=[dp(8)])
+                    instance.rect = RoundedRectangle(pos=instance.pos, size=instance.size,
+                                                     radius=[dp(6) if is_android else dp(8)])
 
-        # Удаляем предыдущие биндинги, если они были
         slot_widget.unbind(pos=update_slot_rect, size=update_slot_rect)
         slot_widget.bind(pos=update_slot_rect, size=update_slot_rect)
 
-    # --- Создание интерфейса правой панели ---
-    # Проверяем, есть ли изображение героя
     if hero_image_path and os.path.exists(hero_image_path):
         try:
-            hero_image_width = dp(300)
-            hero_image_height = dp(300)
+            hero_image_width = dp(200) if is_android else dp(300)
+            hero_image_height = dp(200) if is_android else dp(300)
             hero_image_size = (hero_image_width, hero_image_height)
 
             hero_image_widget = Image(
@@ -911,153 +939,127 @@ def open_artifacts_popup(faction):
             hero_image_widget.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
             right_panel.add_widget(hero_image_widget)
 
-            # === ЕДИНСТВЕННОЕ СОЗДАНИЕ СЛОТОВ ===
-            # Создаем слоты ТОЛЬКО один раз, если герой есть
-            slot_size = (dp(90), dp(90))
-            # Создаем слоты для каждого типа (пустые, без позиционирования)
             slot_types = ['0', '2', '3', '1', '4']
-            # В секции создания слотов:
             for slot_type in slot_types:
                 slot_widget = Button(
                     size_hint=(None, None),
                     size=slot_size,
-                    background_normal='',  # Пустой фон по умолчанию
-                    background_down='',  # Пустой фон при нажатии
-                    background_color=(1, 1, 1, 1)  # Белый цвет
+                    background_normal='',
+                    background_down='',
+                    background_color=(1, 1, 1, 1)
                 )
 
-                apply_slot_style(slot_widget)  # Применяем стиль только для пустых слотов
-                # Добавляем слот на панель, позиционировать будем позже
+                apply_slot_style(slot_widget)
                 right_panel.add_widget(slot_widget)
                 equipment_slots[slot_type] = slot_widget
                 name_label = Label(
                     text="",
                     size_hint=(None, None),
-                    size=(dp(90), dp(20)),
-                    font_size='14sp',
+                    size=(slot_size[0], name_label_height),
+                    font_size=font_size_small if is_android else '14sp',
                     halign='center',
                     color=(1, 1, 1, 1)
                 )
                 name_label.bind(size=name_label.setter('text_size'))
-                name_label.text_size = (dp(90), None)
+                name_label.text_size = (slot_size[0], None)
                 slot_name_labels[slot_type] = name_label
-            # --- Инициализация визуального состояния слотов ---
-            # После создания всех слотов, обновляем их визуальное состояние
-            # Это отобразит уже купленные артефакты
+
             def initialize_equipment_visual(dt):
                 print("[DEBUG] initialize_equipment_visual: Вызываем update_all_equipment_slots")
                 update_all_equipment_slots()
 
-            Clock.schedule_once(initialize_equipment_visual, 0.2) # Немного задержим
+            Clock.schedule_once(initialize_equipment_visual, 0.2)
 
         except Exception as e:
             print(f"Ошибка загрузки изображения героя {hero_image_path}: {e}")
             import traceback
             traceback.print_exc()
             hero_image_widget = None
-            # Создаем placeholder в случае ошибки загрузки и ДОБАВЛЯЕМ его
             hero_placeholder = Label(
                 text="[b]Ошибка загрузки\nизображения[/b]",
                 markup=True,
                 halign='center',
                 valign='middle',
-                font_size='16sp'
+                font_size=font_size_medium if is_android else '16sp'
             )
             hero_placeholder.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
             right_panel.add_widget(hero_placeholder)
 
     else:
-        # Если героя нет - показываем сообщение
         no_hero_label = Label(
             text="[b]Герой не нанят[/b]\nНаймите героя\nдля доступа к экипировке",
             markup=True,
             halign='center',
             valign='middle',
-            font_size='16sp'
+            font_size=font_size_medium if is_android else '16sp'
         )
         no_hero_label.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
         right_panel.add_widget(no_hero_label)
         hero_image_widget = None
 
-    # --- Блок характеристик героя ---
+    # Характеристики героя
     hero_stats_container = BoxLayout(
         orientation='vertical',
         size_hint=(1, None),
-        height=dp(150),
-        padding=dp(15),
-        spacing=dp(25)
+        height=dp(100) if is_android else dp(150),
+        padding=dp(10) if is_android else dp(15),
+        spacing=dp(15) if is_android else dp(25)
     )
     hero_stats_label = Label(
         text="",
         halign='right',
         valign='top',
-        font_size='27sp',
+        font_size=font_size_large if is_android else '27sp',
         bold=False,
         color=(1, 1, 1, 1),
         markup=True
     )
     hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
     hero_stats_container.add_widget(hero_stats_label)
-    hero_stats_container.pos_hint = {'x': -0.43, 'y': 0}
+    hero_stats_container.pos_hint = {'x': -0.43 if is_android else -0.43, 'y': 0}
     right_panel.add_widget(hero_stats_container)
     hero_stats_widget = hero_stats_label
 
-    # --- Функции управления слотами ---
     def position_slots(dt):
-        """
-        Позиционирует слоты экипировки относительно центра изображения героя.
-        """
-        # Проверяем, есть ли герой (и виджет изображения)
         if not hero_image_widget:
             print("[DEBUG] position_slots: Герой отсутствует, позиционирование пропущено.")
             return
 
         if not right_panel or not hasattr(right_panel, 'width') or right_panel.width == 0:
-            # Если размеры еще не известны — ждем
             print("[DEBUG] position_slots: Размеры панели не готовы, повтор через 0.1с.")
             Clock.schedule_once(position_slots, 0.1)
             return
 
-        # Получаем реальные размеры и позицию панели
         panel_width = right_panel.width
         panel_height = right_panel.height
         panel_x = right_panel.x
         panel_y = right_panel.y
 
-        # Центр панели
         center_x = panel_x + panel_width / 2
         center_y = panel_y + panel_height / 2
 
-        # Размеры героя (уже известны, если герой есть)
         hero_width, hero_height = hero_image_size
-
-        # Размер слота
         slot_w, slot_h = slot_size
 
-        # Половины для центрирования
         half_hero_w = hero_width / 2
         half_hero_h = hero_height / 2
         half_slot_w = slot_w / 2
         half_slot_h = slot_h / 2
 
-        offset = dp(20)  # Отступ от края героя
-
         # Позиции слотов (вокруг героя)
         slot_positions = {
-            '0': (center_x - half_hero_w - slot_w - offset, center_y - half_slot_h),  # Лево
-            '3': (center_x + half_hero_w + offset, center_y - half_slot_h),           # Право
-            '1': (center_x - half_slot_w, center_y + half_hero_h + offset),           # Верх
-            '2': (center_x - half_slot_w, center_y - half_hero_h - slot_h - offset),  # Низ
-            '4': (center_x + half_hero_w + offset, center_y + half_hero_h + offset),  # Аксессуар (вверху справа)
+            '0': (center_x - half_hero_w - slot_w - offset, center_y - half_slot_h),
+            '3': (center_x + half_hero_w + offset, center_y - half_slot_h),
+            '1': (center_x - half_slot_w, center_y + half_hero_h + offset),
+            '2': (center_x - half_slot_w, center_y - half_hero_h - slot_h - offset),
+            '4': (center_x + half_hero_w + offset, center_y + half_hero_h + offset),
         }
 
-        # Применяем позиции к слотам
         print("[DEBUG] position_slots: Установка позиций слотов...")
         for slot_type, pos in slot_positions.items():
             if slot_type in slot_name_labels:
                 name_label = slot_name_labels[slot_type]
-                # Позиция под слотом
-                name_label.pos = (pos[0], pos[1] - dp(25))  # dp(25) - высота label + отступ
+                name_label.pos = (pos[0], pos[1] - (dp(20) if is_android else dp(25)))
                 if name_label.parent is None:
                     right_panel.add_widget(name_label)
             if slot_type in equipment_slots:
@@ -1065,28 +1067,17 @@ def open_artifacts_popup(faction):
                 widget.pos = pos
                 print(f"[DEBUG] position_slots: Слот {slot_type} позиционирован в {pos}")
 
-                # Если в слоте есть артефакт — сохраняем позицию в hero_equipment и БД
                 artifact_entry = hero_equipment.get(slot_type)
                 if isinstance(artifact_entry, dict) and artifact_entry.get('id'):
                     pos_x, pos_y = pos
-                    # Обновляем координаты в локальном словаре
                     hero_equipment[slot_type]['pos_x'] = pos_x
                     hero_equipment[slot_type]['pos_y'] = pos_y
-                    # Сохраняем координаты в БД
                     save_hero_equipment_to_db(faction, slot_type, artifact_entry['id'], pos_x, pos_y)
-                    print(
-                        f"[DEBUG] position_slots: Позиции для слота {slot_type} с артефактом {artifact_entry['id']} сохранены в БД: ({pos_x}, {pos_y})")
+                    print(f"[DEBUG] position_slots: Позиции для слота {slot_type} с артефактом {artifact_entry['id']} сохранены в БД: ({pos_x}, {pos_y})")
 
         print("[DEBUG] position_slots: Завершено.")
 
-    # Обновите функцию update_equipment_slot_visual:
-    # Замените вашу функцию update_equipment_slot_visual на эту:
     def update_equipment_slot_visual(slot_type, artifact_data):
-        """
-        Обновляет визуальное представление слота экипировки и название под ним.
-        :param slot_type: Тип слота ('0', '1', '2', '3', '4')
-        :param artifact_data: Словарь с данными артефакта (должен содержать 'id' и 'name') или None, если слот пуст.
-        """
         slot_widget = equipment_slots.get(slot_type)
         name_label = slot_name_labels.get(slot_type)
 
@@ -1094,11 +1085,9 @@ def open_artifacts_popup(faction):
             print(f"[WARNING] Слот типа {slot_type} не найден для обновления.")
             return
 
-        if artifact_data and artifact_data.get('id'):  # Проверяем по ID
-            # Получаем полные данные артефакта, если переданы не полные
+        if artifact_data and artifact_data.get('id'):
             full_artifact_data = artifact_data
             if 'name' not in artifact_data:
-                # Ищем полные данные в artifacts_list
                 artifact_id = artifact_data.get('id') or artifact_data.get('artifact_id')
                 if artifact_id:
                     full_artifact_data = next((a for a in artifacts_list if a['id'] == artifact_id), None)
@@ -1106,43 +1095,34 @@ def open_artifacts_popup(faction):
             image_url = full_artifact_data.get('image_url') if full_artifact_data else None
             artifact_name = full_artifact_data.get('name') if full_artifact_data else 'Без названия'
 
-            # Устанавливаем изображение артефакта как фон кнопки
             if image_url:
                 slot_widget.background_normal = image_url
                 slot_widget.background_down = image_url
                 slot_widget.background_color = (1, 1, 1, 1)
             else:
-                # Если нет изображения, применяем серый стиль
                 slot_widget.background_normal = ''
                 slot_widget.background_down = ''
                 slot_widget.background_color = (0.4, 0.4, 0.4, 1)
 
-            # Устанавливаем название артефакта в label с поддержкой переноса
             if name_label:
-                # Устанавливаем text_size для поддержки переноса
                 name_label.text_size = (name_label.width, None)
-                name_label.text = artifact_name
-                name_label.color = (1, 1, 1, 1)  # Белый цвет
+                name_label.text = artifact_name[:15] + "..." if len(artifact_name) > 15 and is_android else artifact_name
+                name_label.color = (1, 1, 1, 1)
 
             print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} обновлен. Артефакт: {artifact_name}")
         else:
-            # Если артефакта нет, сбрасываем слот к стилю по умолчанию
             slot_widget.background_normal = ''
             slot_widget.background_down = ''
-            slot_widget.background_color = (0.4, 0.4, 0.4, 1)  # Серый
+            slot_widget.background_color = (0.4, 0.4, 0.4, 1)
             apply_slot_style(slot_widget)
 
-            # Очищаем название
             if name_label:
                 name_label.text = ""
 
             print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} очищен")
 
-    # Также обновите функцию update_all_equipment_slots для корректного отображения названий при инициализации:
     def update_all_equipment_slots():
-        """Обновляет визуальное состояние всех слотов экипировки."""
-        print(
-            f"[DEBUG] update_all_equipment_slots: Начало обновления. hero_equipment={ {k: v.get('id') for k, v in hero_equipment.items()} }")
+        print(f"[DEBUG] update_all_equipment_slots: Начало обновления. hero_equipment={ {k: v.get('id') for k, v in hero_equipment.items()} }")
         updated_slots = []
         for slot_type_key in ['0', '1', '2', '3', '4']:
             artifact_entry = hero_equipment.get(slot_type_key)
@@ -1174,30 +1154,24 @@ def open_artifacts_popup(faction):
                 traceback.print_exc()
                 hero_stats_widget.text = "Ошибка загрузки"
 
-    # --- Добавление виджетов в layout ---
     popup_layout.add_widget(left_panel)
     popup_layout.add_widget(right_panel)
 
-    # --- Создание Popup ---
     artifacts_popup = Popup(
         title="Лавка артефактов",
         content=popup_layout,
-        size_hint=(0.95, 0.95),
+        size_hint=(0.98 if is_android else 0.95, 0.98 if is_android else 0.95),
         title_align='center',
-        separator_color=(0.5, 0.3, 0.7, 1)
+        separator_color=(0.5, 0.3, 0.7, 1),
+        title_size=font_size_large if is_android else '20sp'
     )
 
-    # --- Планирование обновлений ---
-    # Планируем обновление характеристик
     Clock.schedule_once(lambda dt: update_hero_stats_display(), 0)
 
-    # Планируем позиционирование слотов (только если есть герой)
-    # Вызов позиционирования после открытия окна
     if hero_image_widget:
         print("[DEBUG] artifacts_popup: Привязка on_open для position_slots")
         artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
 
-    # Вызываем update_artifact_list один раз в конце, чтобы заполнить список с начальными стилями
     update_artifact_list()
 
     artifacts_popup.open()
