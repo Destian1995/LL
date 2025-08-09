@@ -1156,7 +1156,7 @@ def open_artifacts_popup(faction):
     artifacts_popup = Popup(
         title="Лавка артефактов",
         content=popup_layout,
-        size_hint=(0.90 if is_android else 0.90, 0.90 if is_android else 0.90),
+        size_hint=(0.94 if is_android else 0.94, 0.94 if is_android else 0.94),
         title_align='center',
         separator_color=(0.5, 0.3, 0.7, 1),
         title_size=font_size_large if is_android else '20sp'
