@@ -57,6 +57,13 @@ class SeasonManager:
         },
     ]
 
+    # Сопоставление полей артефактов с полями юнитов
+    ARTIFACT_STAT_MAPPING = {
+        'attack': 'attack',
+        'defense': 'defense',
+        'health': 'durability',
+    }
+
     def __init__(self):
         # last_idx = индекс сезона, бафф которого уже наложен.
         # None означает, что до этого ни один сезон не применялся.
@@ -82,6 +89,7 @@ class SeasonManager:
             self._apply_season(new_idx, conn)
             self.last_idx = new_idx
         # Если new_idx == last_idx, остаёмся как есть
+        self.apply_artifact_bonuses(conn)
 
     def _apply_season(self, idx: int, conn):
         """
@@ -152,3 +160,229 @@ class SeasonManager:
                 """, {'cost_rev': cost_revert, 'faction': faction_name})
 
         conn.commit()
+
+    def apply_artifact_bonuses(self, conn):
+        """
+        Применяет бонусы от артефактов, если они экипированы и сезон совпадает.
+        Управляет эффектами через artifact_effects_log.
+        Обрабатывает артефакты из hero_equipment (игрок) и ai_hero_equipment (ИИ).
+        """
+        if self.last_idx is None:
+            print("[ARTIFACT] Season not set, skipping artifact application.")
+            return
+
+        cur = conn.cursor()
+        current_season = self.SEASON_NAMES[self.last_idx]
+
+        # 1. Получаем список всех экипированных артефактов из ОБОИХ таблиц
+        # Для hero_equipment (игрок)
+        cur.execute("""
+            SELECT hero_name, artifact_id FROM hero_equipment
+            WHERE artifact_id IS NOT NULL
+        """)
+        player_equipped_artifacts = cur.fetchall()
+
+        # Для ai_hero_equipment (ИИ)
+        cur.execute("""
+            SELECT hero_name, artifact_id FROM ai_hero_equipment
+            WHERE artifact_id IS NOT NULL
+        """)
+        ai_equipped_artifacts = cur.fetchall()
+
+        # Объединяем списки
+        all_equipped_artifacts = player_equipped_artifacts + ai_equipped_artifacts
+
+        # 2. Получаем список уже примененных эффектов
+        cur.execute("""
+            SELECT hero_name, artifact_id FROM artifact_effects_log
+            GROUP BY hero_name, artifact_id
+        """)
+        applied_effects = set(cur.fetchall())  # Множество (hero_name, artifact_id)
+
+        # 3. Определяем, что нужно сделать
+        # Артефакты, которые должны быть активны
+        should_be_active = set()
+        # Артефакты, которые нужно проверить/применить
+        to_check_apply = set()
+
+        for hero_name, artifact_id in all_equipped_artifacts:
+            should_be_active.add((hero_name, artifact_id))
+            if (hero_name, artifact_id) not in applied_effects:
+                # Новый артефакт, нужна проверка и возможное применение
+                to_check_apply.add((hero_name, artifact_id))
+
+        # Артефакты, которые нужно отменить (были применены, но больше не экипированы или не подходят по сезону)
+        to_revert = applied_effects - should_be_active
+
+        # 4. Отменяем ненужные эффекты
+        for hero_name, artifact_id in to_revert:
+            self._revert_artifact_effect(hero_name, artifact_id, conn)
+
+        # 5. Проверяем и применяем новые/измененные эффекты
+        for hero_name, artifact_id in to_check_apply:
+            # Получаем данные артефакта
+            cur.execute("""
+                SELECT attack, defense, health, season_name
+                FROM artifacts
+                WHERE id = ?
+            """, (artifact_id,))
+            artifact = cur.fetchone()
+
+            if not artifact:
+                continue
+
+            (a_atk, a_def, a_hp, a_season_name) = artifact
+
+            # Проверяем сезон
+            season_ok = True
+            if a_season_name is not None:
+                allowed_seasons = [s.strip() for s in a_season_name.split(',')]
+                if current_season not in allowed_seasons:
+                    season_ok = False
+
+            if season_ok:
+                # Применяем бонусы
+                bonuses = {
+                    'attack': a_atk,
+                    'defense': a_def,
+                    'durability': a_hp  # health из артефакта -> durability юнита
+                }
+                self._apply_artifact_effect(hero_name, artifact_id, bonuses, conn)
+            else:
+                pass  # Уже обработано в to_revert
+
+        # 6. Проверяем существующие эффекты на соответствие сезону
+        # (на случай, если сезон сменился, а артефакт остался тот же)
+        # Получаем все примененные эффекты с их артефактами
+        cur.execute("""
+            SELECT DISTINCT ael.hero_name, ael.artifact_id, a.season_name
+            FROM artifact_effects_log ael
+            JOIN artifacts a ON ael.artifact_id = a.id
+        """)
+        active_artifact_details = cur.fetchall()
+
+        for hero_name, artifact_id, a_season_name in active_artifact_details:
+            season_ok = True
+            if a_season_name is not None:
+                allowed_seasons = [s.strip() for s in a_season_name.split(',')]
+                if current_season not in allowed_seasons:
+                    season_ok = False
+
+            if not season_ok:
+                self._revert_artifact_effect(hero_name, artifact_id, conn)
+                # Этот артефакт теперь нужно проверить заново, если он все еще экипирован
+                if (hero_name, artifact_id) in should_be_active:
+                    to_check_apply.add((hero_name, artifact_id))
+
+    def _calculate_stat_change(self, base_value, bonus_percent):
+        """Рассчитывает абсолютное изменение характеристики."""
+        if bonus_percent == 0 or bonus_percent is None:
+            return 0
+        change = int(round(base_value * (bonus_percent / 100)))
+        return change
+
+    def _apply_artifact_effect(self, hero_name: str, artifact_id: int, bonuses: dict, conn):
+        """
+        Рассчитывает и применяет эффект артефакта к герою.
+        Записывает эффект в artifact_effects_log.
+        """
+        cur = conn.cursor()
+
+        # Получаем БАЗОВЫЕ значения из units_default
+        cur.execute("""
+            SELECT attack, defense, durability
+            FROM units_default WHERE unit_name = ?
+        """, (hero_name,))
+        base = cur.fetchone()
+
+        if not base:
+            print(f"[ARTIFACT] Hero {hero_name} not found in units_default")
+            return
+
+        (b_atk, b_def, b_dur) = base
+
+
+        effects_to_apply = []
+
+        # Рассчитываем изменения для каждой характеристики
+        for artifact_stat, unit_stat in self.ARTIFACT_STAT_MAPPING.items():
+            bonus_value = bonuses.get(artifact_stat)
+            if bonus_value is None or bonus_value == 0:
+                continue
+
+            base_val = None
+            if unit_stat == 'attack':
+                base_val = b_atk
+            elif unit_stat == 'defense':
+                base_val = b_def
+            elif unit_stat == 'durability':
+                base_val = b_dur
+
+            if base_val is not None:
+                change = self._calculate_stat_change(base_val, bonus_value)
+                if change != 0:  # Только если есть изменение
+                    effects_to_apply.append((unit_stat, change))
+
+        if not effects_to_apply:
+            print(f"[ARTIFACT] No applicable effects for {hero_name} from artifact {artifact_id}")
+            return
+
+        # Применяем изменения к units и записываем в лог
+        for stat_name, change in effects_to_apply:
+            # Обновляем характеристику в units
+            cur.execute(f"""
+                UPDATE units
+                SET {stat_name} = {stat_name} + ?
+                WHERE unit_name = ?
+            """, (change, hero_name))
+
+            # Записываем эффект в лог
+            cur.execute("""
+                INSERT OR REPLACE INTO artifact_effects_log 
+                (hero_name, artifact_id, stat_name, value_change)
+                VALUES (?, ?, ?, ?)
+            """, (hero_name, artifact_id, stat_name, change))
+
+
+
+        conn.commit()
+
+
+    def _revert_artifact_effect(self, hero_name: str, artifact_id: int, conn):
+        """
+        Отменяет эффект артефакта для героя.
+        Вычитает изменения из units и удаляет запись из artifact_effects_log.
+        """
+        cur = conn.cursor()
+
+        # Получаем все эффекты этого артефакта на этого героя
+        cur.execute("""
+            SELECT stat_name, value_change
+            FROM artifact_effects_log
+            WHERE hero_name = ? AND artifact_id = ?
+        """, (hero_name, artifact_id))
+
+        effects = cur.fetchall()
+
+        if not effects:
+            print(f"[ARTIFACT] No effects found to revert for artifact {artifact_id} on hero {hero_name}")
+            return
+
+        # Отменяем каждый эффект
+        for stat_name, value_change in effects:
+            # Вычитаем изменение из характеристики в units
+            cur.execute(f"""
+                UPDATE units
+                SET {stat_name} = {stat_name} - ?
+                WHERE unit_name = ?
+            """, (value_change, hero_name))
+
+
+        # Удаляем записи об эффектах из лога
+        cur.execute("""
+            DELETE FROM artifact_effects_log
+            WHERE hero_name = ? AND artifact_id = ?
+        """, (hero_name, artifact_id))
+
+        conn.commit()
+

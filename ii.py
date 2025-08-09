@@ -544,21 +544,49 @@ class AIController:
 
         # --- Шаг 3: Найм героев ---
         city_count = self.get_city_count_for_faction()
+        hired_hero_3_class_name = None  # Для хранения имени нанятого героя 3 класса
+
         if city_count < 5:
-            self.hire_for_less_than_5_cities(new_garrison, crowns_for_heroes, works_for_heroes, consumption_for_heroes)
+            hired_hero_3_class = self.hire_for_less_than_5_cities(new_garrison, crowns_for_heroes, works_for_heroes,
+                                                                  consumption_for_heroes)
+            # Если был нанят герой 3 класса, получаем его имя
+            if hired_hero_3_class:
+                for unit in new_garrison[target_city]:
+                    unit_name = unit["unit_name"]
+                    unit_data = self.army.get(unit_name)
+                    if unit_data and unit_data["stats"]["Класс"] == "3":
+                        hired_hero_3_class_name = unit_name
+                        break
         else:
-            self.hire_for_more_than_5_cities(new_garrison, crowns_for_heroes, works_for_heroes, consumption_for_heroes)
+            hired_hero_3_class = self.hire_for_more_than_5_cities(new_garrison, crowns_for_heroes, works_for_heroes,
+                                                                  consumption_for_heroes)
+            # Если был нанят герой 3 класса, получаем его имя
+            if hired_hero_3_class:
+                for unit in new_garrison[target_city]:
+                    unit_name = unit["unit_name"]
+                    unit_data = self.army.get(unit_name)
+                    if unit_data and unit_data["stats"]["Класс"] == "3":
+                        hired_hero_3_class_name = unit_name
+                        break
 
         # --- Шаг 4: После 14 хода — герой 4 класса ---
         if self.turn > 14:
             self.try_hire_class_4_hero(new_garrison, crowns_for_heroes, works_for_heroes, consumption_for_heroes)
 
-        # --- Сохранение изменений ---
+        # --- Шаг 5: Сохранение изменений и экипировка героя ИИ ---
         if any(new_garrison[target_city]):
             self.garrison.update(new_garrison)
             self.save_garrison()
             self.calculate_and_deduct_consumption()
             print(f"Гарнизон обновлён: {new_garrison}")
+
+            # --- НОВЫЙ КОД: Экипировка героя ИИ после сохранения всех данных ---
+            if hired_hero_3_class_name:
+                # Планируем выполнение экипировки на следующем кадре, чтобы убедиться,
+                # что все данные сохранены в БД
+                from kivy.clock import Clock
+                Clock.schedule_once(lambda dt: self.try_equip_random_artifacts_for_ai_hero(hired_hero_3_class_name), 0)
+
         else:
             print("Не удалось нанять ни одного юнита.")
 
@@ -610,6 +638,8 @@ class AIController:
             if data["stats"]["Класс"] in ["2", "3"]
         }
 
+        hired_hero_3_class = False  # Флаг для отслеживания найма героя 3 класса
+
         for unit_name, unit_data in hero_candidates.items():
             if self.is_unit_already_hired(unit_name):
                 continue
@@ -638,7 +668,18 @@ class AIController:
                     "unit_count": 1
                 })
                 print(f"Нанят герой '{unit_name}' ({hero_class} класс)")
+
+                # --- НОВЫЙ КОД: Создание слотов и экипировка для героя 3 класса ---
+                if hero_class == "3":
+                    hired_hero_3_class = True
+                    self.create_empty_equipment_slots_for_ai_hero(unit_name)
+                    # Планируем экипировку после сохранения всех данных
+                    # Вызовем позже в hire_army после сохранения гарнизона
+
                 break  # Только один герой за раз
+
+        # Возвращаем флаг, чтобы знать, был ли нанят герой 3 класса
+        return hired_hero_3_class
 
     def hire_for_less_than_5_cities(self, new_garrison, crowns, works, available_consumption):
         """
@@ -653,6 +694,8 @@ class AIController:
             name: data for name, data in self.army.items()
             if data["stats"]["Класс"] in ["2", "3"]
         }
+
+        hired_hero_3_class = False  # Флаг для отслеживания найма героя 3 класса
 
         for unit_name, unit_data in hero_candidates.items():
             if self.is_unit_already_hired(unit_name):
@@ -687,7 +730,39 @@ class AIController:
                     "unit_count": 1
                 })
                 print(f"Нанят герой '{unit_name}' ({hero_class} класс)")
+
+                # --- НОВЫЙ КОД: Создание слотов и экипировка для героя 3 класса ---
+                if hero_class == "3":
+                    hired_hero_3_class = True
+                    self.create_empty_equipment_slots_for_ai_hero(unit_name)
+                    # Планируем экипировку после сохранения всех данных
+                    # Вызовем позже в hire_army после сохранения гарнизона
+
                 break  # Только один герой за раз
+
+        # Возвращаем флаг, чтобы знать, был ли нанят герой 3 класса
+        return hired_hero_3_class
+
+    def create_empty_equipment_slots_for_ai_hero(self, hero_name):
+        """
+        Создает пустые слоты экипировки в таблице ai_hero_equipment для только что нанятого героя.
+        """
+        print(f"[DEBUG] Создание пустых слотов экипировки для героя ИИ '{hero_name}' фракции '{self.faction}'")
+
+        try:
+            cursor = self.db_connection.cursor()
+            # Создаем 5 пустых слотов для героя
+            for slot_type in ['0', '1', '2', '3', '4']:
+                # Используем INSERT OR IGNORE, чтобы избежать ошибок, если запись уже существует
+                cursor.execute('''
+                    INSERT OR IGNORE INTO ai_hero_equipment (faction_name, hero_name, slot_type, artifact_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (self.faction, hero_name, slot_type, None))
+            self.db_connection.commit()
+            print(f"[SUCCESS] Созданы пустые слоты экипировки в ai_hero_equipment для героя '{hero_name}'")
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при создании слотов экипировки для героя '{hero_name}': {e}")
+            self.db_connection.rollback()
 
     def try_hire_class_4_hero(self, new_garrison, crowns, works, available_consumption):
         """
@@ -726,6 +801,109 @@ class AIController:
                 })
                 print(f"Нанят герой '{unit_name}'")
                 break  # Только один герой за раз
+
+    def try_equip_random_artifacts_for_ai_hero(self, hero_name):
+        """
+        Пытается купить и экипировать до 5 случайных артефактов герою ИИ.
+        Проверяет наличие монет и свободные слоты.
+        """
+        print(f"[DEBUG] Попытка экипировки случайных артефактов для героя ИИ '{hero_name}' фракции '{self.faction}'")
+
+        try:
+            # 1. Загружаем список всех доступных артефактов из БД
+            cursor = self.db_connection.cursor()
+            cursor.execute("SELECT id, cost, artifact_type FROM artifacts")
+            all_artifacts = cursor.fetchall()
+
+            if not all_artifacts:
+                print("[INFO] Нет доступных артефактов для покупки.")
+                return
+
+            # Преобразуем в список словарей для удобства
+            artifact_list = [{"id": row[0], "cost": row[1], "artifact_type": row[2]} for row in all_artifacts]
+
+            # 2. Загружаем текущую экипировку героя из ai_hero_equipment
+            cursor.execute('''
+                SELECT slot_type, artifact_id
+                FROM ai_hero_equipment
+                WHERE faction_name = ? AND hero_name = ?
+            ''', (self.faction, hero_name))
+            equipped_rows = cursor.fetchall()
+
+            # Создаем словарь: slot_type -> artifact_id (None если пуст)
+            current_equipment = {row[0]: row[1] for row in equipped_rows}
+            print(f"[DEBUG] Текущая экипировка героя {hero_name}: {current_equipment}")
+
+            # 3. Определяем сопоставление artifact_type -> slot_type
+            artifact_type_to_slot = {
+                0: '0',  # Оружие
+                1: '1',  # Голова
+                2: '2',  # Сапоги
+                3: '3',  # Туловище
+                4: '4'  # Аксессуар
+            }
+
+            # 4. Перемешиваем список артефактов для случайности
+            import random
+            random.shuffle(artifact_list)
+
+            # 5. Пытаемся купить и экипировать артефакты
+            artifacts_equipped_count = 0
+            for artifact in artifact_list:
+                art_id = artifact['id']
+                art_cost = artifact['cost']
+                art_type = artifact['artifact_type']
+
+                slot_type = artifact_type_to_slot.get(art_type)
+                if slot_type is None:
+                    # print(f"[DEBUG] Пропущен артефакт ID {art_id}, неизвестный тип {art_type}")
+                    continue  # Пропускаем артефакты с неизвестным типом
+
+                # Проверяем, свободен ли слот
+                if current_equipment.get(slot_type) is not None:
+                    # print(f"[DEBUG] Слот {slot_type} уже занят для героя {hero_name}")
+                    continue  # Слот занят
+
+                # Проверяем, достаточно ли денег
+                if self.resources.get('Кроны', 0) < art_cost:
+                    # print(f"[DEBUG] Недостаточно крон для покупки артефакта ID {art_id} (стоимость {art_cost})")
+                    continue  # Недостаточно денег
+
+                # --- Покупка артефакта ---
+                print(
+                    f"[INFO] ИИ '{self.faction}' покупает артефакт ID {art_id} (стоимость {art_cost}) для героя '{hero_name}' в слот {slot_type}")
+
+                # Списываем деньги
+                self.resources['Кроны'] -= art_cost
+                # Обновляем запись в БД
+                cursor.execute('''
+                    UPDATE ai_hero_equipment
+                    SET artifact_id = ?
+                    WHERE faction_name = ? AND hero_name = ? AND slot_type = ?
+                ''', (art_id, self.faction, hero_name, slot_type))
+
+                # Обновляем локальную копию экипировки
+                current_equipment[slot_type] = art_id
+
+                artifacts_equipped_count += 1
+
+                # Ограничиваем количество покупаемых артефактов, например, 5
+                if artifacts_equipped_count >= 5:
+                    break
+
+            self.db_connection.commit()  # Сохраняем изменения в БД
+            print(f"[SUCCESS] ИИ '{self.faction}' экипировал {artifacts_equipped_count} артефактов герою '{hero_name}'")
+
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при попытке экипировки артефактов герою ИИ '{hero_name}': {e}")
+            try:
+                self.db_connection.rollback()
+            except:
+                pass
+        except Exception as e:
+            print(f"[ERROR] Неожиданная ошибка при экипировке артефактов герою ИИ '{hero_name}': {e}")
+            import traceback
+            traceback.print_exc()
 
     def get_city_count_for_faction(self):
         """
@@ -2426,7 +2604,7 @@ class AIController:
             # 7. Продажа Кристаллы (99% Кристаллы, если его больше 1000)
             self.sell_resources()
             # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
-            if self.turn == 1 or self.resources['Кроны'] > 0:
+            if self.resources['Кроны'] > 0:
                 self.hire_army()
             # 9. Сохраняем все изменения в базу данных
             self.save_all_data()

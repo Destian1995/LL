@@ -549,6 +549,12 @@ class GameScreen(Screen):
         # Запускаем обновление рейтинга армии каждые 1 секунду
         Clock.schedule_interval(self.update_army_rating, 1)
 
+        Clock.schedule_interval(self.update_artifact_bonuses, 1)
+
+    def update_artifact_bonuses(self, dt):
+        """Обертка для вызова apply_artifact_bonuses с правильными параметрами"""
+        self.season_manager.apply_artifact_bonuses(self.conn)
+
     def save_selected_faction_to_db(self):
         conn = self.conn
         cursor = conn.cursor()

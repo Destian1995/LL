@@ -274,7 +274,61 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     )
     popup.open()
 
+# Добавьте эту новую функцию в fight.py
+def cleanup_equipment_after_battle(conn):
+    """
+    Очищает таблицы hero_equipment и ai_hero_equipment после боя.
+    Удаляет записи о героях, которых больше нет в garrisons.
+    """
+    try:
+        cursor = conn.cursor()
+        print("[DEBUG] Начало очистки таблиц экипировки после боя...")
 
+        # --- 1. Очистка hero_equipment ---
+        print("[DEBUG] Проверка hero_equipment...")
+        # Получаем всех уникальных героев из hero_equipment
+        cursor.execute("SELECT DISTINCT hero_name FROM hero_equipment")
+        hero_equipment_heroes = cursor.fetchall()
+
+        for (hero_name,) in hero_equipment_heroes:
+            # Проверяем, есть ли этот герой в garrisons
+            cursor.execute("SELECT 1 FROM garrisons WHERE unit_name = ? LIMIT 1", (hero_name,))
+            if cursor.fetchone() is None:
+                # Героя нет в garrisons, удаляем его записи из hero_equipment
+                print(f"[INFO] Герой '{hero_name}' не найден в garrisons. Удаление из hero_equipment.")
+                cursor.execute("DELETE FROM hero_equipment WHERE hero_name = ?", (hero_name,))
+            else:
+                print(f"[DEBUG] Герой '{hero_name}' найден в garrisons. Записи сохранены.")
+
+        # --- 2. Очистка ai_hero_equipment ---
+        print("[DEBUG] Проверка ai_hero_equipment...")
+        # Получаем всех уникальных героев из ai_hero_equipment
+        cursor.execute("SELECT DISTINCT hero_name FROM ai_hero_equipment")
+        ai_hero_equipment_heroes = cursor.fetchall()
+
+        for (hero_name,) in ai_hero_equipment_heroes:
+            # Проверяем, есть ли этот герой в garrisons
+            cursor.execute("SELECT 1 FROM garrisons WHERE unit_name = ? LIMIT 1", (hero_name,))
+            if cursor.fetchone() is None:
+                # Героя нет в garrisons, удаляем его записи из ai_hero_equipment
+                print(f"[INFO] Герой ИИ '{hero_name}' не найден в garrisons. Удаление из ai_hero_equipment.")
+                cursor.execute("DELETE FROM ai_hero_equipment WHERE hero_name = ?", (hero_name,))
+            else:
+                print(f"[DEBUG] Герой ИИ '{hero_name}' найден в garrisons. Записи сохранены.")
+
+        conn.commit()
+        print("[SUCCESS] Очистка таблиц экипировки завершена.")
+
+    except sqlite3.Error as e:
+        print(f"[ERROR] Ошибка базы данных при очистке экипировки: {e}")
+        try:
+            conn.rollback()
+        except:
+            pass
+    except Exception as e:
+        print(f"[ERROR] Неожиданная ошибка при очистке экипировки: {e}")
+        import traceback
+        traceback.print_exc()
 
 def fight(attacking_city, defending_city, defending_army, attacking_army,
           attacking_fraction, defending_fraction, conn):
@@ -493,7 +547,7 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
             city=defending_city
         )
         show_battle_report(report_data, is_user_involved=is_user_involved, user_faction=user_faction, conn=conn)
-
+    cleanup_equipment_after_battle(conn)
     return {
         "winner": winner,
         "attacking_fraction": attacking_fraction,

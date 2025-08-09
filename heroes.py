@@ -556,6 +556,24 @@ def open_artifacts_popup(faction):
                     print(
                         f"[DEBUG] Покупка артефакта: {art_data['name']} (ID: {art_data['id']}, Тип: {art_data['artifact_type']})")
 
+                    # --- НОВАЯ ПРОВЕРКА: Есть ли у фракции герой? ---
+                    try:
+                        check_cursor = current_fraction_instance.conn.cursor()
+                        check_cursor.execute(
+                            "SELECT COUNT(*) FROM hero_equipment WHERE faction_name = ?",
+                            (current_fraction_instance.faction,)
+                        )
+                        hero_count = check_cursor.fetchone()[0]
+                        if hero_count == 0:
+                            print("[INFO] Попытка покупки артефакта без нанятого героя.")
+                            show_popup_message("Ошибка", "Герой еще не нанят, покупать артефакт некому!")
+                            return
+                    except sqlite3.Error as e:
+                        print(f"[ERROR] Ошибка при проверке наличия героя: {e}")
+                        show_popup_message("Ошибка", "Ошибка проверки данных героя.")
+                        return
+                    # --- КОНЕЦ НОВОЙ ПРОВЕРКИ ---
+
                     # 1. Определяем slot_type на основе типа артефакта
                     artifact_type_to_slot = {
                         0: '0',  # Оружие -> slot_type 0
@@ -847,7 +865,7 @@ def open_artifacts_popup(faction):
     right_panel = FloatLayout(size_hint=(0.5, 1))
     hero_image_widget = None  # Сохраняем ссылку на виджет изображения героя
     equipment_slots = {}      # Словарь для хранения слотов
-
+    slot_name_labels = {}
     # --- Стили для слотов экипировки ---
     # Определяем apply_slot_style ЗАРАНЕЕ, до её использования
     def apply_slot_style(slot_widget):
@@ -897,16 +915,31 @@ def open_artifacts_popup(faction):
             slot_size = (dp(90), dp(90))
             # Создаем слоты для каждого типа (пустые, без позиционирования)
             slot_types = ['0', '2', '3', '1', '4']
+            # В секции создания слотов:
             for slot_type in slot_types:
                 slot_widget = Button(
                     size_hint=(None, None),
                     size=slot_size,
+                    background_normal='',  # Пустой фон по умолчанию
+                    background_down='',  # Пустой фон при нажатии
+                    background_color=(1, 1, 1, 1)  # Белый цвет
                 )
-                apply_slot_style(slot_widget)
+
+                apply_slot_style(slot_widget)  # Применяем стиль только для пустых слотов
                 # Добавляем слот на панель, позиционировать будем позже
                 right_panel.add_widget(slot_widget)
                 equipment_slots[slot_type] = slot_widget
-
+                name_label = Label(
+                    text="",
+                    size_hint=(None, None),
+                    size=(dp(90), dp(20)),
+                    font_size='14sp',
+                    halign='center',
+                    color=(1, 1, 1, 1)
+                )
+                name_label.bind(size=name_label.setter('text_size'))
+                name_label.text_size = (dp(90), None)
+                slot_name_labels[slot_type] = name_label
             # --- Инициализация визуального состояния слотов ---
             # После создания всех слотов, обновляем их визуальное состояние
             # Это отобразит уже купленные артефакты
@@ -1020,6 +1053,12 @@ def open_artifacts_popup(faction):
         # Применяем позиции к слотам
         print("[DEBUG] position_slots: Установка позиций слотов...")
         for slot_type, pos in slot_positions.items():
+            if slot_type in slot_name_labels:
+                name_label = slot_name_labels[slot_type]
+                # Позиция под слотом
+                name_label.pos = (pos[0], pos[1] - dp(25))  # dp(25) - высота label + отступ
+                if name_label.parent is None:
+                    right_panel.add_widget(name_label)
             if slot_type in equipment_slots:
                 widget = equipment_slots[slot_type]
                 widget.pos = pos
@@ -1039,36 +1078,87 @@ def open_artifacts_popup(faction):
 
         print("[DEBUG] position_slots: Завершено.")
 
+    # Обновите функцию update_equipment_slot_visual:
+    # Замените вашу функцию update_equipment_slot_visual на эту:
     def update_equipment_slot_visual(slot_type, artifact_data):
         """
-        Обновляет визуальное представление слота экипировки.
+        Обновляет визуальное представление слота экипировки и название под ним.
         :param slot_type: Тип слота ('0', '1', '2', '3', '4')
-        :param artifact_data: Словарь с данными артефакта или None, если слот пуст.
+        :param artifact_data: Словарь с данными артефакта (должен содержать 'id' и 'name') или None, если слот пуст.
         """
         slot_widget = equipment_slots.get(slot_type)
+        name_label = slot_name_labels.get(slot_type)
+
         if not slot_widget:
             print(f"[WARNING] Слот типа {slot_type} не найден для обновления.")
             return
 
-        # Очищаем предыдущее содержимое слота (если было, например, Label)
-        slot_widget.clear_widgets()
-        # slot_widget.canvas.after.clear()  # Обычно не нужно, если мы используем background_normal
+        if artifact_data and artifact_data.get('id'):  # Проверяем по ID
+            # Получаем полные данные артефакта, если переданы не полные
+            full_artifact_data = artifact_data
+            if 'name' not in artifact_data:
+                # Ищем полные данные в artifacts_list
+                artifact_id = artifact_data.get('id') or artifact_data.get('artifact_id')
+                if artifact_id:
+                    full_artifact_data = next((a for a in artifacts_list if a['id'] == artifact_id), None)
 
-        if artifact_data and artifact_data.get('image_url'):
+            image_url = full_artifact_data.get('image_url') if full_artifact_data else None
+            artifact_name = full_artifact_data.get('name') if full_artifact_data else 'Без названия'
+
             # Устанавливаем изображение артефакта как фон кнопки
-            image_url = artifact_data['image_url']
-            slot_widget.background_normal = image_url
-            slot_widget.background_down = image_url  # На случай, если кнопка нажимается
-            # Убедимся, что фон не цветной
-            slot_widget.background_color = (1, 1, 1, 1) # Белый цвет для корректного отображения изображения
-            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} обновлен изображением: {image_url}")
+            if image_url:
+                slot_widget.background_normal = image_url
+                slot_widget.background_down = image_url
+                slot_widget.background_color = (1, 1, 1, 1)
+            else:
+                # Если нет изображения, применяем серый стиль
+                slot_widget.background_normal = ''
+                slot_widget.background_down = ''
+                slot_widget.background_color = (0.4, 0.4, 0.4, 1)
+
+            # Устанавливаем название артефакта в label с поддержкой переноса
+            if name_label:
+                # Устанавливаем text_size для поддержки переноса
+                name_label.text_size = (name_label.width, None)
+                name_label.text = artifact_name
+                name_label.color = (1, 1, 1, 1)  # Белый цвет
+
+            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} обновлен. Артефакт: {artifact_name}")
         else:
             # Если артефакта нет, сбрасываем слот к стилю по умолчанию
-            slot_widget.background_normal = ''  # Очищаем фон
+            slot_widget.background_normal = ''
             slot_widget.background_down = ''
-            slot_widget.background_color = (1, 1, 1, 1) # Белый
-            apply_slot_style(slot_widget) # Применяем базовый стиль (серый фон)
-            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} очищен и сброшен.")
+            slot_widget.background_color = (0.4, 0.4, 0.4, 1)  # Серый
+            apply_slot_style(slot_widget)
+
+            # Очищаем название
+            if name_label:
+                name_label.text = ""
+
+            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} очищен")
+
+    # Также обновите функцию update_all_equipment_slots для корректного отображения названий при инициализации:
+    def update_all_equipment_slots():
+        """Обновляет визуальное состояние всех слотов экипировки."""
+        print(
+            f"[DEBUG] update_all_equipment_slots: Начало обновления. hero_equipment={ {k: v.get('id') for k, v in hero_equipment.items()} }")
+        updated_slots = []
+        for slot_type_key in ['0', '1', '2', '3', '4']:
+            artifact_entry = hero_equipment.get(slot_type_key)
+
+            if isinstance(artifact_entry, dict) and artifact_entry.get('id'):
+                artifact_id = artifact_entry['id']
+                full_artifact_data = next((a for a in artifacts_list if a['id'] == artifact_id), None)
+                if full_artifact_data:
+                    update_equipment_slot_visual(slot_type_key, full_artifact_data)
+                    updated_slots.append(slot_type_key)
+                else:
+                    print(f"[WARNING] Артефакт ID {artifact_id} для слота {slot_type_key} не найден в artifacts_list.")
+                    update_equipment_slot_visual(slot_type_key, artifact_entry)
+                    updated_slots.append(slot_type_key)
+            else:
+                update_equipment_slot_visual(slot_type_key, None)
+        print(f"[DEBUG] update_all_equipment_slots: Обновление завершено. Обновлены слоты: {updated_slots}")
 
     def update_hero_stats_display():
         if hero_stats_widget:
@@ -1082,36 +1172,6 @@ def open_artifacts_popup(faction):
                 import traceback
                 traceback.print_exc()
                 hero_stats_widget.text = "Ошибка загрузки"
-
-    def update_all_equipment_slots():
-        """Обновляет визуальное состояние всех слотов экипировки."""
-        print(f"[DEBUG] update_all_equipment_slots: Начало обновления. hero_equipment={ {k: v.get('id') for k, v in hero_equipment.items()} }")
-        updated_slots = []
-        for slot_type_key in ['0', '1', '2', '3', '4']:
-            # Получаем данные артефакта для этого слота из hero_equipment
-            artifact_entry = hero_equipment.get(slot_type_key)
-            # print(f"[DEBUG] update_all_equipment_slots: slot {slot_type_key}, artifact_entry={artifact_entry}")
-
-            # artifact_entry может быть None или словарем
-            if isinstance(artifact_entry, dict) and artifact_entry.get('id'):
-                # Если есть ID, значит артефакт экипирован
-                # Нам нужен полный объект артефакта для получения image_url
-                artifact_id = artifact_entry['id']
-                # Ищем полные данные артефакта в artifacts_list
-                full_artifact_data = next((a for a in artifacts_list if a['id'] == artifact_id), None)
-                if full_artifact_data:
-                    update_equipment_slot_visual(slot_type_key, full_artifact_data)
-                    updated_slots.append(slot_type_key)
-                else:
-                    # Если не нашли в списке, используем данные из hero_equipment
-                    print(
-                        f"[WARNING] Артефакт ID {artifact_id} для слота {slot_type_key} не найден в artifacts_list. Используются данные из hero_equipment.")
-                    update_equipment_slot_visual(slot_type_key, artifact_entry)
-                    updated_slots.append(slot_type_key)
-            else:
-                # Если артефакта нет, передаем None или пустой словарь
-                update_equipment_slot_visual(slot_type_key, None)
-        print(f"[DEBUG] update_all_equipment_slots: Обновление завершено. Обновлены слоты: {updated_slots}")
 
     # --- Добавление виджетов в layout ---
     popup_layout.add_widget(left_panel)
