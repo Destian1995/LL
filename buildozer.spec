@@ -46,7 +46,7 @@ author = Vladislav Lerdon Team
 
 # Основные зависимости, которые будут установлены внутри APK.
 # Указываем без пробелов, разделяя запятой:
-requirements = python3==3.11.0, kivy==2.1.0, pyjnius==1.5.0, cython==0.29.33, ffpyplayer, ffmpeg, sdl2, sdl2_image, sdl2_mixer, sdl2_ttf
+requirements = python3==3.11.0, kivy==2.1.0, pyjnius==1.5.0, cython==0.29.36, ffpyplayer, ffmpeg, sdl2, sdl2_image, sdl2_mixer, sdl2_ttf
 
 # Ядро Python-for-Android:
 p4a.python_version = 3.11.0
