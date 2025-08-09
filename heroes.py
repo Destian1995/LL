@@ -1,6 +1,7 @@
 from kivy.graphics import PopMatrix, PushMatrix
 
 from db_lerdon_connect import *
+
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
     if not isinstance(number, (int, float)):
@@ -740,9 +741,9 @@ def open_artifacts_popup(faction):
                                                                  'Неизвестный артефакт') if old_artifact_data else 'Неизвестный артефакт'
                             message = (f"Заменить артефакт '{old_art_name}'\n"
                                        f"на '{art_data['name']}'?\n"
-                                       f"Цена нового: {artifact_cost}\n"
-                                       f"Вы получите за старый: {sell_price}\n"
-                                       f"К оплате: {net_cost}")
+                                       f"Цена нового: {format_number(artifact_cost)}\n"
+                                       f"Вы получите за старый: {format_number(sell_price)}\n"
+                                       f"К оплате: {format_number(net_cost)}")
                             message_label = Label(text=message, text_size=(None, None), halign='center')
                             message_label.bind(
                                 size=lambda instance, value: setattr(instance, 'text_size', (value[0] * 0.9, None)))
