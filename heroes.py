@@ -261,11 +261,7 @@ def format_artifact_description(artifact):
     stat_map = {
         'attack': 'Атака',
         'defense': 'Защита',
-        'health': 'Здоровье',
-        'army_consumption': 'Содержание армии',
-        'crystal_bonus': 'Бонус кристаллов',
-        'coins_bonus': 'Бонус монет',
-        'workers_bonus': 'Рабочие'
+        'health': 'Здоровье'
     }
     stats = []
     for key, label in stat_map.items():
@@ -1016,7 +1012,7 @@ def open_artifacts_popup(faction):
     )
     hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
     hero_stats_container.add_widget(hero_stats_label)
-    hero_stats_container.pos_hint = {'x': -0.43 if is_android else -0.43, 'y': 0}
+    hero_stats_container.pos_hint = {'x': -0.65 if is_android else -0.65, 'y': 0}
     right_panel.add_widget(hero_stats_container)
     hero_stats_widget = hero_stats_label
 
