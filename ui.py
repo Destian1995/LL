@@ -845,22 +845,22 @@ class FortressInfoPopup(Popup):
                                 # Обработка случаев, когда один из параметров равен 0
                                 if defense == 0:
                                     if attack > 0:
-                                        specialization_icon_path = r"files\pict\hero_type\sword.png"
+                                        specialization_icon_path = r"files/pict/hero_type/sword.png"
                                     # Если оба 0, остается None
                                 elif attack == 0:
                                     if defense > 0:
-                                        specialization_icon_path = r"files\pict\hero_type\shield.png"
+                                        specialization_icon_path = r"files/pict/hero_type/shield.png"
                                     # Если оба 0, остается None
                                 else:
                                     # Основная логика определения специализации
                                     attack_to_defense_ratio = attack / defense
                                     defense_to_attack_ratio = defense / attack
                                     if attack_to_defense_ratio >= 2.0:
-                                        specialization_icon_path = r"files\pict\hero_type\sword.png"
+                                        specialization_icon_path = r"files/pict/hero_type/sword.png"
                                     elif defense_to_attack_ratio >= 2.0:
-                                        specialization_icon_path = r"files\pict\hero_type\shield.png"
+                                        specialization_icon_path = r"files/pict/hero_type/shield.png"
                                     else:
-                                        specialization_icon_path = r"files\pict\hero_type\sword-shield.png"
+                                        specialization_icon_path = r"files/pict/hero_type/sword-shield.png"
                             except Exception as spec_error:
                                 print(f"Ошибка при определении специализации для '{unit_name}': {spec_error}")
                                 # Оставляем specialization_icon_path как None в случае ошибки вычисления

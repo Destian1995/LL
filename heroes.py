@@ -497,7 +497,7 @@ def open_artifacts_popup(faction):
         font_size_small = '11sp'
         filter_height = dp(100)
         filter_spacing = dp(3)
-        slot_size = (dp(70), dp(70))
+        slot_size = (dp(50), dp(50))
         name_label_height = dp(15)
         offset = dp(10)
         padding_small = dp(5)
@@ -1012,7 +1012,7 @@ def open_artifacts_popup(faction):
     )
     hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
     hero_stats_container.add_widget(hero_stats_label)
-    hero_stats_container.pos_hint = {'x': -0.65 if is_android else -0.65, 'y': 0}
+    hero_stats_container.pos_hint = {'x': -0.67 if is_android else -0.70, 'y': -0.0008}
     right_panel.add_widget(hero_stats_container)
     hero_stats_widget = hero_stats_label
 
