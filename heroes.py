@@ -1195,8 +1195,14 @@ def open_artifacts_popup(faction):
     )
 
     # Обновляем отображение крон при открытии попапа
-    artifacts_popup.bind(on_open=lambda *args: update_money_display())
+    update_event = Clock.schedule_interval(lambda dt: update_money_display(), 1.0)
 
+    # При закрытии попапа — отменяем обновление
+    def on_popup_dismiss(*args):
+        update_event.cancel()
+        print("[INFO] Обновление крон остановлено.")
+
+    artifacts_popup.bind(on_dismiss=on_popup_dismiss)
     Clock.schedule_once(lambda dt: update_hero_stats_display(), 0)
 
     if hero_image_widget:
@@ -1207,6 +1213,7 @@ def open_artifacts_popup(faction):
     update_artifact_list()
 
     artifacts_popup.open()
+
 
 # --- Конец open_artifacts_popup ---
 
