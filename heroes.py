@@ -901,7 +901,7 @@ def open_artifacts_popup(faction):
                                         font_size=font_size_small if is_android else '15sp'))
     cost_spinner = Spinner(
         text='Все',
-        values=('Все', 'По возрастанию', 'По убыванию'),
+        values=('Все', 'Сначала дешевые', 'Сначала дорогие'),
         size_hint=(1, None),
         height=dp(25) if is_android else dp(30),
         font_size=font_size_small if is_android else '15sp'
@@ -910,7 +910,7 @@ def open_artifacts_popup(faction):
                           text_color=(1, 1, 1, 1), radius=dp(4) if is_android else dp(6))
 
     def on_cost_spinner_select(spinner, text):
-        mapping = {'Все': 'all', 'По возрастанию': 'asc', 'По убыванию': 'desc'}
+        mapping = {'Все': 'all', 'Сначала дешевые': 'asc', 'Сначала дорогие': 'desc'}
         filter_states['cost_sort'] = mapping.get(text, 'all')
         update_artifact_list()
 
