@@ -1680,8 +1680,18 @@ def open_build_popup(faction):
 def open_trade_popup(game_instance):
     game_instance.get_resources()
     game_instance.generate_raw_material_price()
+
     # === ПОЛЕ ВВОДА (вверху) ===
-    input_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(1, None), height=dp(80))
+    input_box = BoxLayout(orientation='vertical', spacing=dp(5), size_hint=(1, None), height=dp(120))
+
+    # === ГОРИЗОНТАЛЬНЫЙ LAYOUT ДЛЯ "ПРОДАТЬ ВСЁ" И ИНФОРМАЦИИ О ЛОТАХ ===
+    top_row_layout = BoxLayout(
+        orientation='horizontal',
+        size_hint=(1, None),
+        height=dp(40),
+        spacing=dp(10)
+    )
+
     # === ГАЛОЧКА "ПРОДАТЬ ВСЁ" ===
     sell_all_checkbox = CheckBox(size_hint=(None, None), size=(dp(30), dp(30)), active=False)
     sell_all_label = Label(
@@ -1693,17 +1703,30 @@ def open_trade_popup(game_instance):
         width=dp(120)
     )
 
-    checkbox_layout = BoxLayout(
+    # Добавляем галочку и лейбл в левую часть
+    left_layout = BoxLayout(
         orientation='horizontal',
-        size_hint=(1, None),
-        height=dp(40),
-        spacing=dp(10)
+        size_hint_x=None,
+        width=dp(160),
+        spacing=dp(5)
     )
-    checkbox_layout.add_widget(sell_all_checkbox)
-    checkbox_layout.add_widget(sell_all_label)
-    checkbox_layout.add_widget(Widget())  # Заполнитель справа
+    left_layout.add_widget(sell_all_checkbox)
+    left_layout.add_widget(sell_all_label)
 
-    input_box.add_widget(checkbox_layout)
+    # === ИНФОРМАЦИЯ О ДОСТУПНЫХ ЛОТАХ ===
+    available_lots_label = Label(
+        text=f"Доступно: {game_instance.get_available_raw_material_lots()} лотов",
+        font_size=sp(14),
+        color=(0.8, 0.8, 0.8, 1),
+        halign="left"
+    )
+
+    # Собираем верхнюю строку
+    top_row_layout.add_widget(left_layout)
+    top_row_layout.add_widget(available_lots_label)
+    top_row_layout.add_widget(Widget())  # Заполнитель справа
+
+    input_box.add_widget(top_row_layout)
 
     # === ЛОГИКА БЛОКИРОВКИ ПОЛЯ ВВОДА ===
     def toggle_input(*args):
@@ -1715,6 +1738,7 @@ def open_trade_popup(game_instance):
             quantity_input.hint_text = "Введите количество лотов, например: 3"
 
     sell_all_checkbox.bind(active=toggle_input)
+
     trade_layout = BoxLayout(
         orientation='vertical',
         padding=dp(16),
@@ -1735,17 +1759,7 @@ def open_trade_popup(game_instance):
     )
     input_box.add_widget(quantity_input)
     trade_layout.add_widget(input_box)
-    # Сначала создаём Label
-    available_label = Label(
-        text=f"Доступно для продажи: {game_instance.get_available_raw_material_lots()} лотов (1 лот = 10 тыс.)",
-        font_size=sp(16),
-        color=(1, 1, 1, 1),
-        halign="center"
-    )
-    available_label.bind(size=available_label.setter('text_size'))
 
-    # Добавляем Label в input_box
-    input_box.add_widget(available_label)
     # === ТЕКУЩАЯ ЦЕНА (между полем ввода и кнопками) ===
     current_price = game_instance.current_raw_material_price
     prev_price = game_instance.raw_material_price_history[-2] if len(game_instance.raw_material_price_history) > 1 else current_price

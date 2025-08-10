@@ -532,6 +532,31 @@ def open_artifacts_popup(faction):
 
     filter_states = {'season_influence': 'all', 'artifact_type': 'all', 'cost_sort': 'all'}
 
+    # === ДОБАВЛЯЕМ ЛЕЙБЛ С КРОНАМИ В ПРАВУЮ НИЖНЮЮ ЧАСТЬ ===
+    # Замените создание money_info_label на это:
+    money_info_label = Label(
+        text="",  # Будет обновлен при открытии
+        size_hint=(None, None),  # Важно: указываем точные размеры
+        size=(dp(150) if is_android else dp(200), dp(30) if is_android else dp(40)),
+        halign='right',
+        valign='bottom',
+        font_size=font_size_large if is_android else '16sp',
+        color=(1, 1, 0.6, 1),  # Золотой цвет для крон
+        text_size=(None, None)
+    )
+    money_info_label.bind(size=money_info_label.setter('text_size'))
+
+    # Функция для обновления отображения крон
+    def update_money_display():
+        try:
+            # Получаем количество крон из faction
+            current_money = faction.resources.get('Кроны', 0)
+            money_info_label.text = f"Кроны: {format_number(current_money)}"
+            print('[DEBUG] Обновление отображения крон:', money_info_label.text)
+        except Exception as e:
+            print(f"[ERROR] Ошибка при обновлении отображения крон: {e}")
+            money_info_label.text = "Кроны: ошибка"
+
     def update_artifact_list(*args):
         artifacts_list_layout.clear_widgets()
         filtered_artifacts = []
@@ -643,6 +668,8 @@ def open_artifacts_popup(faction):
                             if current_money >= amount:
                                 new_amount = current_money - amount
                                 fraction_obj.update_resource_now('Кроны', new_amount)
+                                # Обновляем отображение крон
+                                update_money_display()
                                 print(f"[DEBUG] [deduct_coins_local] Новые монеты: {new_amount}")
                                 return True
                             else:
@@ -660,6 +687,8 @@ def open_artifacts_popup(faction):
                             print(f"[DEBUG] [add_coins_local] Текущие кроны: {current_money}, Начисление: {amount}")
                             new_amount = current_money + amount
                             fraction_obj.update_resource_now('Кроны', new_amount)
+                            # Обновляем отображение крон
+                            update_money_display()
                             print(f"[DEBUG] [add_coins_local] Новые кроны: {new_amount}")
                             return True
                         except Exception as e:
@@ -696,13 +725,13 @@ def open_artifacts_popup(faction):
                             old_artifact_data = None
                             try:
                                 cursor = current_fraction_instance.conn.cursor()
-                                cursor.execute("SELECT * FROM artifacts WHERE id = ?", (current_artifact_id_in_slot,))
+                                cursor.execute("SELECT name, cost FROM artifacts WHERE id = ?", (current_artifact_id_in_slot,))
                                 old_artifact_row = cursor.fetchone()
                                 if old_artifact_row:
                                     old_artifact_data = {
-                                        "id": old_artifact_row[0],
-                                        "name": old_artifact_row[1],
-                                        "cost": old_artifact_row[12] if len(old_artifact_row) > 12 else 0
+                                        "id": current_artifact_id_in_slot,
+                                        "name": old_artifact_row['name'],
+                                        "cost": old_artifact_row['cost']
                                     }
                                     print(f"[DEBUG] Данные старого артефакта: {old_artifact_data}")
                             except sqlite3.Error as e:
@@ -890,12 +919,15 @@ def open_artifacts_popup(faction):
     scroll_view.add_widget(artifacts_list_layout)
     left_panel.add_widget(scroll_view)
 
+
+
     # Правая панель
     right_panel = FloatLayout(size_hint=(0.5, 1))
     hero_image_widget = None
     equipment_slots = {}
     slot_name_labels = {}
-
+    right_panel.add_widget(money_info_label)
+    money_info_label.pos_hint = {'right': 1, 'y': 0}  # Правый нижний угол
     def apply_slot_style(slot_widget):
         slot_widget.background_normal = ''
         slot_widget.background_color = (0, 0, 0, 0)
@@ -923,8 +955,8 @@ def open_artifacts_popup(faction):
 
     if hero_image_path and os.path.exists(hero_image_path):
         try:
-            hero_image_width = dp(200) if is_android else dp(300)
-            hero_image_height = dp(200) if is_android else dp(300)
+            hero_image_width = dp(220) if is_android else dp(300)
+            hero_image_height = dp(220) if is_android else dp(300)
             hero_image_size = (hero_image_width, hero_image_height)
 
             hero_image_widget = Image(
@@ -1162,12 +1194,16 @@ def open_artifacts_popup(faction):
         title_size=font_size_large if is_android else '20sp'
     )
 
+    # Обновляем отображение крон при открытии попапа
+    artifacts_popup.bind(on_open=lambda *args: update_money_display())
+
     Clock.schedule_once(lambda dt: update_hero_stats_display(), 0)
 
     if hero_image_widget:
         print("[DEBUG] artifacts_popup: Привязка on_open для position_slots")
         artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
 
+    update_money_display()
     update_artifact_list()
 
     artifacts_popup.open()
