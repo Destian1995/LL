@@ -751,26 +751,36 @@ def open_artifacts_popup(faction):
 
                             def confirm_replace(instance):
                                 confirm_popup.dismiss()
-                                if deduct_coins_local(current_fraction_instance, net_cost):
-                                    if sell_price > 0:
-                                        add_coins_local(current_fraction_instance, sell_price)
-                                        print(f"[DEBUG] Вернули {sell_price} монет за старый артефакт.")
-                                    save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None, None)
-                                    hero_equipment[slot_type] = {
-                                        "id": art_data['id'],
-                                        "image_url": art_data.get('image_url'),
-                                        "pos_x": None,
-                                        "pos_y": None
-                                    }
+                                if net_cost > 0:
+                                    # Нужно доплатить разницу
+                                    if not deduct_coins_local(current_fraction_instance, net_cost):
+                                        print("[INFO] Недостаточно монет для замены.")
+                                        show_popup_message("Ошибка", "Недостаточно Крон для замены!")
+                                        return
+                                elif net_cost < 0:
+                                    # Получаем сдачу
+                                    refund_amount = abs(net_cost)
+                                    add_coins_local(current_fraction_instance, refund_amount)
+                                    print(f"[DEBUG] Получено {refund_amount} монет за разницу в стоимости.")
 
-                                    update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
+                                    # Сохраняем новый артефакт
+                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None,
+                                                          None)
+                                hero_equipment[slot_type] = {
+                                    "id": art_data['id'],
+                                    "image_url": art_data.get('image_url'),
+                                    "pos_x": None,
+                                    "pos_y": None
+                                }
 
-                                    print(f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type} (старый заменен).")
-                                    show_popup_message("Успех", f"Артефакт {art_data['name']} куплен! Старый артефакт продан.")
-                                    update_hero_stats_display()
-                                else:
-                                    print("[INFO] Недостаточно монет для замены.")
-                                    show_popup_message("Ошибка", "Недостаточно Крон для замены!")
+                                update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
+
+                                print(
+                                    f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type} (старый заменен).")
+                                show_popup_message("Успех",
+                                                   f"Артефакт {art_data['name']} куплен! Старый артефакт продан.")
+                                update_hero_stats_display()
+
 
                             def cancel_replace(instance):
                                 confirm_popup.dismiss()
