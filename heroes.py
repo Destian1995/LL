@@ -1012,7 +1012,7 @@ def open_artifacts_popup(faction):
     )
     hero_stats_label.bind(size=hero_stats_label.setter('text_size'))
     hero_stats_container.add_widget(hero_stats_label)
-    hero_stats_container.pos_hint = {'x': -0.67 if is_android else -0.70, 'y': -0.0008}
+    hero_stats_container.pos_hint = {'x': -0.67 if is_android else -0.73, 'y': -0.1}
     right_panel.add_widget(hero_stats_container)
     hero_stats_widget = hero_stats_label
 
