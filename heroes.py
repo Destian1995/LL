@@ -955,8 +955,8 @@ def open_artifacts_popup(faction):
 
     if hero_image_path and os.path.exists(hero_image_path):
         try:
-            hero_image_width = dp(220) if is_android else dp(300)
-            hero_image_height = dp(220) if is_android else dp(300)
+            hero_image_width = dp(190) if is_android else dp(180)
+            hero_image_height = dp(190) if is_android else dp(180)
             hero_image_size = (hero_image_width, hero_image_height)
 
             hero_image_widget = Image(
