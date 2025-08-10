@@ -1551,7 +1551,7 @@ def open_build_popup(faction):
 
     # Подпись для больницы
     hosp_label = Label(
-        text=f"1 больница: +500 рабочих / -{faction.buildings_info_fraction()} крон",
+        text=f"1 больница: +500 раб./-{faction.buildings_info_fraction()} крон",
         font_size=adaptive_font,
         color=(1, 1, 1, 1),
         size_hint_y=None,
@@ -1564,7 +1564,7 @@ def open_build_popup(faction):
 
     # Подпись для фабрики
     fact_label = Label(
-        text="1 фабрика: +1000 Кристаллы / -200 рабочих",
+        text="1 фабрика: +1000 Крист./-200 рабочих",
         font_size=adaptive_font,
         color=(1, 1, 1, 1),
         size_hint_y=None,
