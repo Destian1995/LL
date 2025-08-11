@@ -533,9 +533,25 @@ class GameScreen(Screen):
         self.ai_controllers = {}
         # Инициализация EventManager
         self.event_manager = EventManager(self.selected_faction, self, self.game_state_manager.faction, self.conn)
+
+        # Инициализируем таблицу season
+        self.season_manager = SeasonManager()
+        self.initialize_season_table(self.conn)
+
+        # Получаем текущий сезон из БД или устанавливаем случайный
+        current_season_data = self.get_current_season_from_db(self.conn)
+        if current_season_data:
+            self.current_idx = current_season_data['index']
+        else:
+            self.current_idx = random.randint(0, 3)
+            # Сохраняем начальный сезон в БД
+            self.update_season_in_db(
+                self.conn,
+                self.SEASON_NAMES[self.current_idx],
+                self.current_idx
+            )
         # Инициализация UI
         self.is_android = platform == 'android'
-        self.season_manager = SeasonManager()
         self.current_idx = random.randint(0, 3)
         current_season = {
             'name': self.SEASON_NAMES[self.current_idx],
@@ -878,6 +894,8 @@ class GameScreen(Screen):
         new_season = self.update_season(self.turn_counter)
         self._update_season_display(new_season)
         self.season_manager.update(self.current_idx, self.conn)
+        # Сбрасываем характеристики отсутствующих юнитов 3 класса
+        self.season_manager.reset_absent_third_class_units(self.conn)
         print("Здесь должны вызываться функции отрисовки звезд мощи городов")
         # Обновляем статус городов и отрисовываем звёздочки мощи армий
         # Принудительно обновляем рейтинг один раз
@@ -900,11 +918,68 @@ class GameScreen(Screen):
         if turn_count > 1 and (turn_count - 1) % 4 == 0:
             # Переходим к следующему сезону
             self.current_idx = (self.current_idx + 1) % 4
+            # Обновляем сезон в базе данных
+            self.update_season_in_db(
+                self.conn,
+                self.SEASON_NAMES[self.current_idx],
+                self.current_idx
+            )
 
         return {
             'name': self.SEASON_NAMES[self.current_idx],
             'icon': self.SEASON_ICONS[self.current_idx]
         }
+
+    def initialize_season_table(self, conn):
+        """
+        Создает таблицу season для хранения текущего сезона.
+        """
+        try:
+            cursor = conn.cursor()
+            # Если таблица пуста, вставляем начальные данные
+            cursor.execute("SELECT COUNT(*) FROM season")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO season (id, current_season, season_index) 
+                    VALUES (1, ?, 0)
+                """, (self.SEASON_NAMES[0],))
+
+            conn.commit()
+            print("[SEASON] Таблица season инициализирована.")
+
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при инициализации таблицы season: {e}")
+
+    def get_current_season_from_db(self, conn):
+        """
+        Получает текущий сезон из базы данных.
+        """
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT current_season, season_index FROM season WHERE id = 1")
+            result = cursor.fetchone()
+            if result:
+                return {'name': result[0], 'index': result[1]}
+            return None
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при получении сезона из БД: {e}")
+            return None
+
+    def update_season_in_db(self, conn, season_name, season_index):
+        """
+        Обновляет информацию о текущем сезоне в базе данных.
+        """
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE season 
+                SET current_season = ?, season_index = ? 
+                WHERE id = 1
+            """, (season_name, season_index))
+            conn.commit()
+            print(f"[SEASON] Сезон обновлен в БД: {season_name} (индекс: {season_index})")
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при обновлении сезона в БД: {e}")
 
     def on_season_pressed(self, instance, touch):
         """
@@ -1523,54 +1598,89 @@ class GameScreen(Screen):
         сколько записей этого юнита у каждой фракции. Оставляет только одну запись
         и устанавливает unit_count = 1. Все лишние строки удаляет.
         """
-        cur = self.conn.cursor()
+        cur = None
+        try:
+            # Убедимся, что предыдущая временная таблица удалена
+            cleanup_cur = self.conn.cursor()
+            try:
+                cleanup_cur.execute("DROP TABLE IF EXISTS city_factions")
+                self.conn.commit()
+            except sqlite3.Error:
+                self.conn.rollback()
+            finally:
+                cleanup_cur.close()
 
-        # 1) Построим временную таблицу с городами и их фракциями
-        #    (если у вас уже есть cities(city_name, faction), этот шаг не обязателен)
-        cur.execute("""
-            CREATE TEMP TABLE IF NOT EXISTS city_factions AS
-            SELECT name AS city_name, faction
-              FROM cities
-        """)
+            cur = self.conn.cursor()
 
-        # 2) Находим всех «героев» unit_class > 1 вместе с их фракцией
-        cur.execute("""
-            SELECT g.id, cf.faction, g.unit_name, u.unit_class
-              FROM garrisons AS g
-              JOIN units      AS u  ON g.unit_name = u.unit_name
-              JOIN city_factions AS cf ON g.city_name = cf.city_name
-             WHERE u.unit_class > 1
-        """)
-        rows = cur.fetchall()
+            # 1) Построим временную таблицу с городами и их фракциями
+            cur.execute("""
+                CREATE TEMP TABLE city_factions AS
+                SELECT name AS city_name, faction
+                  FROM cities
+            """)
 
-        # Группируем по (faction, unit_name)
-        from collections import defaultdict
-        heroes = defaultdict(list)
-        for row in rows:
-            row_id, faction, unit_name, unit_class = row
-            heroes[(faction, unit_name)].append(row_id)
+            # 2) Находим всех «героев» unit_class > 1 вместе с их фракцией
+            cur.execute("""
+                SELECT g.id, cf.faction, g.unit_name, u.unit_class
+                  FROM garrisons AS g
+                  JOIN units      AS u  ON g.unit_name = u.unit_name
+                  JOIN city_factions AS cf ON g.city_name = cf.city_name
+                 WHERE u.unit_class > 1
+            """)
+            rows = cur.fetchall()
 
-        # 3) Обрабатываем каждую группу
-        for (faction, unit_name), ids in heroes.items():
-            keep_id = ids[0]
-            delete_ids = ids[1:]
+            # Группируем по (faction, unit_name)
+            from collections import defaultdict
+            heroes = defaultdict(list)
+            for row in rows:
+                row_id, faction, unit_name, unit_class = row
+                heroes[(faction, unit_name)].append(row_id)
 
-            if delete_ids:
+            # 3) Обрабатываем каждую группу
+            for (faction, unit_name), ids in heroes.items():
+                keep_id = ids[0]
+                delete_ids = ids[1:]
+
+                if delete_ids:
+                    cur.execute(
+                        "DELETE FROM garrisons WHERE id IN ({})"
+                        .format(",".join("?" * len(delete_ids))),
+                        delete_ids
+                    )
+
+                # 4) Обновляем count в оставшейся записи
                 cur.execute(
-                    "DELETE FROM garrisons WHERE id IN ({})"
-                    .format(",".join("?" * len(delete_ids))),
-                    delete_ids
+                    "UPDATE garrisons SET unit_count = 1 WHERE id = ?",
+                    (keep_id,)
                 )
 
-            # 4) Обновляем count в оставшейся записи
-            cur.execute(
-                "UPDATE garrisons SET unit_count = 1 WHERE id = ?",
-                (keep_id,)
-            )
+            # Коммитим все изменения
+            self.conn.commit()
 
-        self.conn.commit()
-        cur.execute("DROP TABLE IF EXISTS city_factions")
-        self.conn.commit()
+        except sqlite3.OperationalError as e:
+            print(f"Операционная ошибка при работе с БД в enforce_garrison_hero_limits: {e}")
+            if self.conn:
+                self.conn.rollback()
+        except sqlite3.Error as e:
+            print(f"Ошибка SQLite в enforce_garrison_hero_limits: {e}")
+            if self.conn:
+                self.conn.rollback()
+        except Exception as e:
+            print(f"Неожиданная ошибка в enforce_garrison_hero_limits: {e}")
+            if self.conn:
+                self.conn.rollback()
+        finally:
+            # Удаляем временную таблицу и закрываем курсор
+            if cur:
+                try:
+                    cur.execute("DROP TABLE IF EXISTS city_factions")
+                    self.conn.commit()
+                except sqlite3.Error as e:
+                    print(f"Ошибка при удалении временной таблицы: {e}")
+                    if self.conn:
+                        self.conn.rollback()
+                finally:
+                    cur.close()
 
     def reset_game(self):
         """Сброс игры (например, при новой игре)."""

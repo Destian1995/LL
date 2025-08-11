@@ -274,7 +274,6 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     )
     popup.open()
 
-# Добавьте эту новую функцию в fight.py
 def cleanup_equipment_after_battle(conn):
     """
     Очищает таблицы hero_equipment и ai_hero_equipment после боя.
@@ -329,6 +328,7 @@ def cleanup_equipment_after_battle(conn):
         print(f"[ERROR] Неожиданная ошибка при очистке экипировки: {e}")
         import traceback
         traceback.print_exc()
+
 
 def fight(attacking_city, defending_city, defending_army, attacking_army,
           attacking_fraction, defending_fraction, conn):
@@ -508,6 +508,7 @@ def fight(attacking_city, defending_city, defending_army, attacking_army,
         attacking_army=modified_attacking,
         defending_army=modified_defending,
         attacking_fraction=attacking_fraction,
+        defending_fraction=defending_fraction,
         conn=conn
     )
 
@@ -633,7 +634,7 @@ def calculate_unit_power(unit, is_attacking):
 
 def update_garrisons_after_battle(winner, attacking_city, defending_city,
                                   attacking_army, defending_army,
-                                  attacking_fraction, conn):
+                                  attacking_fraction, defending_fraction, conn):
     """
     Обновляет гарнизоны после боя.
     """
@@ -703,6 +704,10 @@ def update_garrisons_after_battle(winner, attacking_city, defending_city,
                     DELETE FROM garrisons 
                     WHERE city_name = ? AND unit_name = ?
                 """, (attacking_city, unit['unit_name']))
+
+        # Проверяем необходимость сброса характеристик для обеих фракций
+        reset_third_class_units_if_empty(conn, attacking_fraction)
+        reset_third_class_units_if_empty(conn, defending_fraction)
 
     except sqlite3.Error as e:
         print(f"Ошибка при обновлении гарнизонов: {e}")
@@ -857,3 +862,134 @@ def update_dossier_battle_stats(conn, user_faction, is_victory):
 
 
 
+def reset_third_class_units_if_empty(conn, faction_name):
+    """
+    Сбрасывает характеристики юнитов 3 класса указанной фракции до значений по умолчанию,
+    если в гарнизонах этой фракции не осталось юнитов 3 класса.
+
+    :param conn: Соединение с базой данных
+    :param faction_name: Название фракции
+    """
+    try:
+        cursor = conn.cursor()
+
+        # Проверяем, есть ли юниты 3 класса в гарнизонах этой фракции
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM garrisons g
+            JOIN units u ON g.unit_name = u.unit_name
+            WHERE u.faction = ? AND u.unit_class = 3
+        """, (faction_name,))
+
+        third_class_count = cursor.fetchone()[0]
+
+        # Если юнитов 3 класса нет в гарнизонах
+        if third_class_count == 0:
+            print(f"[INFO] Юниты 3 класса фракции '{faction_name}' отсутствуют в гарнизонах. Сброс характеристик...")
+
+            # Сбрасываем характеристики юнитов 3 класса до значений по умолчанию
+            cursor.execute("""
+                UPDATE units 
+                SET 
+                    attack = (SELECT attack FROM units_default WHERE units_default.unit_name = units.unit_name),
+                    defense = (SELECT defense FROM units_default WHERE units_default.unit_name = units.unit_name),
+                    durability = (SELECT durability FROM units_default WHERE units_default.unit_name = units.unit_name),
+                    cost_money = (SELECT cost_money FROM units_default WHERE units_default.unit_name = units.unit_name),
+                    cost_time = (SELECT cost_time FROM units_default WHERE units_default.unit_name = units.unit_name)
+                WHERE faction = ? AND unit_class = 3
+            """, (faction_name,))
+
+            print(f"[SUCCESS] Характеристики юнитов 3 класса фракции '{faction_name}' сброшены до значений по умолчанию.")
+
+            # Получаем текущий сезон для применения бонусов
+            cursor.execute("SELECT current_season FROM season LIMIT 1")
+            season_result = cursor.fetchone()
+
+            if season_result:
+                current_season = season_result[0]
+
+                # Применяем сезонные бонусы к сброшенным характеристикам
+                faction_effects = [
+                    # 0 = Зима
+                    {
+                        'Люди':  {'stat': 1.25,  'cost': 0.65},
+                        'Эльфы': {'stat': 0.65,  'cost': 1.25},
+                        'Вампиры': {'stat': 0.97,  'cost': 1.00},
+                        'Адепты':   {'stat': 0.90,  'cost': 1.17},
+                        'Элины':  {'stat': 0.45,  'cost': 1.45},
+                    },
+                    # 1 = Весна
+                    {
+                        'Люди':  {'stat': 0.90,  'cost': 1.17},
+                        'Эльфы': {'stat': 0.97,  'cost': 1.00},
+                        'Вампиры': {'stat': 1.25,  'cost': 0.65},
+                        'Адепты':   {'stat': 0.65,  'cost': 1.25},
+                        'Элины':  {'stat': 0.99,  'cost': 0.90},
+                    },
+                    # 2 = Лето
+                    {
+                        'Люди':  {'stat': 0.65,  'cost': 1.25},
+                        'Эльфы': {'stat': 1.25,  'cost': 0.65},
+                        'Вампиры': {'stat': 0.90,  'cost': 1.17},
+                        'Адепты':   {'stat': 0.97,  'cost': 1.00},
+                        'Элины':  {'stat': 1.70,  'cost': 0.60},
+                    },
+                    # 3 = Осень
+                    {
+                        'Люди':  {'stat': 0.97,  'cost': 1.00},
+                        'Эльфы': {'stat': 0.90,  'cost': 1.17},
+                        'Вампиры': {'stat': 0.65,  'cost': 1.25},
+                        'Адепты':   {'stat': 1.25,  'cost': 0.65},
+                        'Элины':  {'stat': 0.90,  'cost': 1.17},
+                    },
+                ]
+
+                if current_season in [0, 1, 2, 3] and faction_name in faction_effects[current_season]:
+                    effects = faction_effects[current_season][faction_name]
+                    stat_f = effects['stat']
+                    cost_f = effects['cost']
+
+                    # Применяем stat-коэффициент (attack, defense)
+                    if stat_f != 1.0:
+                        cursor.execute("""
+                            UPDATE units
+                            SET
+                                attack  = CAST(ROUND(attack  * ?) AS INTEGER),
+                                defense = CAST(ROUND(defense * ?) AS INTEGER)
+                            WHERE faction = ? AND unit_class = 3
+                        """, (stat_f, stat_f, faction_name))
+
+                    # Применяем cost-коэффициент (cost_money, cost_time)
+                    if cost_f != 1.0:
+                        cursor.execute("""
+                            UPDATE units
+                            SET
+                                cost_money = CAST(ROUND(cost_money * ?) AS INTEGER),
+                                cost_time  = CAST(ROUND(cost_time  * ?) AS INTEGER)
+                            WHERE faction = ? AND unit_class = 3
+                        """, (cost_f, cost_f, faction_name))
+
+                    print(f"[SUCCESS] Сезонные бонусы применены к юнитам 3 класса фракции '{faction_name}' для сезона {current_season}.")
+
+            conn.commit()
+            return True
+        else:
+            print(f"[INFO] У фракции '{faction_name}' остались юниты 3 класса в гарнизонах. Сброс не требуется.")
+            return False
+
+    except sqlite3.Error as e:
+        print(f"[ERROR] Ошибка базы данных при сбросе характеристик юнитов 3 класса: {e}")
+        try:
+            conn.rollback()
+        except:
+            pass
+        return False
+    except Exception as e:
+        print(f"[ERROR] Неожиданная ошибка при сбросе характеристик юнитов 3 класса: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except:
+            pass
+        return False

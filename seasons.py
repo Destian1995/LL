@@ -386,3 +386,112 @@ class SeasonManager:
 
         conn.commit()
 
+    def reset_absent_third_class_units(self, conn):
+        """
+        Проверяет каждый юнит 3 класса в таблице units. Если юнит 3 класса отсутствует в garrisons,
+        сбрасывает его характеристики к значениям из units_default с пересчетом на эффект текущего сезона.
+        """
+        try:
+            cursor = conn.cursor()
+
+            # Получаем все юниты 3 класса из таблицы units
+            cursor.execute("""
+                SELECT unit_name, faction 
+                FROM units 
+                WHERE unit_class = 3
+            """)
+
+            third_class_units = cursor.fetchall()
+
+            if not third_class_units:
+                print("[INFO] Нет юнитов 3 класса в таблице units.")
+                return
+
+            reset_count = 0
+
+            for unit_name, faction in third_class_units:
+                # Проверяем, есть ли этот юнит в garrisons
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM garrisons 
+                    WHERE unit_name = ?
+                """, (unit_name,))
+
+                count_in_garrisons = cursor.fetchone()[0]
+
+                # Если юнит отсутствует в garrisons, сбрасываем его характеристики
+                if count_in_garrisons == 0:
+                    print(
+                        f"[INFO] Юнит '{unit_name}' (фракция '{faction}') отсутствует в garrisons. Сброс характеристик...")
+
+                    # Сбрасываем характеристики к значениям по умолчанию
+                    cursor.execute("""
+                        UPDATE units 
+                        SET 
+                            attack = (SELECT attack FROM units_default WHERE units_default.unit_name = units.unit_name),
+                            defense = (SELECT defense FROM units_default WHERE units_default.unit_name = units.unit_name),
+                            durability = (SELECT durability FROM units_default WHERE units_default.unit_name = units.unit_name),
+                            cost_money = (SELECT cost_money FROM units_default WHERE units_default.unit_name = units.unit_name),
+                            cost_time = (SELECT cost_time FROM units_default WHERE units_default.unit_name = units.unit_name)
+                        WHERE unit_name = ?
+                    """, (unit_name,))
+
+                    # Если сезон установлен, применяем сезонные эффекты
+                    if self.last_idx is not None:
+                        faction_effects = self.FACTION_EFFECTS[self.last_idx]
+
+                        if faction in faction_effects:
+                            effects = faction_effects[faction]
+                            stat_f = effects['stat']
+                            cost_f = effects['cost']
+
+                            # Применяем stat-коэффициент (attack, defense)
+                            if stat_f != 1.0:
+                                cursor.execute("""
+                                    UPDATE units
+                                    SET
+                                        attack  = CAST(ROUND(attack  * ?) AS INTEGER),
+                                        defense = CAST(ROUND(defense * ?) AS INTEGER)
+                                    WHERE unit_name = ?
+                                """, (stat_f, stat_f, unit_name))
+
+                            # Применяем cost-коэффициент (cost_money, cost_time)
+                            if cost_f != 1.0:
+                                cursor.execute("""
+                                    UPDATE units
+                                    SET
+                                        cost_money = CAST(ROUND(cost_money * ?) AS INTEGER),
+                                        cost_time  = CAST(ROUND(cost_time  * ?) AS INTEGER)
+                                    WHERE unit_name = ?
+                                """, (cost_f, cost_f, unit_name))
+
+                            print(
+                                f"[SUCCESS] Сезонные бонусы применены к юниту '{unit_name}' для сезона {self.SEASON_NAMES[self.last_idx]}.")
+
+                    reset_count += 1
+                    print(f"[SUCCESS] Характеристики юнита '{unit_name}' сброшены и пересчитаны.")
+
+            if reset_count > 0:
+                conn.commit()
+                print(f"[INFO] Сброшены характеристики {reset_count} юнитов 3 класса.")
+            else:
+                print("[INFO] Все юниты 3 класса присутствуют в garrisons. Сброс не требуется.")
+
+            return reset_count
+
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка базы данных при сбросе характеристик юнитов 3 класса: {e}")
+            try:
+                conn.rollback()
+            except:
+                pass
+            return 0
+        except Exception as e:
+            print(f"[ERROR] Неожиданная ошибка при сбросе характеристик юнитов 3 класса: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                conn.rollback()
+            except:
+                pass
+            return 0
