@@ -127,15 +127,7 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
     return report_data
 
 
-from kivy.uix.anchorlayout import AnchorLayout
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.popup import Popup
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.graphics import Color, Rectangle
-from kivy.metrics import dp, sp
+
 
 
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
