@@ -220,183 +220,6 @@ class FortressInfoPopup(Popup):
             # Добавляем макет здания в контейнер
             self.buildings_box.add_widget(building_layout)
 
-    def get_garrison(self):
-        """Получает гарнизон города из таблицы garrisons и отображает его с учетом класса и специализации юнитов."""
-        try:
-            # Запрос к базе данных для получения гарнизона
-            self.cursor.execute("""
-                SELECT unit_name, unit_count, unit_image 
-                FROM garrisons 
-                WHERE city_name = ?
-            """, (self.city_name,))
-            garrison_data = self.cursor.fetchall()
-
-            # Очищаем контейнер с предыдущими данными
-            self.attacking_units_box.clear_widgets()
-
-            if not garrison_data:
-                print(f"Гарнизон для города {self.city_name} пуст.")
-                # Можно добавить виджет с сообщением "Гарнизон пуст"
-                empty_label = Label(
-                    text="Гарнизон пуст",
-                    size_hint_y=None,
-                    height=60,
-                    font_size='18sp',
-                    color=(1, 0, 0, 1),  # Ярко-красный текст
-                    halign='center',
-                    valign='middle'
-                )
-                empty_label.bind(size=empty_label.setter('text_size'))
-                self.attacking_units_box.add_widget(empty_label)
-                return
-
-            print('Выполняется запрос к базе данных гарнизона', garrison_data)
-
-            # Добавляем данные о каждом юните в интерфейс
-            for unit_name, unit_count, unit_image in garrison_data:
-                # --- НОВАЯ ЛОГИКА: Получение класса, характеристик и определение специализации ---
-                specialization_icon_path = None  # Путь к иконке специализации
-                try:
-                    # 1. Получаем класс юнита
-                    self.cursor.execute("""
-                        SELECT unit_class, attack, defense
-                        FROM units
-                        WHERE unit_name = ?
-                    """, (unit_name,))
-                    unit_info = self.cursor.fetchone()
-
-                    if unit_info:
-                        unit_class, attack, defense = unit_info[0], unit_info[1], unit_info[2]
-
-                        # 2. Логика отображения в зависимости от класса
-                        if unit_class == "1":
-                            # Класс 1: отображаем количество
-                            unit_text = f"{unit_name}\nКоличество: {format_number(unit_count)}"
-                        elif unit_class == "4":
-                            # Класс 4: отображаем только имя
-                            unit_text = f"{unit_name}"
-                        elif unit_class in ("2", "3"):  # Класс 2 или 3: отображаем имя и иконку специализации
-                            # 3. Определяем специализацию
-                            try:
-                                # Обработка случаев, когда один из параметров равен 0
-                                if defense == 0:
-                                    if attack > 0:
-                                        specialization_icon_path = "files/pict/hero_type/sword.png"
-                                    # Если оба 0, остается None
-                                elif attack == 0:
-                                    if defense > 0:
-                                        specialization_icon_path = "files/pict/hero_type/shield.png"
-                                    # Если оба 0, остается None
-                                else:
-                                    # Основная логика определения специализации
-                                    attack_to_defense_ratio = attack / defense
-                                    defense_to_attack_ratio = defense / attack
-                                    if attack_to_defense_ratio >= 2.0:
-                                        specialization_icon_path = "files/pict/hero_type/sword.png"
-                                    elif defense_to_attack_ratio >= 2.0:
-                                        specialization_icon_path = "files/pict/hero_type/shield.png"
-                                    else:
-                                        specialization_icon_path = "files/pict/hero_type/sword-shield.png"
-                            except Exception as spec_error:
-                                print(f"Ошибка при определении специализации для '{unit_name}': {spec_error}")
-                                # Оставляем specialization_icon_path как None в случае ошибки вычисления
-                            # Формируем текст с названием
-                            unit_text = f"{unit_name}"
-                        else:
-                            # Для других классов (например, если в будущем появятся 5+)
-                            # Можно отобразить только имя или имя+класс, или обработать иначе.
-                            # Пока что отобразим имя и класс как fallback.
-                            unit_text = f"{unit_name}\n(Класс {unit_class})"
-                    else:
-                        print(f"Информация для юнита '{unit_name}' не найдена в таблице units.")
-                        # Можно отобразить имя и сообщение об ошибке
-                        unit_text = f"{unit_name}\n(Не найден в units)"
-                except sqlite3.Error as e:
-                    print(f"Ошибка БД при получении данных юнита '{unit_name}': {e}")
-                    # В случае ошибки БД также используем значение по умолчанию или сообщение об ошибке
-                    unit_text = f"{unit_name}\n(Ошибка БД)"
-                except Exception as e:
-                    print(f"Неожиданная ошибка при обработке юнита '{unit_name}': {e}")
-                    unit_text = f"{unit_name}\n(Ошибка обработки)"
-                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
-
-                # Создаем макет для одного юнита
-                unit_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=100, spacing=10)
-
-                # Изображение юнита - проверяем существование файла
-                unit_image_source = unit_image
-                if unit_image_source and not os.path.exists(unit_image_source):
-                    print(f"Файл изображения не найден: {unit_image_source}")
-                    unit_image_source = "files/pict/placeholder.png"  # Файл-заглушка
-
-                unit_image_widget = Image(
-                    source=unit_image_source,
-                    size_hint=(None, None),
-                    size=(120, 120)  # Увеличиваем размер изображения
-                )
-                unit_layout.add_widget(unit_image_widget)
-
-                # Информация о юните (текст с названием и количеством/специализацией/именем)
-                text_container = BoxLayout(orientation='vertical', size_hint=(1, 1), padding=5)
-                with text_container.canvas.before:
-                    Color(0.3, 0.3, 0.3, 1)
-                    text_container.bg_rect = Rectangle(pos=text_container.pos, size=text_container.size)
-
-                def update_rect(instance, value):
-                    """Обновляет позицию и размер фона при изменении размеров виджета."""
-                    if hasattr(instance, 'bg_rect'):
-                        instance.bg_rect.pos = instance.pos
-                        instance.bg_rect.size = instance.size
-
-                text_container.bind(pos=update_rect, size=update_rect)
-
-                # Текст с названием
-                unit_name_label = Label(
-                    text=unit_text,  # Используем модифицированный текст
-                    font_size='17sp',  # Увеличиваем размер шрифта
-                    color=(1, 1, 1, 1),  # Белый текст
-                    halign='left',
-                    valign='middle'
-                )
-                unit_name_label.bind(size=unit_name_label.setter('text_size'))  # Для корректного выравнивания текста
-                text_container.add_widget(unit_name_label)
-
-                # Добавляем иконку специализации, если путь определен
-                if specialization_icon_path:
-                    # Проверяем существование файла иконки
-                    if os.path.exists(specialization_icon_path):
-                        icon_image = Image(
-                            source=specialization_icon_path,
-                            size_hint=(None, None),
-                            size=(30, 30),  # Размер иконки
-                            pos_hint={'center_y': 0.5},  # Выравнивание по вертикали
-                        )
-                        text_container.add_widget(icon_image)
-                    else:
-                        print(f"Файл иконки специализации не найден: {specialization_icon_path}")
-
-                unit_layout.add_widget(text_container)
-
-                # Добавляем макет юнита в контейнер
-                self.attacking_units_box.add_widget(unit_layout)
-
-        except Exception as e:
-            print(f"Ошибка при получении гарнизона: {e}")
-            import traceback
-            traceback.print_exc()  # Добавляем трассировку для лучшего понимания ошибки
-            # Можно показать сообщение об ошибке в интерфейсе
-            error_label = Label(
-                text="Ошибка загрузки гарнизона",
-                size_hint_y=None,
-                height=60,
-                font_size='18sp',
-                color=(1, 0, 0, 1),
-                halign='center',
-                valign='middle'
-            )
-            error_label.bind(size=error_label.setter('text_size'))
-            self.attacking_units_box.add_widget(error_label)
-
 
     def get_buildings(self):
         """Получает количество зданий в указанном городе из таблицы buildings."""
@@ -812,7 +635,7 @@ class FortressInfoPopup(Popup):
                     halign='center',
                     valign='middle'
                 )
-                label.bind(size=label.setter('text_size'))  # Для корректного выравнивания текста
+                label.bind(size=label.setter('text_size'))
                 self.attacking_units_box.add_widget(label)
                 return
 
@@ -868,75 +691,216 @@ class FortressInfoPopup(Popup):
                             unit_text = f"{unit_name}"
                         else:
                             # Для других классов (например, если в будущем появятся 5+)
-                            # Можно отобразить только имя или имя+класс, или обработать иначе.
-                            # Пока что отобразим имя и класс как fallback.
                             unit_text = f"{unit_name}\n(Класс {unit_class})"
                     else:
                         print(f"Информация для юнита '{unit_name}' не найдена в таблице units.")
-                        # Можно отобразить имя и сообщение об ошибке
                         unit_text = f"{unit_name}\n(Не найден в units)"
                 except sqlite3.Error as e:
                     print(f"Ошибка БД при получении данных юнита '{unit_name}': {e}")
-                    # В случае ошибки БД также используем значение по умолчанию или сообщение об ошибке
                     unit_text = f"{unit_name}\n(Ошибка БД)"
                 except Exception as e:
                     print(f"Неожиданная ошибка при обработке юнита '{unit_name}': {e}")
                     unit_text = f"{unit_name}\n(Ошибка обработки)"
-                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
 
                 # Создаем макет для одного юнита
-                unit_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=100, spacing=10)
+                unit_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=150, spacing=10)
 
-                # Изображение юнита
+                # Изображение юнита - проверяем существование файла
+                unit_image_source = unit_image
+                if unit_image_source and not os.path.exists(unit_image_source):
+                    print(f"Файл изображения не найден: {unit_image_source}")
+                    unit_image_source = "files/pict/placeholder.png"
+
                 unit_image_widget = Image(
-                    source=unit_image,
+                    source=unit_image_source,
                     size_hint=(None, None),
-                    size=(110, 110)  # Увеличиваем размер изображения
+                    size=(150, 150)  # Увеличенное изображение
                 )
                 unit_layout.add_widget(unit_image_widget)
 
-                # Информация о юните (текст с названием и количеством/специализацией/именем)
-                text_container = BoxLayout(orientation='vertical', size_hint=(1, 1), padding=5)
-                with text_container.canvas.before:
-                    Color(0.3, 0.3, 0.3, 1)  # Темно-серый фон
-                    text_container.bg_rect = Rectangle(pos=text_container.pos, size=text_container.size)
+                # Справа — контейнер с текстом и специализацией
+                right_container = BoxLayout(orientation='horizontal', size_hint=(1, 1), padding=5, spacing=10)
 
-                def update_rect(instance, value):
-                    """Обновляет позицию и размер фона при изменении размеров виджета."""
-                    if hasattr(instance, 'bg_rect'):
-                        instance.bg_rect.pos = instance.pos
-                        instance.bg_rect.size = instance.size
-
-                text_container.bind(pos=update_rect, size=update_rect)
-
-                # Текст с названием
-                unit_name_label = Label(
-                    text=unit_text,  # Используем модифицированный текст
-                    font_size='16sp',  # Увеличиваем размер шрифта
-                    color=(1, 1, 1, 1),  # Белый текст
+                # Текст с названием юнита
+                text_label = Label(
+                    text=unit_text,
+                    font_size='17sp',
+                    color=(1, 1, 1, 1),
                     halign='left',
                     valign='middle'
                 )
-                unit_name_label.bind(size=unit_name_label.setter('text_size'))  # Для корректного выравнивания текста
-                text_container.add_widget(unit_name_label)
+                text_label.bind(size=text_label.setter('text_size'))
+                right_container.add_widget(text_label)
 
-                # Добавляем иконку специализации, если путь определен
-                if specialization_icon_path:
-                    icon_image = Image(
-                        source=specialization_icon_path,
-                        size_hint=(None, None),
-                        size=(30, 30),  # Размер иконки
-                        pos_hint={'center_y': 0.5},  # Выравнивание по вертикали
-                    )
-                    text_container.add_widget(icon_image)
+                # Иконка специализации (только для классов 2 и 3)
+                if unit_class in ("2", "3") and specialization_icon_path:
+                    if os.path.exists(specialization_icon_path):
+                        icon_image = Image(
+                            source=specialization_icon_path,
+                            size_hint=(None, None),
+                            size=(140, 140),
+                            pos_hint={'center_y': 0.5}
+                        )
+                        right_container.add_widget(icon_image)
+                    else:
+                        print(f"Файл иконки специализации не найден: {specialization_icon_path}")
 
-                unit_layout.add_widget(text_container)
+                # Добавляем правый контейнер
+                unit_layout.add_widget(right_container)
 
                 # Добавляем макет юнита в контейнер
                 self.attacking_units_box.add_widget(unit_layout)
 
         except Exception as e:
             print(f"Ошибка при обновлении гарнизона: {e}")
+
+    def get_garrison(self):
+        """Получает гарнизон города из таблицы garrisons и отображает его с учетом класса и специализации юнитов."""
+        try:
+            # Запрос к базе данных для получения гарнизона
+            self.cursor.execute("""
+                SELECT unit_name, unit_count, unit_image 
+                FROM garrisons 
+                WHERE city_name = ?
+            """, (self.city_name,))
+            garrison_data = self.cursor.fetchall()
+
+            # Очищаем контейнер с предыдущими данными
+            self.attacking_units_box.clear_widgets()
+
+            if not garrison_data:
+                print(f"Гарнизон для города {self.city_name} пуст.")
+                empty_label = Label(
+                    text="Гарнизон пуст",
+                    size_hint_y=None,
+                    height=60,
+                    font_size='18sp',
+                    color=(1, 0, 0, 1),
+                    halign='center',
+                    valign='middle'
+                )
+                empty_label.bind(size=empty_label.setter('text_size'))
+                self.attacking_units_box.add_widget(empty_label)
+                return
+
+            # Добавляем данные о каждом юните в интерфейс
+            for unit_name, unit_count, unit_image in garrison_data:
+                # --- НОВАЯ ЛОГИКА: Получение класса, характеристик и определение специализации ---
+                specialization_icon_path = None  # Путь к иконке специализации
+                try:
+                    # 1. Получаем класс юнита
+                    self.cursor.execute("""
+                        SELECT unit_class, attack, defense
+                        FROM units
+                        WHERE unit_name = ?
+                    """, (unit_name,))
+                    unit_info = self.cursor.fetchone()
+
+                    if unit_info:
+                        unit_class, attack, defense = unit_info[0], unit_info[1], unit_info[2]
+
+                        # 2. Логика отображения в зависимости от класса
+                        if unit_class == "1":
+                            # Класс 1: отображаем количество
+                            unit_text = f"{unit_name}\nКоличество: {format_number(unit_count)}"
+                        elif unit_class == "4":
+                            # Класс 4: отображаем только имя
+                            unit_text = f"{unit_name}"
+                        elif unit_class in ("2", "3"):  # Класс 2 или 3: отображаем имя и иконку специализации
+                            # 3. Определяем специализацию
+                            try:
+                                if defense == 0:
+                                    if attack > 0:
+                                        specialization_icon_path = "files/pict/hero_type/sword.png"
+                                elif attack == 0:
+                                    if defense > 0:
+                                        specialization_icon_path = "files/pict/hero_type/shield.png"
+                                else:
+                                    attack_to_defense_ratio = attack / defense
+                                    defense_to_attack_ratio = defense / attack
+                                    if attack_to_defense_ratio >= 2.0:
+                                        specialization_icon_path = "files/pict/hero_type/sword.png"
+                                    elif defense_to_attack_ratio >= 2.0:
+                                        specialization_icon_path = "files/pict/hero_type/shield.png"
+                                    else:
+                                        specialization_icon_path = "files/pict/hero_type/sword-shield.png"
+                            except Exception as spec_error:
+                                print(f"Ошибка при определении специализации для '{unit_name}': {spec_error}")
+                            unit_text = f"{unit_name}"
+                        else:
+                            unit_text = f"{unit_name}\n(Класс {unit_class})"
+                    else:
+                        print(f"Информация для юнита '{unit_name}' не найдена в таблице units.")
+                        unit_text = f"{unit_name}\n(Не найден в units)"
+                except sqlite3.Error as e:
+                    print(f"Ошибка БД при получении данных юнита '{unit_name}': {e}")
+                    unit_text = f"{unit_name}\n(Ошибка БД)"
+                except Exception as e:
+                    print(f"Неожиданная ошибка при обработке юнита '{unit_name}': {e}")
+                    unit_text = f"{unit_name}\n(Ошибка обработки)"
+
+                # Создаем макет для одного юнита
+                unit_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=150, spacing=10)
+
+                # Изображение юнита - проверяем существование файла
+                unit_image_source = unit_image
+                if unit_image_source and not os.path.exists(unit_image_source):
+                    print(f"Файл изображения не найден: {unit_image_source}")
+                    unit_image_source = "files/pict/placeholder.png"
+
+                unit_image_widget = Image(
+                    source=unit_image_source,
+                    size_hint=(None, None),
+                    size=(150, 150)
+                )
+                unit_layout.add_widget(unit_image_widget)
+
+                # Справа — контейнер с текстом и специализацией
+                right_container = BoxLayout(orientation='horizontal', size_hint=(1, 1), padding=5, spacing=10)
+
+                # Текст с названием юнита
+                text_label = Label(
+                    text=unit_text,
+                    font_size='17sp',
+                    color=(1, 1, 1, 1),
+                    halign='left',
+                    valign='middle'
+                )
+                text_label.bind(size=text_label.setter('text_size'))
+                right_container.add_widget(text_label)
+
+                # Иконка специализации (только для классов 2 и 3)
+                if unit_class in ("2", "3") and specialization_icon_path:
+                    if os.path.exists(specialization_icon_path):
+                        icon_image = Image(
+                            source=specialization_icon_path,
+                            size_hint=(None, None),
+                            size=(40, 40),
+                            pos_hint={'center_y': 0.5}
+                        )
+                        right_container.add_widget(icon_image)
+                    else:
+                        print(f"Файл иконки специализации не найден: {specialization_icon_path}")
+
+                unit_layout.add_widget(right_container)
+
+                self.attacking_units_box.add_widget(unit_layout)
+
+        except Exception as e:
+            print(f"Ошибка при получении гарнизона: {e}")
+            import traceback
+            traceback.print_exc()
+            error_label = Label(
+                text="Ошибка загрузки гарнизона",
+                size_hint_y=None,
+                height=60,
+                font_size='18sp',
+                color=(1, 0, 0, 1),
+                halign='center',
+                valign='middle'
+            )
+            error_label.bind(size=error_label.setter('text_size'))
+            self.attacking_units_box.add_widget(error_label)
 
     def show_warning_popup(self):
         layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
