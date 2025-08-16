@@ -34,6 +34,9 @@ def update_results_table(db_connection, faction, units_destroyed, enemy_losses):
     try:
         with db_connection:  # BEGIN + commit() / rollback() автоматически
             cursor = db_connection.cursor()
+            # Применяем abs() чтобы избежать отрицательных значений
+            units_destroyed = abs(units_destroyed)
+            enemy_losses = abs(enemy_losses)
 
             # Проверяем, существует ли уже запись для этой фракции
             cursor.execute("SELECT COUNT(*) FROM results WHERE faction = ?", (faction,))
@@ -85,7 +88,7 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
         for unit in army:
             initial_count = unit.get('initial_count', 0)
             final_count = unit['unit_count']
-            losses = initial_count - final_count
+            losses = abs(initial_count - final_count)
             report_data.append({
                 'unit_name': unit['unit_name'],
                 'initial_count': initial_count,
@@ -124,155 +127,197 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
     return report_data
 
 
+from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.graphics import Color, Rectangle
+from kivy.metrics import dp, sp
+
+
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
     """
-    Отображает стильный и удобный отчет о бое с использованием Kivy.
-    :param report_data: Данные отчета о бое.
+    Отображает стильный и центрированный отчет о боe с использованием Kivy.
+    Текст по центру окна статистики, заголовки строго друг под другом.
+    :param report_data: Данные отчета о боe.
     :param is_user_involved: Участвовал ли пользователь в бою.
     :param user_faction: Фракция пользователя (если участвовал).
+    :param conn: Соединение/контекст для обновления досье (если нужно).
     """
     if not report_data:
         print("Нет данных для отображения.")
         return
 
-    # Основной контейнер
-    content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+    # === Вспомогательная функция для центровки текста в Label ===
+    def make_center_label(text, font_size_sp=14, markup=False, height_dp=None):
+        lbl = Label(
+            text=text,
+            markup=markup,
+            font_size=sp(font_size_sp),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+        )
+        # Если явно передали высоту — применим
+        if height_dp is None:
+            # приближённая высота, чтобы текст поместился
+            lbl.height = dp(int(font_size_sp * 2.2))
+        else:
+            lbl.height = dp(height_dp)
+        # Традиционный паттерн для корректного выравнивания текста в Kivy
+        lbl.bind(size=lbl.setter('text_size'))
+        # text_size должен совпадать с внутренним размером, иначе valign/halign не работают корректно
+        lbl.text_size = (lbl.width, None)
+        # При изменении width обновим text_size
+        lbl.bind(width=lambda inst, w: setattr(inst, 'text_size', (w, inst.height)))
+        return lbl
 
-    # Фон
+    # Определяем popup заранее (будет создан позже) чтобы binding кнопки работал корректно
+    popup = None
+
+    # === Внешняя якорная оболочка — центрирует всё окно отчета ===
+    outer = AnchorLayout(anchor_x='center', anchor_y='center', size_hint=(1, 1))
+
+    # Основной контент-бокс, он ограничит внутреннюю ширину/высоту и будет центрирован Outer
+    content = BoxLayout(orientation='vertical', padding=dp(12), spacing=dp(12), size_hint=(0.95, 0.95))
+
+    # Фон у контента
     with content.canvas.before:
-        Color(0.12, 0.12, 0.12, 1)
+        Color(0.12, 0.12, 0.18, 1)
         content.rect = Rectangle(size=content.size, pos=content.pos)
         content.bind(pos=lambda inst, value: setattr(inst.rect, 'pos', value),
                      size=lambda inst, value: setattr(inst.rect, 'size', value))
 
-    # === Заголовок: Город и результат ===
-    header_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(80), padding=dp(10), spacing=dp(5))
+    # === Заголовок: результат (большой) и город (ниже) строго друг под другом ===
+    # Используем вертикальный BoxLayout с явной высотой для точного позиционирования
+    header_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(6))
+    header_layout.bind(minimum_height=header_layout.setter('height'))
 
-    city_label = Label(
-        text=f"[b][color=#FFD700]Город: {report_data[0]['city']}[/color][/b]",
-        markup=True,
-        font_size=sp(16),
-        halign='center',
-        valign='middle'
-    )
-    city_label.bind(size=city_label.setter('text_size'))
-
+    # Определяем текст результата и цвет
     result_text = ""
     result_color = "#FFFFFF"
     for item in report_data:
         if item.get("result"):
-            result_text = item["result"]
-            result_color = "#33FF57" if result_text == "Победа" else "#FF5733"
+            result_text = item["result"].upper()
+            result_color = "#33FF57" if result_text == "ПОБЕДА" else "#FF5733"
             break
 
-    result_label = Label(
-        text=f"[b][color={result_color}]{result_text}[/color][/b]",
-        markup=True,
-        font_size=sp(18),
-        halign='center',
-        valign='middle'
-    )
-    result_label.bind(size=result_label.setter('text_size'))
+    # Задаём явные высоты для заголовков, чтобы они не "плыли"
+    result_label = make_center_label(f"[b][color={result_color}]{result_text}[/color][/b]",
+                                     font_size_sp=28, markup=True, height_dp=48)
+    city_name = report_data[0].get('city', '—') if report_data else '—'
+    city_label = make_center_label(f"[color=#FFD700]Город: {city_name}[/color]",
+                                   font_size_sp=16, markup=True, height_dp=28)
 
-    header_layout.add_widget(city_label)
+    # Устанавливаем итоговую высоту header_layout как сумму высот детей + spacing
     header_layout.add_widget(result_label)
+    header_layout.add_widget(city_label)
+    header_layout.height = result_label.height + city_label.height + header_layout.spacing
+
     content.add_widget(header_layout)
 
-    # === Основной контент с таблицами ===
-    main_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(15))
-    main_layout.bind(minimum_height=main_layout.setter('height'))
+    # === Основная область со статистикой ===
+    # ScrollView -> GridLayout(cols=2) чтобы колонки были ровными и текст точно по центру области
+    scroll = ScrollView(size_hint=(1, 1))
 
-    # Функция для создания таблицы
-    def create_table(data, title):
-        table_card = BoxLayout(orientation='vertical', size_hint_y=None, padding=dp(10), spacing=dp(5))
-        table_card.bind(minimum_height=table_card.setter('height'))
+    stats_grid = GridLayout(cols=2, spacing=dp(20), padding=[0, 0, 0, 0], size_hint_y=None)
+    stats_grid.bind(minimum_height=stats_grid.setter('height'))
 
-        # Заголовок таблицы
-        title_label = Label(
-            text=f"[b]{title}[/b]",
-            markup=True,
-            size_hint_y=None,
-            height=dp(30),
-            font_size=sp(15),
-            color=(1, 1, 1, 1)
-        )
-        table_card.add_widget(title_label)
+    # --- Общая функция для создания колонки (Атака / Оборона) ---
+    def build_side_column(side_name, side_color_hex, units):
+        col = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(8), padding=dp(8))
+        # Позаботимся о минимальной высоте, чтобы GridLayout корректно рассчитывал высоту
+        col.bind(minimum_height=col.setter('height'))
 
-        # Таблица
-        table = GridLayout(cols=4, size_hint_y=None, spacing=dp(5))
-        table.bind(minimum_height=table.setter('height'))
+        # Заголовок колонки — по центру над всеми строками, явная высота
+        title = make_center_label(f"[b][color={side_color_hex}]{side_name}:[/color][/b]",
+                                  font_size_sp=16, markup=True, height_dp=32)
+        col.add_widget(title)
 
-        headers = ["Тип Юнита", "На начало", "Потери", "Осталось"]
-        for header in headers:
-            label = Label(
-                text=f"[b]{header}[/b]",
-                markup=True,
-                size_hint_y=None,
-                height=dp(35),
-                font_size=sp(13),
-                color=(0.8, 0.8, 0.8, 1)
-            )
-            table.add_widget(label)
+        # Строка с заголовками столбцов (Юнит | Потери | Осталось)
+        header_row = GridLayout(cols=2, size_hint_y=None, height=dp(28))
+        hdr_unit = make_center_label("[b]Юнит[/b]", font_size_sp=13, markup=True, height_dp=28)
+        hdr_status = make_center_label("[b]Потери | Осталось[/b]", font_size_sp=13, markup=True, height_dp=28)
+        header_row.add_widget(hdr_unit)
+        header_row.add_widget(hdr_status)
+        col.add_widget(header_row)
 
-        for unit_data in data:
-            for value in [
-                unit_data['unit_name'],
-                str(unit_data['initial_count']),
-                str(unit_data['losses']),
-                str(unit_data['final_count'])
-            ]:
-                cell = Label(
-                    text=value,
-                    font_size=sp(13),
-                    size_hint_y=None,
-                    height=dp(30),
-                    color=(1, 1, 1, 1)
-                )
-                table.add_widget(cell)
+        # Добавляем строки юнитов — для ровного выравнивания используем GridLayout на 2 колонки
+        for u in units:
+            unit_name = u.get('unit_name', '—')
+            initial_count = u.get('initial_count', 0)
+            final_count = u.get('final_count', 0)
 
-        table_card.add_widget(table)
-        main_layout.add_widget(table_card)
+            if initial_count == 1 and final_count == 1:
+                status = "Выжил!"
+            elif initial_count == 1 and final_count == 0:
+                status = "Погиб..."
+            else:
+                status = f"{u.get('losses', 0)} | {final_count}"
 
-    # Разделение данных
-    attacking_data = [item for item in report_data if item['side'] == 'attacking']
-    defending_data = [item for item in report_data if item['side'] == 'defending']
+            row = GridLayout(cols=2, size_hint_y=None, height=dp(32))
+            lbl_unit = make_center_label(f"[b]{unit_name}[/b]", font_size_sp=13, markup=True, height_dp=32)
+            lbl_status = make_center_label(status, font_size_sp=13, height_dp=32)
+            row.add_widget(lbl_unit)
+            row.add_widget(lbl_status)
+            col.add_widget(row)
 
-    create_table(attacking_data, "Атакующие силы")
-    create_table(defending_data, "Обороняющиеся силы")
+        return col
 
-    # ScrollView
-    scroll_view = ScrollView()
-    scroll_view.add_widget(main_layout)
-    content.add_widget(scroll_view)
+    # Отбираем единицы по сторонам
+    attacking_units = [item for item in report_data if item.get('side') == 'attacking']
+    defending_units = [item for item in report_data if item.get('side') == 'defending']
 
-    # Кнопка закрытия
+    left_col = build_side_column("Атака", "#4CAF50", attacking_units)
+    right_col = build_side_column("Оборона", "#F44336", defending_units)
+
+    stats_grid.add_widget(left_col)
+    stats_grid.add_widget(right_col)
+
+    scroll.add_widget(stats_grid)
+    content.add_widget(scroll)
+
+    # Кнопка закрытия — по центру внизу
+    btn_box = AnchorLayout(size_hint_y=None, height=dp(60), anchor_x='center', anchor_y='center')
     close_button = Button(
         text="Закрыть",
-        size_hint_y=None,
-        height=dp(45),
+        size_hint=(0.4, None),
+        height=dp(44),
         background_color=(0.2, 0.6, 1, 1),
         font_size=sp(16),
         color=(1, 1, 1, 1)
     )
-    close_button.bind(on_release=lambda instance: popup.dismiss())
-    content.add_widget(close_button)
+    btn_box.add_widget(close_button)
+    content.add_widget(btn_box)
 
-    # Обновление досье
+    # Вставляем content в outer и создаем popup
+    outer.add_widget(content)
+
+    popup = Popup(
+        title="",
+        content=outer,
+        size_hint=(0.95, 0.85),
+        background_color=(0.1, 0.1, 0.15, 1)
+    )
+
+    # Привязываем закрытие popup к кнопке (popup уже создан)
+    close_button.bind(on_release=lambda instance: popup.dismiss())
+
+    # Обновление досье (если нужно)
     if is_user_involved and user_faction and report_data:
-        is_victory = any(item['result'] == "Победа" for item in report_data)
+        is_victory = any(item.get('result') == "Победа" for item in report_data)
         try:
+            # предполагается, что функция update_dossier_battle_stats определена где-то в коде
             update_dossier_battle_stats(conn, user_faction, is_victory)
         except Exception as e:
             print(f"[Ошибка] Не удалось обновить досье: {e}")
 
-    # Всплывающее окно
-    popup = Popup(
-        title="",
-        content=content,
-        size_hint=(0.95, 0.85),
-        background_color=(0.1, 0.1, 0.1, 1)
-    )
     popup.open()
+
+
 
 def cleanup_equipment_after_battle(conn):
     """

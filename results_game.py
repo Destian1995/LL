@@ -382,7 +382,7 @@ class ResultsGame:
 
         # Таблица
         table_layout = GridLayout(
-            cols=6,
+            cols=5,
             spacing=adapt_value(2),
             size_hint=(1, None),
             padding=adapt_value(5),
@@ -395,7 +395,7 @@ class ResultsGame:
         row_height = adapt_value(35)
 
         # Заголовки таблицы
-        headers = ["Фракция", "Ветераны", "Потери", "Уничтожено", "Военный \n рейтинг", "Торговый \n рейтинг"]
+        headers = ["Фракция", "Ветераны", "Потери", "Уничтожено", "Боевой \n рейтинг"]
         for header in headers:
             lbl = Label(
                 text=header,
@@ -426,8 +426,7 @@ class ResultsGame:
                 f"{res['units_combat']:,}".replace(',', ' '),
                 f"{res['units_destroyed']:,}".replace(',', ' '),
                 f"{res['units_killed']:,}".replace(',', ' '),
-                f"{res['army_efficiency_ratio']:.2f}",
-                f"{res['average_deal_ratio']:.2f}"
+                f"{res['army_efficiency_ratio']:.2f}"
             ]
 
             for value in row_data:
