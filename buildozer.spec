@@ -35,7 +35,7 @@ presplash.filename = %(source.dir)s/assets/splash.png
 description = Стратегическая игра Lerdon с элементами экономики и политики.
 
 # Версия приложения (формат X.Y.Z)
-version = 1.7.4
+version = 1.7.9
 
 # Автор(ы)
 author = Vladislav Lerdon Team
