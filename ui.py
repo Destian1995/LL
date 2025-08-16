@@ -738,7 +738,7 @@ class FortressInfoPopup(Popup):
                         icon_image = Image(
                             source=specialization_icon_path,
                             size_hint=(None, None),
-                            size=(140, 140),
+                            size=(120, 120),
                             pos_hint={'center_y': 0.5}
                         )
                         right_container.add_widget(icon_image)
@@ -875,7 +875,7 @@ class FortressInfoPopup(Popup):
                         icon_image = Image(
                             source=specialization_icon_path,
                             size_hint=(None, None),
-                            size=(140, 140),
+                            size=(120, 120),
                             pos_hint={'center_y': 0.5}
                         )
                         right_container.add_widget(icon_image)
