@@ -127,9 +127,6 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
     return report_data
 
 
-
-
-
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
     """
     Отображает стильный и центрированный отчет о боe с использованием Kivy.
@@ -308,7 +305,6 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
             print(f"[Ошибка] Не удалось обновить досье: {e}")
 
     popup.open()
-
 
 
 def cleanup_equipment_after_battle(conn):
