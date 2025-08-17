@@ -1330,42 +1330,61 @@ class GameScreen(Screen):
         """
         Рисует звёздочки над иконками городов.
         Использует готовые координаты из self.city_star_levels:
-            { city_name: (star_level, icon_x, icon_y, city_name) }
+            { city_name: (star_level, icon_x, icon_y, city_name, has_hero) }
         """
         star_img_path = 'files/status/army_in_city/star.png'
+        red_star_img_path = 'files/status/army_in_city/red_star.png'  # Путь к красной звезде
         if not os.path.exists(star_img_path):
             print(f"Файл звезды не найден: {star_img_path}")
             return
+        # Проверяем существование красной звезды
+        if not os.path.exists(red_star_img_path):
+            print(f"Файл красной звезды не найден: {red_star_img_path}")
+            # Можно продолжить без нее или остановить
+            # return
 
         # Параметры отрисовки
         STAR_SIZE = 25
         SPACING = 5
         CITY_ICON_SIZE = 77
-
         # Если нет данных — ничего не рисуем
         if not hasattr(self, 'city_star_levels') or not self.city_star_levels:
             return
-
         # Очищаем прошлые звёзды
         self.game_area.canvas.before.clear()
-
         with self.game_area.canvas.before:
             for city_name, data in self.city_star_levels.items():
-                star_level, icon_x, icon_y, city_name = data
-                if star_level <= 0:
-                    continue
+                # star_level, icon_x, icon_y, city_name, has_hero = data # Обновленная распаковка
+                # Используем индексацию для совместимости, если данные еще не обновлены
+                star_level = data[0]
+                icon_x = data[1]
+                icon_y = data[2]
+                city_name = data[3]
+                # Предполагаем, что has_hero по умолчанию False, если данных нет
+                has_hero = data[4] if len(data) > 4 else False
 
                 # Центр иконки
                 icon_center_x = icon_x + CITY_ICON_SIZE / 2
                 icon_center_y = icon_y + CITY_ICON_SIZE / 2
 
+                # --- Отрисовка красной звезды (если есть герой) ---
+                if has_hero:
+                    red_star_y = icon_center_y + 20 + STAR_SIZE + SPACING  # чуть выше обычных звезд
+                    Rectangle(
+                        source=red_star_img_path,
+                        pos=(icon_center_x - STAR_SIZE / 2, red_star_y),  # Центрируем по иконке города
+                        size=(STAR_SIZE, STAR_SIZE)
+                    )
+
+                # --- Отрисовка обычных звезд силы ---
+                if star_level <= 0:
+                    continue
+
                 # Общая ширина всех звёздочек
                 total_width = STAR_SIZE * star_level + SPACING * (star_level - 1)
-
                 # Смещаем так, чтобы центр звёзд совпадал с центром иконки
                 start_x = icon_center_x - total_width / 2
                 start_y = icon_center_y + 20  # чуть выше центра иконки
-
                 # Рисуем каждую звезду
                 for i in range(star_level):
                     x_i = start_x + i * (STAR_SIZE + SPACING)
@@ -1458,8 +1477,9 @@ class GameScreen(Screen):
           2) Для каждой фракции считаем общую мощь армии
           3) Для каждого города этой фракции считаем его мощь
           4) Вычисляем star_level = 0–3
-          5) Сохраняем в self.city_star_levels:
-             { city_name: (star_level, icon_x, icon_y, city_name) }
+          5) Проверяем наличие юнитов 2-4 класса в гарнизоне
+          6) Сохраняем в self.city_star_levels:
+             { city_name: (star_level, icon_x, icon_y, city_name, has_hero) }
         """
         cursor = self.conn.cursor()
         try:
@@ -1470,12 +1490,12 @@ class GameScreen(Screen):
             """)
             raw_cities = cursor.fetchall()
         except sqlite3.Error as e:
-            print(f"Ошибка при получении городов с гарнизонами: {e}")
+            print(f"Ошибка при получении городов с координатами: {e}")
             self.city_star_levels = {}
             return
 
         if not raw_cities:
-            print("Нет городов с гарнизонами.")
+            print("Нет городов с координатами.")
             self.city_star_levels = {}
             return
 
@@ -1485,12 +1505,10 @@ class GameScreen(Screen):
             factions_cities[faction].append((city_name, coords_str))
 
         new_dict = {}
-
         for faction, cities_list in factions_cities.items():
             total_strength = self.get_total_army_strength_by_faction(faction)
-            if total_strength == 0:
-                continue
-
+            # if total_strength == 0: # Не будем пропускать фракции без армии, так как может быть герой
+            #     continue
             for city_name, coords_str in cities_list:
                 try:
                     coords = eval(coords_str)  # лучше заменить на ast.literal_eval
@@ -1499,11 +1517,25 @@ class GameScreen(Screen):
                     print(f"Ошибка парсинга icon_coordinates для {city_name}: {ex}")
                     continue
 
-                city_strength = self.get_city_army_strength_by_faction(city_name, faction)
+                # --- Проверка наличия героя (юнита 2-4 класса) ---
+                has_hero = False
+                try:
+                    cursor.execute("""
+                        SELECT 1
+                        FROM garrisons g
+                        JOIN units u ON g.unit_name = u.unit_name
+                        WHERE g.city_name = ? AND u.unit_class IN (2, 3, 4)
+                        LIMIT 1
+                    """, (city_name,))
+                    if cursor.fetchone():
+                        has_hero = True
+                except sqlite3.Error as e:
+                    print(f"Ошибка при проверке наличия героя в {city_name}: {e}")
 
-                if city_strength == 0:
-                    star_level = 0
-                else:
+                # --- Расчет силы армии в городе ---
+                city_strength = self.get_city_army_strength_by_faction(city_name, faction)
+                star_level = 0  # По умолчанию 0 звезд
+                if total_strength > 0 and city_strength > 0:  # Избегаем деления на 0
                     percent = (city_strength / total_strength) * 100
                     if percent < 35:
                         star_level = 1
@@ -1512,11 +1544,11 @@ class GameScreen(Screen):
                     else:
                         star_level = 3
 
-                new_dict[city_name] = (star_level, icon_x, icon_y, city_name)
-
+                # --- Сохранение данных ---
+                # Обновляем кортеж, добавляя has_hero
+                new_dict[city_name] = (star_level, icon_x, icon_y, city_name, has_hero)
 
         self.city_star_levels = new_dict
-
 
     def initialize_turn_check_move(self):
         """

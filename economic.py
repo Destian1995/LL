@@ -1563,7 +1563,7 @@ def open_build_popup(faction):
 
     # Подпись для фабрики
     fact_label = Label(
-        text="1 фабрика: +1000 Крист./-200 рабочих",
+        text="1 фабрика: +1000 крист./-200 рабочих",
         font_size=adaptive_font,
         color=(1, 1, 1, 1),
         size_hint_y=None,
