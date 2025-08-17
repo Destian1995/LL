@@ -42,6 +42,41 @@ class AuthorScreen(Screen):
         )
         layout.add_widget(title_label)
 
+        top_layout = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, None),
+            height=dp(60),  # Высота окантовки
+            pos_hint={'top': 1}  # Прижимаем к верху экрана
+        )
+
+        # Создаем фон для окантовки (можно использовать виджет с цветом или изображением)
+        # Для простоты сделаем полупрозрачный черный фон
+        from kivy.graphics import Color, Rectangle
+        with top_layout.canvas.before:
+            Color(0, 0, 0, 0.5)  # Черный цвет с 50% прозрачностью
+            self.top_bg_rect = Rectangle(size=top_layout.size, pos=top_layout.pos)
+
+        # Обновляем размер и позицию фона при изменении размера виджета
+        def update_top_bg_rect(instance, value):
+            self.top_bg_rect.pos = instance.pos
+            self.top_bg_rect.size = instance.size
+        top_layout.bind(pos=update_top_bg_rect, size=update_top_bg_rect)
+
+        # Создаем саму надпись
+        greeting_label = Label(
+            text="[b][color=#FFD700]Желаю Вам приятно провести время в моем мире![/color][/b]", # Желтый цвет (#FFD700) и жирный шрифт
+            markup=True,
+            font_size='18sp', # Размер шрифта
+            outline_color=(0, 0, 0, 1), # Черная обводка
+            outline_width=1.5, # Ширина обводки
+            halign="center",
+            valign="middle"
+        )
+        # Убедимся, что Label заполняет всё пространство BoxLayout
+        greeting_label.bind(size=greeting_label.setter('text_size'))
+
+        top_layout.add_widget(greeting_label)
+        root.add_widget(top_layout)
         # Ссылки-карточки
         link_box = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None, height=dp(100))
 
