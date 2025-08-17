@@ -129,9 +129,11 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
     """
     Финальный отчёт о бою: адаптивный, гарантирует корректную отрисовку на Android.
-    - Результат и название города в верхней панели.
-    - Заголовки сторон (Игрок / ИИ).
-    - Таблица юнитов с потерями.
+    Вид:
+                       [ПОБЕДА] — [Феррадан]
+                ИИ                                                Игрок
+        Юнит      Потери | Осталось      Юнит      Потери | Осталось
+        Стрелок    104 | 4147                 Вестник...  1503 | 0
     """
     if not report_data:
         print("Нет данных для отображения.")
@@ -148,7 +150,6 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
 
     def make_label(text, font_sp, markup=False, halign='center', valign='middle',
                    height_dp=None, size_hint_x=1.0, min_width=None):
-        """Создаёт адаптивный Label с корректным выравниванием и ограничением ширины"""
         lbl = Label(text=text, font_size=sp(font_sp), markup=markup,
                     halign=halign, valign=valign, size_hint=(size_hint_x, None))
         if height_dp is None:
@@ -180,9 +181,9 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
         content.bind(pos=lambda inst, v: setattr(inst.rect, 'pos', v),
                      size=lambda inst, v: setattr(inst.rect, 'size', v))
 
-    # ---------------- Верхняя панель: результат и город ----------------
+    # ---------------- Верхняя панель: Результат и Город ----------------
     top_h = dp(50) if not is_small else dp(40)
-    top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=top_h, spacing=dp(8))
+    top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=top_h, spacing=dp(10))
 
     # Результат
     result_text, result_color = "", "#FFFFFF"
@@ -194,16 +195,23 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
 
     result_label = make_label(f"[b][color={result_color}]{result_text}[/color][/b]",
                               font_sp=22 if not is_small else 18,
-                              markup=True, halign='left', height_dp=top_h, size_hint_x=0.6)
+                              markup=True, halign='center', height_dp=top_h, size_hint_x=0.5)
 
     # Город
     city_name = report_data[0].get('city', '—') if report_data else '—'
     city_label = make_label(f"[b][color=#FFD700]{city_name}[/color][/b]",
                             font_sp=18 if not is_small else 14,
-                            markup=True, halign='right', height_dp=top_h, size_hint_x=0.4)
+                            markup=True, halign='center', height_dp=top_h, size_hint_x=0.5)
 
-    top_bar.add_widget(result_label)
-    top_bar.add_widget(city_label)
+    # Связываем через промежуточный layout для выравнивания
+    center_layout = BoxLayout(orientation='horizontal', size_hint_x=1.0, padding=[dp(20), 0])
+    center_layout.add_widget(result_label)
+    center_layout.add_widget(Label(text=" — ", font_size=sp(20), size_hint_x=None, width=dp(20), halign='center'))
+    center_layout.add_widget(city_label)
+
+    top_bar.add_widget(Label(size_hint_x=0.1))  # отступ слева
+    top_bar.add_widget(center_layout)
+    top_bar.add_widget(Label(size_hint_x=0.1))  # отступ справа
     content.add_widget(top_bar)
 
     # ---------------- Заголовки сторон ----------------
@@ -214,21 +222,24 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
             break
 
     if player_side == 'attacking':
-        left_title = "[b][color=#4CAF50]Игрок[/color][/b]"
-        right_title = "[b][color=#F44336]ИИ[/color][/b]"
-    elif player_side == 'defending':
         left_title = "[b][color=#F44336]ИИ[/color][/b]"
         right_title = "[b][color=#4CAF50]Игрок[/color][/b]"
+    elif player_side == 'defending':
+        left_title = "[b][color=#4CAF50]Игрок[/color][/b]"
+        right_title = "[b][color=#F44336]ИИ[/color][/b]"
     else:
-        left_title = "[b][color=#4CAF50]Атака[/color][/b]"
-        right_title = "[b][color=#F44336]Оборона[/color][/b]"
+        left_title = "[b][color=#F44336]ИИ[/color][/b]"
+        right_title = "[b][color=#4CAF50]Игрок[/color][/b]"
 
     titles_h = dp(40) if not is_small else dp(36)
     titles_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=titles_h)
-    left_title_lbl = make_label(left_title, font_sp=20 if not is_small else 16, markup=True, halign='center', height_dp=titles_h, size_hint_x=0.5)
-    right_title_lbl = make_label(right_title, font_sp=20 if not is_small else 16, markup=True, halign='center', height_dp=titles_h, size_hint_x=0.5)
+    left_title_lbl = make_label(left_title, font_sp=20 if not is_small else 16, markup=True, halign='left', height_dp=titles_h, size_hint_x=0.45)
+    right_title_lbl = make_label(right_title, font_sp=20 if not is_small else 16, markup=True, halign='right', height_dp=titles_h, size_hint_x=0.45)
+    titles_bar.add_widget(Label(size_hint_x=0.05))  # отступ слева
     titles_bar.add_widget(left_title_lbl)
+    titles_bar.add_widget(Label(size_hint_x=0.1))   # между
     titles_bar.add_widget(right_title_lbl)
+    titles_bar.add_widget(Label(size_hint_x=0.05))  # отступ справа
     content.add_widget(titles_bar)
 
     # ---------------- Таблица юнитов ----------------
@@ -236,56 +247,70 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     defending_units = [item for item in report_data if item.get('side') == 'defending']
     max_rows = max(len(attacking_units), len(defending_units))
 
-    # Вычисляем высоту строки
     row_h = dp(32) if not is_small else dp(28)
     header_h = dp(36) if not is_small else dp(30)
     table_total_h = header_h + row_h * max_rows
 
-    # Создаём контейнер для таблицы
+    # Контейнер таблицы
     table_container = BoxLayout(orientation='vertical', size_hint_y=None, height=table_total_h)
 
     # Заголовки столбцов
-    col_headers = ["Юнит", "Потери | Осталось", "Юнит", "Потери | Осталось"]
     headers_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=header_h)
-    col_widths = [0.3, 0.2, 0.3, 0.2]
-    for i, text in enumerate(col_headers):
-        lbl = make_label(f"[b]{text}[/b]", font_sp=14 if not is_small else 12, markup=True, halign='center', height_dp=header_h, size_hint_x=col_widths[i])
-        headers_row.add_widget(lbl)
+    headers_row.add_widget(Label(size_hint_x=0.05))  # отступ слева
+
+    # Левая сторона (ИИ)
+    headers_row.add_widget(make_label("Юнит", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2))
+    headers_row.add_widget(make_label("Потери | Осталось", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25))
+
+    # Промежуток
+    headers_row.add_widget(Label(size_hint_x=0.1))
+
+    # Правая сторона (Игрок)
+    headers_row.add_widget(make_label("Юнит", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2))
+    headers_row.add_widget(make_label("Потери | Осталось", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25))
+
+    headers_row.add_widget(Label(size_hint_x=0.05))  # отступ справа
     table_container.add_widget(headers_row)
 
-    # Строчки с данными
+    # Данные
     for i in range(max_rows):
         row = BoxLayout(orientation='horizontal', size_hint_y=None, height=row_h)
-        # Левая сторона (атакующие)
-        if i < len(attacking_units):
-            u = attacking_units[i]
-            name = u.get('unit_name', '—')
-            init, fin = u.get('initial_count', 0), u.get('final_count', 0)
-            losses = u.get('losses', 0)
-            status = "Выжил!" if init == 1 and fin == 1 else "Погиб..." if init == 1 and fin == 0 else f"{losses} | {fin}"
-            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=12 if not is_small else 10, markup=True, halign='center', height_dp=row_h, size_hint_x=0.3)
-            status_lbl = make_label(status, font_sp=12 if not is_small else 10, halign='center', height_dp=row_h, size_hint_x=0.2)
-        else:
-            unit_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.3)
-            status_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.2)
-        row.add_widget(unit_lbl)
-        row.add_widget(status_lbl)
+        row.add_widget(Label(size_hint_x=0.05))  # отступ слева
 
-        # Правая сторона (обороняющиеся)
+        # Левая сторона (ИИ)
         if i < len(defending_units):
             u = defending_units[i]
             name = u.get('unit_name', '—')
             init, fin = u.get('initial_count', 0), u.get('final_count', 0)
             losses = u.get('losses', 0)
             status = "Выжил!" if init == 1 and fin == 1 else "Погиб..." if init == 1 and fin == 0 else f"{losses} | {fin}"
-            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=12 if not is_small else 10, markup=True, halign='center', height_dp=row_h, size_hint_x=0.3)
-            status_lbl = make_label(status, font_sp=12 if not is_small else 10, halign='center', height_dp=row_h, size_hint_x=0.2)
+            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=12 if not is_small else 10, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label(status, font_sp=12 if not is_small else 10, halign='left', height_dp=row_h, size_hint_x=0.25)
         else:
-            unit_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.3)
-            status_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.2)
+            unit_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.25)
         row.add_widget(unit_lbl)
         row.add_widget(status_lbl)
 
+        # Промежуток
+        row.add_widget(Label(size_hint_x=0.1))
+
+        # Правая сторона (Игрок)
+        if i < len(attacking_units):
+            u = attacking_units[i]
+            name = u.get('unit_name', '—')
+            init, fin = u.get('initial_count', 0), u.get('final_count', 0)
+            losses = u.get('losses', 0)
+            status = "Выжил!" if init == 1 and fin == 1 else "Погиб..." if init == 1 and fin == 0 else f"{losses} | {fin}"
+            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=12 if not is_small else 10, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label(status, font_sp=12 if not is_small else 10, halign='left', height_dp=row_h, size_hint_x=0.25)
+        else:
+            unit_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.25)
+        row.add_widget(unit_lbl)
+        row.add_widget(status_lbl)
+
+        row.add_widget(Label(size_hint_x=0.05))  # отступ справа
         table_container.add_widget(row)
 
     content.add_widget(table_container)
