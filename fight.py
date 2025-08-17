@@ -126,277 +126,206 @@ def generate_battle_report(attacking_army, defending_army, winner, attacking_fra
 
     return report_data
 
-
 def show_battle_report(report_data, is_user_involved=False, user_faction=None, conn=None):
     """
-    Плотный и исправленный вариант: город в правом верхнем углу,
-    заголовки 'Игрок'/'ИИ' крупнее и ближе к колонкам, уменьшены отступы/spacing,
-    попап чуть больше — чтобы на Android всё помещалось.
+    Адаптивный финальный отчёт — плотный вид, без верхнего внутреннего отступа,
+    заголовки Игрок/ИИ центрированы, а заголовки "Юнит" выровнены по центру
+    и сами имена юнитов теперь центрируются под ними. Название города — жирнее и больше.
     """
     if not report_data:
         print("Нет данных для отображения.")
         return
 
-    def make_center_label(text, font_size_sp=14, markup=False, height_dp=None, halign='center', valign='middle'):
-        lbl = Label(
-            text=text,
-            markup=markup,
-            font_size=sp(font_size_sp),
-            halign=halign,
-            valign=valign,
-            size_hint_y=None,
-        )
+    from kivy.metrics import dp, sp
+    from kivy.uix.label import Label
+    from kivy.uix.popup import Popup
+    from kivy.uix.anchorlayout import AnchorLayout
+    from kivy.uix.boxlayout import BoxLayout
+    from kivy.graphics import Color, Rectangle
+    from kivy.core.window import Window
+
+    def make_label(text, font_sp, markup=False, halign='center', valign='middle', height_dp=None, size_hint_x=1.0):
+        lbl = Label(text=text, font_size=sp(font_sp), markup=markup,
+                    halign=halign, valign=valign, size_hint=(size_hint_x, None))
         if height_dp is None:
-            lbl.height = dp(int(font_size_sp * 1.9))
+            lbl.height = dp(int(font_sp * 2.0))
         else:
             lbl.height = dp(height_dp)
+        # text_size привязываем к ширине/высоте — обязательно для корректного выравнивания и переносов
         lbl.text_size = (lbl.width, lbl.height)
         lbl.bind(width=lambda inst, w: setattr(inst, 'text_size', (w, inst.height)))
         lbl.bind(height=lambda inst, h: setattr(inst, 'text_size', (inst.width, h)))
         return lbl
 
-    # Площадка
     outer = AnchorLayout(anchor_x='center', anchor_y='center', size_hint=(1, 1))
 
-    # Плотные отступы и spacing
-    content = BoxLayout(orientation='vertical', padding=dp(6), spacing=dp(2), size_hint=(0.985, 0.98))
+    is_small = Window.height < dp(600)
+    popup_rel_h = 0.995 if is_small else 0.99
+    popup_rel_w = 0.995
 
-    # Фон
+    # padding = [left, top, right, bottom] — top = 0 чтобы рисовать от верхнего края
+    content = BoxLayout(orientation='vertical', padding=[dp(6), 0, dp(6), dp(6)], spacing=dp(4),
+                        size_hint=(0.98, popup_rel_h))
+
     with content.canvas.before:
         Color(0.12, 0.12, 0.18, 1)
         content.rect = Rectangle(size=content.size, pos=content.pos)
         content.bind(pos=lambda inst, v: setattr(inst.rect, 'pos', v),
                      size=lambda inst, v: setattr(inst.rect, 'size', v))
 
-    # === Верх: строка результата по центру и город вправо ===
-    header_bar_h = dp(48) if Window.height >= dp(600) else dp(44)
-    top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=header_bar_h, padding=[0, 0, 0, 0])
-    # левый спейсер (чтобы результат был визуально центрирован)
-    left_spacer = Label(text="", size_hint_x=0.15)
-    # результат (по центру)
+    # ---- Верхняя панель: [левая зона (спейсер)] [результат центр] [город справа] ----
+    top_h = dp(48) if not is_small else dp(44)
+    top_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=top_h)
+    left_spacer = Label(size_hint_x=0.12, text="")
+
     result_text = ""
     result_color = "#FFFFFF"
-    for item in report_data:
-        if item.get("result"):
-            result_text = item["result"].upper()
+    for it in report_data:
+        if it.get("result"):
+            result_text = it["result"].upper()
             result_color = "#33FF57" if result_text in ("ПОБЕДА", "VICTORY") else "#FF5733"
             break
-    result_label = make_center_label(f"[b][color={result_color}]{result_text}[/color][/b]",
-                                     font_size_sp=(20 if Window.height >= dp(600) else 16),
-                                     markup=True, height_dp=header_bar_h, halign='center', valign='middle')
-    # город справа
+
+    result_label = make_label(f"[b][color={result_color}]{result_text}[/color][/b]",
+                              font_sp=(20 if not is_small else 18),
+                              markup=True, halign='center', height_dp=top_h, size_hint_x=0.68)
+
+    # город справа — жирнее и больше
     city_name = report_data[0].get('city', '—') if report_data else '—'
-    city_label = make_center_label(f"[color=#FFD700]{city_name}[/color]", font_size_sp=(12 if Window.height >= dp(600) else 10),
-                                   markup=True, height_dp=header_bar_h, halign='right', valign='middle')
-    # текст города должен быть прижат вправо
-    city_label.size_hint_x = 0.25
+    city_label = make_label(f"[b][color=#FFD700]{city_name}[/color][/b]", font_sp=(14 if not is_small else 12),
+                            markup=True, halign='right', height_dp=top_h, size_hint_x=0.20)
 
     top_bar.add_widget(left_spacer)
     top_bar.add_widget(result_label)
     top_bar.add_widget(city_label)
     content.add_widget(top_bar)
 
-    # === Заголовки колонок (Игрок / ИИ) — крупнее и ровно над колонками ===
-    # определяем, какая сторона игрок (как раньше)
+    # ---- Заголовки сторон: по половине ширины каждая, центрированы ----
     player_side = None
-    for item in report_data:
-        if item.get('result') is not None:
-            player_side = item.get('side')
+    for it in report_data:
+        if it.get('result') is not None:
+            player_side = it.get('side')
             break
 
     if player_side == 'attacking':
-        left_title_text = "[b][color=#4CAF50]Игрок[/color][/b]"
-        right_title_text = "[b][color=#F44336]ИИ[/color][/b]"
+        left_side_title = "[b][color=#4CAF50]Игрок[/color][/b]"
+        right_side_title = "[b][color=#F44336]ИИ[/color][/b]"
     elif player_side == 'defending':
-        left_title_text = "[b][color=#F44336]ИИ[/color][/b]"
-        right_title_text = "[b][color=#4CAF50]Игрок[/color][/b]"
+        left_side_title = "[b][color=#F44336]ИИ[/color][/b]"
+        right_side_title = "[b][color=#4CAF50]Игрок[/color][/b]"
     else:
-        left_title_text = "[b][color=#4CAF50]Атака[/color][/b]"
-        right_title_text = "[b][color=#F44336]Оборона[/color][/b]"
+        left_side_title = "[b][color=#4CAF50]Атака[/color][/b]"
+        right_side_title = "[b][color=#F44336]Оборона[/color][/b]"
 
-    titles_h = dp(34) if Window.height >= dp(600) else dp(30)
-    titles_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=titles_h, padding=[dp(6), 0, dp(6), 0])
-    # левый заголовок занимает половину ширины
-    left_title = make_center_label(left_title_text, font_size_sp=(16 if Window.height >= dp(600) else 14),
-                                   markup=True, height_dp=titles_h, halign='left', valign='middle')
-    right_title = make_center_label(right_title_text, font_size_sp=(16 if Window.height >= dp(600) else 14),
-                                    markup=True, height_dp=titles_h, halign='right', valign='middle')
-    # даём им равные size_hint_x и немного padding
-    left_title.size_hint_x = 0.5
-    right_title.size_hint_x = 0.5
-    titles_bar.add_widget(left_title)
-    titles_bar.add_widget(right_title)
+    titles_h = dp(40) if not is_small else dp(36)
+    titles_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=titles_h)
+    left_title_lbl = make_label(left_side_title, font_sp=(20 if not is_small else 18),
+                                markup=True, halign='center', height_dp=titles_h, size_hint_x=0.5)
+    right_title_lbl = make_label(right_side_title, font_sp=(20 if not is_small else 18),
+                                 markup=True, halign='center', height_dp=titles_h, size_hint_x=0.5)
+    titles_bar.add_widget(left_title_lbl)
+    titles_bar.add_widget(right_title_lbl)
     content.add_widget(titles_bar)
 
-    # === Подготовка таблицы данных ===
+    # ---- Таблица: 4 колонки, заданные относительные ширины; строки адаптивны ----
     attacking_units = [item for item in report_data if item.get('side') == 'attacking']
     defending_units = [item for item in report_data if item.get('side') == 'defending']
     max_rows = max(len(attacking_units), len(defending_units))
 
-    # Параметры плотности
-    is_small_height = Window.height < dp(600)
-    header_rows = 1  # тут уже заголовки вынесены отдельно
-    footer_height = dp(48)
-
-    # Делаем попап почти полноэкранным, чтобы было больше места
-    popup_rel_h = 0.985 if is_small_height else 0.98
-    popup_rel_w = 0.99
-
-    popup_height_px = Window.height * popup_rel_h
-
-    # Учитываем уже занятое место
-    reserved_px = top_bar.height + titles_bar.height + footer_height + content.padding[1] * 2 + content.spacing * 2
-
-    table_rows_count = header_rows + max_rows
-
-    # минимальные высоты строк ещё ниже — для плотного размещения
-    min_row_h = dp(14) if is_small_height else dp(18)
-    max_row_h = dp(40)
-
-    available_for_table = max(dp(60), popup_height_px - reserved_px)
-    computed_row_h = available_for_table / max(1, table_rows_count)
-
-    use_compact_single_labels = False
-    if computed_row_h < min_row_h:
-        use_compact_single_labels = True
-        row_height = min_row_h
-        font_for_rows_sp = 9
+    header_rows = 1
+    footer_h = dp(48)
+    reserved = top_bar.height + titles_bar.height + footer_h + content.padding[1] * 2 + content.spacing * 3
+    avail_h = max(dp(80), Window.height * popup_rel_h - reserved)
+    rows_total = header_rows + max_rows
+    min_row_h = dp(14) if is_small else dp(18)
+    computed = avail_h / max(1, rows_total)
+    if computed < min_row_h:
+        row_h = min_row_h
+        font_row = 9
     else:
-        row_height = min(max(min_row_h, computed_row_h), max_row_h)
-        font_for_rows_sp = max(9, int(row_height / dp(2.3)))
+        row_h = min(max(min_row_h, computed), dp(40))
+        font_row = max(9, int(row_h / dp(2.3)))
 
-    # компактный режим (если всё очень тесно)
-    if use_compact_single_labels:
-        compact_box = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(4))
-        def build_compact_text(units):
-            lines = []
-            for u in units:
-                unit_name = u.get('unit_name', '—')
-                initial_count = u.get('initial_count', 0)
-                final_count = u.get('final_count', 0)
-                if initial_count == 1 and final_count == 1:
-                    status = "Выжил!"
-                elif initial_count == 1 and final_count == 0:
-                    status = "Погиб..."
-                else:
-                    status = f"{u.get('losses', 0)} | {final_count}"
-                lines.append(f"{unit_name}: {status}")
-            return "\n".join(lines) if lines else "—"
+    cols_bar = BoxLayout(orientation='horizontal', size_hint_y=None)
+    # относительные доли: имя (левая) 0.35, статус 0.15, имя (правая) 0.35, статус 0.15
+    col_sizes = [0.35, 0.15, 0.35, 0.15]
+    col_containers = []
+    for w in col_sizes:
+        v = BoxLayout(orientation='vertical', size_hint_x=w, size_hint_y=None, padding=[0, 0, 0, 0], spacing=dp(1))
+        v.bind(minimum_height=v.setter('height'))
+        col_containers.append(v)
+        cols_bar.add_widget(v)
 
-        left_text = f"{left_title_text}\n\n{build_compact_text(attacking_units)}"
-        right_text = f"{right_title_text}\n\n{build_compact_text(defending_units)}"
+    # заголовки столбцов — центрируем
+    col_containers[0].add_widget(make_label("[b]Юнит[/b]", font_sp=max(12, int(font_row * 1.0)), markup=True,
+                                            halign='center', height_dp=row_h))
+    col_containers[1].add_widget(make_label("[b]Потери | Осталось[/b]", font_sp=max(12, int(font_row * 1.0)),
+                                            markup=True, halign='center', height_dp=row_h))
+    col_containers[2].add_widget(make_label("[b]Юнит[/b]", font_sp=max(12, int(font_row * 1.0)), markup=True,
+                                            halign='center', height_dp=row_h))
+    col_containers[3].add_widget(make_label("[b]Потери | Осталось[/b]", font_sp=max(12, int(font_row * 1.0)),
+                                            markup=True, halign='center', height_dp=row_h))
 
-        left_label = Label(text=left_text, markup=True, halign='left', valign='top', size_hint=(0.5, None),
-                           font_size=sp(font_for_rows_sp))
-        right_label = Label(text=right_text, markup=True, halign='left', valign='top', size_hint=(0.5, None),
-                            font_size=sp(font_for_rows_sp))
-
-        compact_height = max(dp(80), available_for_table)
-        left_label.height = compact_height
-        right_label.height = compact_height
-
-        left_label.text_size = (left_label.width, left_label.height)
-        right_label.text_size = (right_label.width, right_label.height)
-        left_label.bind(width=lambda inst, w: setattr(inst, 'text_size', (w, inst.height)))
-        right_label.bind(width=lambda inst, w: setattr(inst, 'text_size', (w, inst.height)))
-
-        compact_box.add_widget(left_label)
-        compact_box.add_widget(right_label)
-        content.add_widget(compact_box)
-    else:
-        # строим таблицу 4 колонок; spacing чуть меньше
-        table = GridLayout(cols=4, spacing=dp(1), padding=[dp(6), 0, dp(6), 0], size_hint_y=None)
-        table_height = row_height * (1 + max_rows)  # 1 — заголовочная строка столбцов
-        table.height = table_height
-
-        # строка заголовков столбцов (Юнит / Потери | Осталось) по 4 ячейки
-        hdr_attack_unit = make_center_label("[b]Юнит[/b]", font_size_sp=max(10, int(font_for_rows_sp * 0.95)),
-                                            markup=True, height_dp=row_height, halign='center')
-        hdr_attack_status = make_center_label("[b]Потери | Осталось[/b]", font_size_sp=max(10, int(font_for_rows_sp * 0.95)),
-                                              markup=True, height_dp=row_height, halign='center')
-        hdr_def_unit = make_center_label("[b]Юнит[/b]", font_size_sp=max(10, int(font_for_rows_sp * 0.95)),
-                                         markup=True, height_dp=row_height, halign='center')
-        hdr_def_status = make_center_label("[b]Потери | Осталось[/b]", font_size_sp=max(10, int(font_for_rows_sp * 0.95)),
-                                           markup=True, height_dp=row_height, halign='center')
-
-        table.add_widget(hdr_attack_unit)
-        table.add_widget(hdr_attack_status)
-        table.add_widget(hdr_def_unit)
-        table.add_widget(hdr_def_status)
-
-        # затем строки данных
-        for i in range(max_rows):
-            # левая сторона
-            if i < len(attacking_units):
-                u = attacking_units[i]
-                unit_name = u.get('unit_name', '—')
-                initial_count = u.get('initial_count', 0)
-                final_count = u.get('final_count', 0)
-                if initial_count == 1 and final_count == 1:
-                    status = "Выжил!"
-                elif initial_count == 1 and final_count == 0:
-                    status = "Погиб..."
-                else:
-                    status = f"{u.get('losses', 0)} | {final_count}"
-                lbl_unit_left = make_center_label(f"[b]{unit_name}[/b]", font_size_sp=font_for_rows_sp, markup=True,
-                                                  height_dp=row_height, halign='left')
-                lbl_status_left = make_center_label(status, font_size_sp=font_for_rows_sp, height_dp=row_height, halign='center')
+    # наполняем данными — теперь имена юнитов центрированы (чтобы заголовок "Юнит" был над ними)
+    for i in range(max_rows):
+        # левая колонка с именами — теперь halign='center'
+        if i < len(attacking_units):
+            u = attacking_units[i]
+            name = u.get('unit_name', '—')
+            init = u.get('initial_count', 0)
+            fin = u.get('final_count', 0)
+            if init == 1 and fin == 1:
+                status = "Выжил!"
+            elif init == 1 and fin == 0:
+                status = "Погиб..."
             else:
-                lbl_unit_left = make_center_label("", font_size_sp=font_for_rows_sp, height_dp=row_height)
-                lbl_status_left = make_center_label("", font_size_sp=font_for_rows_sp, height_dp=row_height)
+                status = f"{u.get('losses', 0)} | {fin}"
+            col_containers[0].add_widget(make_label(f"[b]{name}[/b]", font_sp=font_row, markup=True, halign='center', height_dp=row_h))
+            col_containers[1].add_widget(make_label(status, font_sp=font_row, halign='center', height_dp=row_h))
+        else:
+            col_containers[0].add_widget(make_label("", font_sp=font_row, height_dp=row_h))
+            col_containers[1].add_widget(make_label("", font_sp=font_row, height_dp=row_h))
 
-            # правая сторона
-            if i < len(defending_units):
-                u = defending_units[i]
-                unit_name = u.get('unit_name', '—')
-                initial_count = u.get('initial_count', 0)
-                final_count = u.get('final_count', 0)
-                if initial_count == 1 and final_count == 1:
-                    status = "Выжил!"
-                elif initial_count == 1 and final_count == 0:
-                    status = "Погиб..."
-                else:
-                    status = f"{u.get('losses', 0)} | {final_count}"
-                lbl_unit_right = make_center_label(f"[b]{unit_name}[/b]", font_size_sp=font_for_rows_sp, markup=True,
-                                                   height_dp=row_height, halign='left')
-                lbl_status_right = make_center_label(status, font_size_sp=font_for_rows_sp, height_dp=row_height, halign='center')
+        # правая колонка с именами — также центрируем
+        if i < len(defending_units):
+            u = defending_units[i]
+            name = u.get('unit_name', '—')
+            init = u.get('initial_count', 0)
+            fin = u.get('final_count', 0)
+            if init == 1 and fin == 1:
+                status = "Выжил!"
+            elif init == 1 and fin == 0:
+                status = "Погиб..."
             else:
-                lbl_unit_right = make_center_label("", font_size_sp=font_for_rows_sp, height_dp=row_height)
-                lbl_status_right = make_center_label("", font_size_sp=font_for_rows_sp, height_dp=row_height)
+                status = f"{u.get('losses', 0)} | {fin}"
+            col_containers[2].add_widget(make_label(f"[b]{name}[/b]", font_sp=font_row, markup=True, halign='center', height_dp=row_h))
+            col_containers[3].add_widget(make_label(status, font_sp=font_row, halign='center', height_dp=row_h))
+        else:
+            col_containers[2].add_widget(make_label("", font_sp=font_row, height_dp=row_h))
+            col_containers[3].add_widget(make_label("", font_sp=font_row, height_dp=row_h))
 
-            table.add_widget(lbl_unit_left)
-            table.add_widget(lbl_status_left)
-            table.add_widget(lbl_unit_right)
-            table.add_widget(lbl_status_right)
+    total_table_h = row_h * (1 + max_rows)
+    for c in col_containers:
+        c.height = total_table_h
 
-        content.add_widget(table)
+    content.add_widget(cols_bar)
 
-    # Кнопка закрытия — плотнее
-    btn_box = AnchorLayout(size_hint_y=None, height=dp(48), anchor_x='center', anchor_y='center')
-    close_button = Button(
-        text="Закрыть",
-        size_hint=(0.44, None),
-        height=dp(40),
-        background_color=(0.18, 0.56, 0.98, 1),
-        font_size=sp(15),
-        color=(1, 1, 1, 1)
-    )
+    # кнопка
+    btn_h = dp(44)
+    btn_box = AnchorLayout(size_hint_y=None, height=btn_h)
+    close_button = Button(text="Закрыть", size_hint=(0.46, None), height=dp(40), font_size=sp(15),
+                          background_color=(0.18, 0.56, 0.98, 1), color=(1, 1, 1, 1))
     btn_box.add_widget(close_button)
     content.add_widget(btn_box)
 
     outer.add_widget(content)
 
-    popup = Popup(
-        title="",
-        content=outer,
-        size_hint=(popup_rel_w, popup_rel_h),
-        background_color=(0.08, 0.08, 0.12, 1),
-        auto_dismiss=False
-    )
+    popup = Popup(title="", content=outer, size_hint=(popup_rel_w, popup_rel_h),
+                  background_color=(0.08, 0.08, 0.12, 1), auto_dismiss=False)
 
     close_button.bind(on_release=lambda inst: popup.dismiss())
 
-    # Обновление досье (как раньше)
+    # обновление досье (если нужно)
     if is_user_involved and user_faction and report_data:
         is_victory = any(item.get('result') in ("Победа", "VICTORY") for item in report_data)
         try:
@@ -405,8 +334,6 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
             print(f"[Ошибка] Не удалось обновить досье: {e}")
 
     popup.open()
-
-
 
 
 def cleanup_equipment_after_battle(conn):
