@@ -152,7 +152,6 @@ class Faction:
             self.cursor.execute(query, params or ())
             return self.cursor.fetchall()
         except sqlite3.Error as e:
-            print(f"Ошибка при загрузке данных из таблицы {table}: {e}")
             return []
 
     def load_resources(self):
