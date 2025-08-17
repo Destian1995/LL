@@ -496,11 +496,19 @@ class MapWidget(Widget):
         # Инициализируем один раз отрисовку
         self.initialize_map()
 
-        # Обновление данных раз в секунду (без перерисовки всей карты)
-        # Clock.schedule_interval(lambda dt: self.update_city_data(), 1)
+        # Обновление раз в секунду — как в старом варианте
+        Clock.schedule_interval(self.update_cities, 1.0)
 
-    def initialize_map(self):
-        """Первоначальная отрисовка карты, дорог и иконок."""
+    def initialize_map(self, schedule_blink=True):
+        """Первоначальная отрисовка карты, дорог и иконок.
+        Если schedule_blink=False — не планируем мигание (для повторных перерисовок)."""
+        # Пересчёт масштаба/позиции на случай изменения окна
+        self.map_scale = self.calculate_scale()
+        self.map_pos = self.calculate_centered_position()
+
+        # Полная очистка canvas — будем заново рисовать всё (включая map_image)
+        self.canvas.clear()
+
         with self.canvas:
             Color(1, 1, 1, 1)
             self.map_image = Rectangle(
@@ -509,13 +517,36 @@ class MapWidget(Widget):
                 size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
             )
 
-        # Рисуем дороги один раз
+        # Рисуем дороги и иконки
         self.draw_roads()
-        # Рисуем иконки городов один раз
         self.draw_fortresses()
 
-        # Запланируем мигание один раз после инициализации
-        Clock.schedule_once(self._schedule_blink, 0.5)
+        # Планируем мигание только при первом запуске (или когда явно разрешено)
+        if schedule_blink:
+            Clock.schedule_once(self._schedule_blink, 0.5)
+
+    def update_cities(self, dt=None):
+        """Полная перерисовка карты раз в секунду (как раньше)."""
+        # На случай изменения окна — пересчёт масштаба и позиции
+        self.map_scale = self.calculate_scale()
+        self.map_pos = self.calculate_centered_position()
+
+        # Полностью чистим canvas и слой after (дороги), но НЕ меняем random_map_source
+        self.canvas.clear()
+        self.canvas.after.clear()
+
+        # Рисуем фон (map_image) заново
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            self.map_image = Rectangle(
+                source=self.random_map_source,
+                pos=self.map_pos,
+                size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
+            )
+
+        # Рисуем дороги и крепости
+        self.draw_roads()
+        self.draw_fortresses()
 
     def draw_fortresses(self):
         """Рисует крепости на карте, создавая виджеты Image для каждой иконки."""
@@ -579,11 +610,10 @@ class MapWidget(Widget):
             self.add_widget(icon_widget)
             self.fortress_icon_widgets[fortress_name] = icon_widget
 
-            # --- Сохраняем данные для кликов и отрисовки названий на canvas ---
-            # формат: (name, kingdom, fort_x, fort_y, drawn_x, drawn_y)
+            # --- Сохраняем данные для кликов ---
             self.fortress_data_for_canvas.append((fortress_name, kingdom, fort_x, fort_y, drawn_x, drawn_y))
 
-            # --- Рисуем название города на canvas (как раньше) ---
+            # --- Рисуем название города ---
             display_name = f"{fortress_name}({kingdom})"
             label = CoreLabel(text=display_name, font_size=25, color=(0, 0, 0, 1))
             label.refresh()
@@ -595,6 +625,19 @@ class MapWidget(Widget):
             with self.canvas:
                 Color(1, 1, 1, 1)
                 Rectangle(texture=text_texture, pos=(text_x, text_y), size=(text_width, text_height))
+
+            # --- Обновляем icon_coordinates в БД ---
+            try:
+                cursor2 = self.conn.cursor()
+                cursor2.execute(
+                    "UPDATE cities SET icon_coordinates = ? WHERE name = ?",
+                    (str([drawn_x, drawn_y]), fortress_name)
+                )
+                self.conn.commit()
+            except sqlite3.Error as e:
+                print(f"[DB ERROR] Не удалось обновить icon_coordinates для {fortress_name}: {e}")
+            finally:
+                cursor2.close()
 
     def find_and_set_player_city_icon(self):
         """Ищет и устанавливает ссылку на виджет иконки города игрока."""
