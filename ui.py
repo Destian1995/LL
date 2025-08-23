@@ -483,6 +483,42 @@ class FortressInfoPopup(Popup):
         """
         city_name, unit_name, unit_count, unit_image = troop_data
 
+        # Если юнит только один, добавляем его сразу без окна выбора
+        if unit_count == 1:
+            # 1) Добавляем в группу
+            self.selected_group.append({
+                "city_name": city_name,
+                "unit_name": unit_name,
+                "unit_count": 1,
+                "unit_image": unit_image
+            })
+
+            # Блокируем повторное добавление
+            self.selected_units_set.add((city_name, unit_name))
+
+            # 2) Удаляем из текущего списка данных
+            self.current_troops_data = [
+                d for d in self.current_troops_data
+                if not (d[0] == city_name and d[1] == unit_name)
+            ]
+
+            # 3) Убираем виджеты строки
+            unique_id = f"{city_name}_{unit_name}"
+            if unique_id in self.table_widgets:
+                widgets = self.table_widgets.pop(unique_id)
+                layout = widgets["city_label"].parent
+                for key in ("city_label", "unit_label", "count_label", "image_container", "action_button"):
+                    layout.remove_widget(widgets[key])
+
+            # 4) Пересоздаём само окно «Выберите войска…» с уже обновлённым списком
+            self.current_popup.dismiss()
+            self.show_troops_selection(self.current_troops_data)
+
+            # 5) Активируем кнопку «Отправить»
+            self.send_group_button.disabled = False
+            return
+
+        # Если юнитов больше 1, показываем окно выбора
         # Создаем всплывающее окно
         popup = Popup(title=f"Добавление {unit_name} в группу", size_hint=(0.8, 0.7))
         layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
