@@ -149,7 +149,14 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     from kivy.core.window import Window
 
     def make_label(text, font_sp, markup=False, halign='center', valign='middle',
-                   height_dp=None, size_hint_x=1.0, min_width=None):
+                   height_dp=None, size_hint_x=1.0, min_width=None, bold=False):
+        # Добавляем жирный шрифт в текст, если нужно
+        if bold and not markup:
+            text = f"[b]{text}[/b]"
+            markup = True
+        elif bold and markup and not text.startswith('[b]'):
+            text = f"[b]{text}[/b]"
+
         lbl = Label(text=text, font_size=sp(font_sp), markup=markup,
                     halign=halign, valign=valign, size_hint=(size_hint_x, None))
         if height_dp is None:
@@ -247,8 +254,8 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     defending_units = [item for item in report_data if item.get('side') == 'defending']
     max_rows = max(len(attacking_units), len(defending_units))
 
-    row_h = dp(32) if not is_small else dp(28)
-    header_h = dp(36) if not is_small else dp(30)
+    row_h = dp(36) if not is_small else dp(32)  # Увеличил высоту строки для Android
+    header_h = dp(40) if not is_small else dp(34)  # Увеличил высоту заголовка
     table_total_h = header_h + row_h * max_rows
 
     # Контейнер таблицы
@@ -259,15 +266,15 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     headers_row.add_widget(Label(size_hint_x=0.05))  # отступ слева
 
     # Левая сторона (ИИ)
-    headers_row.add_widget(make_label("Юнит", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2))
-    headers_row.add_widget(make_label("Потери | Осталось", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25))
+    headers_row.add_widget(make_label("Юнит", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2, bold=True))
+    headers_row.add_widget(make_label("Потери | Осталось", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25, bold=True))
 
     # Промежуток
     headers_row.add_widget(Label(size_hint_x=0.1))
 
     # Правая сторона (Игрок)
-    headers_row.add_widget(make_label("Юнит", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2))
-    headers_row.add_widget(make_label("Потери | Осталось", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25))
+    headers_row.add_widget(make_label("Юнит", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2, bold=True))
+    headers_row.add_widget(make_label("Потери | Осталось", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25, bold=True))
 
     headers_row.add_widget(Label(size_hint_x=0.05))  # отступ справа
     table_container.add_widget(headers_row)
@@ -283,12 +290,23 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
             name = u.get('unit_name', '—')
             init, fin = u.get('initial_count', 0), u.get('final_count', 0)
             losses = u.get('losses', 0)
-            status = "Выжил!" if init == 1 and fin == 1 else "Погиб..." if init == 1 and fin == 0 else f"{losses} | {fin}"
-            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=12 if not is_small else 10, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2)
-            status_lbl = make_label(status, font_sp=12 if not is_small else 10, halign='left', height_dp=row_h, size_hint_x=0.25)
+
+            # Форматируем статус с цветами
+            if init == 1 and fin == 1:
+                status = "[color=#4CAF50]Выжил![/color]"
+            elif init == 1 and fin == 0:
+                status = "[color=#FF5733]Погиб...[/color]"
+            else:
+                # Цвета для потерь и выживших
+                losses_color = "#FF5733"  # красный для потерь
+                remaining_color = "#4CAF50" if fin > 0 else "#FF5733"  # зеленый если есть выжившие, иначе красный
+                status = f"[color={losses_color}]{losses}[/color] | [color={remaining_color}]{fin}[/color]"
+
+            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2, bold=True)
+            status_lbl = make_label(status, font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.25, bold=True)
         else:
-            unit_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.2)
-            status_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.25)
+            unit_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.25)
         row.add_widget(unit_lbl)
         row.add_widget(status_lbl)
 
@@ -301,12 +319,23 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
             name = u.get('unit_name', '—')
             init, fin = u.get('initial_count', 0), u.get('final_count', 0)
             losses = u.get('losses', 0)
-            status = "Выжил!" if init == 1 and fin == 1 else "Погиб..." if init == 1 and fin == 0 else f"{losses} | {fin}"
-            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=12 if not is_small else 10, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2)
-            status_lbl = make_label(status, font_sp=12 if not is_small else 10, halign='left', height_dp=row_h, size_hint_x=0.25)
+
+            # Форматируем статус с цветами
+            if init == 1 and fin == 1:
+                status = "[color=#4CAF50]Выжил![/color]"
+            elif init == 1 and fin == 0:
+                status = "[color=#FF5733]Погиб...[/color]"
+            else:
+                # Цвета для потерь и выживших
+                losses_color = "#FF5733"  # красный для потерь
+                remaining_color = "#4CAF50" if fin > 0 else "#FF5733"  # зеленый если есть выжившие, иначе красный
+                status = f"[color={losses_color}]{losses}[/color] | [color={remaining_color}]{fin}[/color]"
+
+            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2, bold=True)
+            status_lbl = make_label(status, font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.25, bold=True)
         else:
-            unit_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.2)
-            status_lbl = make_label("", font_sp=12 if not is_small else 10, height_dp=row_h, size_hint_x=0.25)
+            unit_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.25)
         row.add_widget(unit_lbl)
         row.add_widget(status_lbl)
 
