@@ -488,7 +488,8 @@ def clear_tables(conn):
         "auto_build_settings",
         "interface_coord",
         "hero_equipment",
-        "ai_hero_equipment"
+        "ai_hero_equipment",
+        "effects_seasons"
     ]
 
     cursor = conn.cursor()
