@@ -376,7 +376,7 @@ class FortressInfoPopup(Popup):
 
         # Кнопка «Добавить всех в группу»
         btn_add_all = Button(
-            text="Добавить всех в группу",
+            text="Создать группу (1-3 класс)",
             size_hint=(1, None),
             height=dp(44),
             font_size=sp(16),
@@ -386,23 +386,44 @@ class FortressInfoPopup(Popup):
         )
 
         def add_all(btn):
-            for city, unit, count, img in list(self.current_troops_data):
-                self.selected_group.append({
-                    "city_name": city,
-                    "unit_name": unit,
-                    "unit_count": count,
-                    "unit_image": img
-                })
-                self.selected_units_set.add((city, unit))
+            # Создаем копию списка для итерации, так как мы будем его модифицировать
+            troops_to_process = list(self.current_troops_data)
 
-                uid = f"{city}_{unit}"
-                if uid in self.table_widgets:
-                    widgets = self.table_widgets.pop(uid)
-                    for key in ("city_label", "unit_label", "count_label", "image_container", "action_button"):
-                        self.table_layout.remove_widget(widgets[key])
+            for city, unit, count, img in troops_to_process:
+                # Проверяем класс юнита перед добавлением
+                cursor = self.conn.cursor()
+                cursor.execute("""
+                    SELECT unit_class FROM units WHERE unit_name = ?
+                """, (unit,))
+                unit_class_result = cursor.fetchone()
 
-            self.current_troops_data.clear()
-            self.send_group_button.disabled = False
+                if unit_class_result:
+                    unit_class = unit_class_result[0]
+                    # Добавляем только юнитов классов 1, 2 и 3
+                    if str(unit_class) in ['1', '2', '3']:
+                        self.selected_group.append({
+                            "city_name": city,
+                            "unit_name": unit,
+                            "unit_count": count,
+                            "unit_image": img
+                        })
+                        self.selected_units_set.add((city, unit))
+
+                        uid = f"{city}_{unit}"
+                        if uid in self.table_widgets:
+                            widgets = self.table_widgets.pop(uid)
+                            for key in ("city_label", "unit_label", "count_label", "image_container", "action_button"):
+                                self.table_layout.remove_widget(widgets[key])
+
+                        # Удаляем из текущих данных
+                        self.current_troops_data = [
+                            d for d in self.current_troops_data
+                            if not (d[0] == city and d[1] == unit)
+                        ]
+
+            # Если были добавлены юниты, активируем кнопку отправки
+            if self.selected_group:
+                self.send_group_button.disabled = False
 
         btn_add_all.bind(on_release=add_all)
 
