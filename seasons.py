@@ -5,7 +5,7 @@ from db_lerdon_connect import db_path
 
 class SeasonManager:
     """
-    Менеджер сезонов, теперь с учётом фракций.
+    Менеджер сезонов, теперь с учётом фракций и таблицей effects_seasons.
 
     При первом вызове update(new_idx) просто накладывается эффект для сезона new_idx.
     При смене с last_idx на new_idx:
@@ -69,6 +69,52 @@ class SeasonManager:
         # None означает, что до этого ни один сезон не применялся.
         self.last_idx = None
 
+    def initialize_season_effects(self, conn):
+        """
+        Инициализирует таблицу effects_seasons при старте игры.
+        Рассчитывает бонусы для каждого юнита по каждому сезону.
+        """
+        cur = conn.cursor()
+
+        # Очищаем таблицу
+        cur.execute("DELETE FROM effects_seasons")
+
+        # Получаем все юниты и их базовые характеристики
+        cur.execute("""
+            SELECT unit_name, faction, attack, defense, cost_money, cost_time
+            FROM units_default
+        """)
+
+        units = cur.fetchall()
+
+        for unit in units:
+            unit_name, faction, base_attack, base_defense, base_cost_money, base_cost_time = unit
+
+            # Для каждого сезона рассчитываем бонусы
+            for season_idx in range(4):  # 0-3 сезоны
+                faction_effects = self.FACTION_EFFECTS[season_idx]
+
+                if faction in faction_effects:
+                    effects = faction_effects[faction]
+                    stat_f = effects['stat']
+                    cost_f = effects['cost']
+
+                    # Рассчитываем бонусы (новое значение - базовое значение)
+                    attack_bonus = int(round(base_attack * stat_f)) - base_attack
+                    defense_bonus = int(round(base_defense * stat_f)) - base_defense
+                    cost_money_bonus = int(round(base_cost_money * cost_f)) - base_cost_money
+                    cost_time_bonus = int(round(base_cost_time * cost_f)) - base_cost_time
+
+                    # Вставляем в таблицу
+                    cur.execute("""
+                        INSERT INTO effects_seasons 
+                        (unit_name, season, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (unit_name, season_idx, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus))
+
+        conn.commit()
+        print("[SEASON] Таблица effects_seasons инициализирована")
+
     def update(self, new_idx: int, conn):
         """
         Вызывается при смене сезона на new_idx (0–3).
@@ -78,6 +124,14 @@ class SeasonManager:
           3) Сохраняем last_idx = new_idx.
         Если new_idx == last_idx, ничего не делаем.
         """
+        # Проверяем, инициализирована ли таблица effects_seasons
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM effects_seasons")
+        count = cur.fetchone()[0]
+
+        if count == 0:
+            self.initialize_season_effects(conn)
+
         if self.last_idx is None:
             # Первый раз — просто накладываем
             self._apply_season(new_idx, conn)
@@ -94,70 +148,63 @@ class SeasonManager:
     def _apply_season(self, idx: int, conn):
         """
         Накладывает все эффекты сезона idx на таблицу units,
-        по каждой фракции берутся соответствующие коэффициенты.
+        беря бонусы из таблицы effects_seasons.
         """
-        faction_effects = self.FACTION_EFFECTS[idx]
         cur = conn.cursor()
 
-        for faction_name, coeffs in faction_effects.items():
-            stat_f = coeffs['stat']
-            cost_f = coeffs['cost']
+        # Получаем бонусы для данного сезона
+        cur.execute("""
+            SELECT unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus
+            FROM effects_seasons
+            WHERE season = ?
+        """, (idx,))
 
-            # Применяем stat-коэффициент (attack, defense) только если stat_f != 1.0
-            if stat_f != 1.0:
-                cur.execute(f"""
-                    UPDATE units
-                    SET
-                        attack  = CAST(ROUND(attack  * :stat_f) AS INTEGER),
-                        defense = CAST(ROUND(defense * :stat_f) AS INTEGER)
-                    WHERE faction = :faction
-                """, {'stat_f': stat_f, 'faction': faction_name})
+        effects = cur.fetchall()
 
-            # Применяем cost-коэффициент (cost_money, cost_time) только если cost_f != 1.0
-            if cost_f != 1.0:
-                cur.execute(f"""
-                    UPDATE units
-                    SET
-                        cost_money = CAST(ROUND(cost_money * :cost_f) AS INTEGER),
-                        cost_time  = CAST(ROUND(cost_time  * :cost_f) AS INTEGER)
-                    WHERE faction = :faction
-                """, {'cost_f': cost_f, 'faction': faction_name})
+        for effect in effects:
+            unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus = effect
+
+            # Применяем бонусы
+            cur.execute("""
+                UPDATE units
+                SET
+                    attack = attack + ?,
+                    defense = defense + ?,
+                    cost_money = cost_money + ?,
+                    cost_time = cost_time + ?
+                WHERE unit_name = ?
+            """, (attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus, unit_name))
 
         conn.commit()
 
     def _revert_season(self, idx: int, conn):
         """
-        Откатывает эффекты сезона idx, возвращая к «базовым» значениям.
-        Для каждой фракции берём обратные коэффициенты: 1 / applied_factor.
+        Откатывает эффекты сезона idx, вычитая бонусы из таблицы effects_seasons.
         """
-        faction_effects = self.FACTION_EFFECTS[idx]
         cur = conn.cursor()
 
-        for faction_name, coeffs in faction_effects.items():
-            stat_f = coeffs['stat']
-            cost_f = coeffs['cost']
+        # Получаем бонусы для данного сезона
+        cur.execute("""
+            SELECT unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus
+            FROM effects_seasons
+            WHERE season = ?
+        """, (idx,))
 
-            # Откатим stat, если он не равен 1.0
-            if stat_f != 1.0:
-                stat_revert = 1.0 / stat_f
-                cur.execute(f"""
-                    UPDATE units
-                    SET
-                        attack  = CAST(ROUND(attack  * :stat_rev) AS INTEGER),
-                        defense = CAST(ROUND(defense * :stat_rev) AS INTEGER)
-                    WHERE faction = :faction
-                """, {'stat_rev': stat_revert, 'faction': faction_name})
+        effects = cur.fetchall()
 
-            # Откатим cost, если он не равен 1.0
-            if cost_f != 1.0:
-                cost_revert = 1.0 / cost_f
-                cur.execute(f"""
-                    UPDATE units
-                    SET
-                        cost_money = CAST(ROUND(cost_money * :cost_rev) AS INTEGER),
-                        cost_time  = CAST(ROUND(cost_time  * :cost_rev) AS INTEGER)
-                    WHERE faction = :faction
-                """, {'cost_rev': cost_revert, 'faction': faction_name})
+        for effect in effects:
+            unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus = effect
+
+            # Откатываем бонусы (вычитаем)
+            cur.execute("""
+                UPDATE units
+                SET
+                    attack = attack - ?,
+                    defense = defense - ?,
+                    cost_money = cost_money - ?,
+                    cost_time = cost_time - ?
+                WHERE unit_name = ?
+            """, (attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus, unit_name))
 
         conn.commit()
 
@@ -343,8 +390,6 @@ class SeasonManager:
                 VALUES (?, ?, ?, ?)
             """, (hero_name, artifact_id, stat_name, change))
 
-
-
         conn.commit()
 
 
@@ -438,32 +483,28 @@ class SeasonManager:
 
                     # Если сезон установлен, применяем сезонные эффекты
                     if self.last_idx is not None:
-                        faction_effects = self.FACTION_EFFECTS[self.last_idx]
+                        # Получаем бонусы для текущего сезона
+                        cursor.execute("""
+                            SELECT attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus
+                            FROM effects_seasons
+                            WHERE unit_name = ? AND season = ?
+                        """, (unit_name, self.last_idx))
 
-                        if faction in faction_effects:
-                            effects = faction_effects[faction]
-                            stat_f = effects['stat']
-                            cost_f = effects['cost']
+                        season_effect = cursor.fetchone()
 
-                            # Применяем stat-коэффициент (attack, defense)
-                            if stat_f != 1.0:
-                                cursor.execute("""
-                                    UPDATE units
-                                    SET
-                                        attack  = CAST(ROUND(attack  * ?) AS INTEGER),
-                                        defense = CAST(ROUND(defense * ?) AS INTEGER)
-                                    WHERE unit_name = ?
-                                """, (stat_f, stat_f, unit_name))
+                        if season_effect:
+                            attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus = season_effect
 
-                            # Применяем cost-коэффициент (cost_money, cost_time)
-                            if cost_f != 1.0:
-                                cursor.execute("""
-                                    UPDATE units
-                                    SET
-                                        cost_money = CAST(ROUND(cost_money * ?) AS INTEGER),
-                                        cost_time  = CAST(ROUND(cost_time  * ?) AS INTEGER)
-                                    WHERE unit_name = ?
-                                """, (cost_f, cost_f, unit_name))
+                            # Применяем бонусы
+                            cursor.execute("""
+                                UPDATE units
+                                SET
+                                    attack = attack + ?,
+                                    defense = defense + ?,
+                                    cost_money = cost_money + ?,
+                                    cost_time = cost_time + ?
+                                WHERE unit_name = ?
+                            """, (attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus, unit_name))
 
                             print(
                                 f"[SUCCESS] Сезонные бонусы применены к юниту '{unit_name}' для сезона {self.SEASON_NAMES[self.last_idx]}.")
