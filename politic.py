@@ -6,6 +6,8 @@ from economic import format_number
 # Глобальная блокировка для работы с БД
 db_lock = threading.Lock()
 from manage_friend import ManageFriend
+from nobles import show_nobles_window
+
 
 translation_dict = {
     "Люди": "arkadia",
@@ -1958,10 +1960,12 @@ def start_politic_mode(faction, game_area, class_faction, conn):
     btn_new = styled_btn("Дипломатия", lambda btn: show_new_agreement_window(faction, game_area, class_faction, conn))
     btn_allies = styled_btn("Союзник", lambda btn: manage_friend_popup.open_popup())
     btn_army = styled_btn("Сила армий", lambda btn: show_ratings_popup(conn))
+    btn_nobles = styled_btn("Знать", lambda btn: show_nobles_window(conn, faction, class_faction))
 
     politics_layout.add_widget(btn_new)
     politics_layout.add_widget(btn_allies)
     politics_layout.add_widget(btn_army)
+    politics_layout.add_widget(btn_nobles)
 
     # Опционально: добавить отступ справа
     # politics_layout.add_widget(Widget(size_hint_x=None, width=dp(20)))

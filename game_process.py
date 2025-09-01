@@ -7,7 +7,8 @@ from sov import AdvisorView
 from event_manager import EventManager
 from results_game import ResultsGame
 from seasons import SeasonManager
-
+from nobles_generator import generate_initial_nobles
+from nobles_generator import initialize_nobles_if_needed, process_nobles_turn
 
 # Новые кастомные виджеты
 class ModernButton(Button):
@@ -560,6 +561,8 @@ class GameScreen(Screen):
         self.init_ui()
         self._update_season_display(current_season)
         self.season_manager.update(self.current_idx, self.conn)
+        # Инициализация дворян
+        self.initialize_nobles()
         # Запускаем обновление ресурсов каждую 1 секунду
         Clock.schedule_interval(self.update_cash, 1)
         # Запускаем обновление рейтинга армии каждые 1 секунду
@@ -809,6 +812,14 @@ class GameScreen(Screen):
         self.root_overlay.add_widget(end_turn_container)
         self.save_interface_element("EndTurnButton", "bottom_right", self.end_turn_button)
 
+    def initialize_nobles(self):
+        """Генерация начальных дворян при старте игры."""
+        try:
+            generate_initial_nobles(self.conn)
+            print("Начальные дворяне инициализированы.")
+        except Exception as e:
+            print(f"Ошибка при инициализации советников: {e}")
+
     def update_resource_box_position(self, *args):
         """Обновляет позицию ResourceBox так, чтобы он всегда был в левом верхнем углу."""
         if self.resource_box:
@@ -889,6 +900,8 @@ class GameScreen(Screen):
         self.update_destroyed_factions()
         # Обновляем статус ходов
         self.reset_check_attack_flags()
+
+        process_nobles_turn(self.conn, self.turn_counter)
         self.initialize_turn_check_move()
         # Обновляем текущий сезон
         new_season = self.update_season(self.turn_counter)
