@@ -133,7 +133,7 @@ def get_event_type_by_season(season_index):
 
 # --- Функции интерфейса ---
 
-def create_noble_widget(noble_data, conn):
+def create_noble_widget(noble_data, conn, cash_player): # Добавлен cash_player как аргумент
     """Создание виджета для отображения одного дворянина"""
     # Адаптивные размеры
     is_android = hasattr(Window, 'keyboard') # Простая проверка
@@ -227,7 +227,9 @@ def create_noble_widget(noble_data, conn):
             font_size=font_small,
             background_color=(0.3, 0.7, 0.3, 1) # Зеленоватый
         )
-        deal_btn.bind(on_release=lambda btn: show_deal_popup(conn, noble_data, cash_player)) # Передаем cash_player
+        # Используем замыкание (closure) для захвата значения cash_player
+        # Это предотвращает ошибку NameError, так как cash_player будет "захвачен" из внешней области видимости
+        deal_btn.bind(on_release=lambda btn, nd=noble_data, cp=cash_player: show_deal_popup(conn, nd, cp))
         layout.add_widget(deal_btn)
     else:
         # Добавляем пустой виджет для выравнивания
@@ -379,8 +381,8 @@ def show_secret_service_popup(conn, on_result_callback, cash_player): # Доба
         )
         insufficient_funds_popup.content.bind(size=insufficient_funds_popup.content.setter('text_size'))
         insufficient_funds_popup.open()
-        # Вызываем callback с ошибкой
-        on_result_callback({'success': False, 'message': "Недостаточно средств для операции Тайной Службы."})
+
+
         return # Прерываем открытие основного попапа
     # ------------------------------------
 
@@ -476,7 +478,6 @@ def show_event_popup(conn, player_faction, season_index, on_event_applied_callba
         )
         insufficient_funds_popup.content.bind(size=insufficient_funds_popup.content.setter('text_size'))
         insufficient_funds_popup.open()
-        on_event_applied_callback("Недостаточно средств для проведения мероприятия.")
         return # Прерываем открытие основного попапа
     # ------------------------------------
 
@@ -595,8 +596,9 @@ def show_nobles_window(conn, faction, class_faction):
 
         nobles_data = get_all_nobles(conn)
         # Добавляем виджеты в обратном порядке, чтобы они шли сверху вниз
+        # Передаем cash_player
         for noble_data in reversed(nobles_data):
-            widget = create_noble_widget(noble_data, conn)
+            widget = create_noble_widget(noble_data, conn, cash_player) # Передаем cash_player
             layout.add_widget(widget, index=len(layout.children)-2) # Вставляем перед buttons_layout
 
     nobles_data = get_all_nobles(conn)
@@ -620,7 +622,7 @@ def show_nobles_window(conn, faction, class_faction):
 
     # Добавляем виджеты дворян
     for noble_data in nobles_data:
-        widget = create_noble_widget(noble_data, conn)
+        widget = create_noble_widget(noble_data, conn, cash_player) # Передаем cash_player
         layout.add_widget(widget)
 
     # Общие кнопки
