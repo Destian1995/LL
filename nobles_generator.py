@@ -357,36 +357,49 @@ def get_all_nobles(conn):
     return nobles_data
 
 
-def attempt_secret_service_action(conn, player_faction=None):
+def attempt_secret_service_action(conn, player_faction=None, target_noble_id=None):
     """
-    Попытка устранения дворянина Тайной Службой.
+    Попытка устранения конкретного дворянина Тайной Службой.
     """
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM nobles WHERE status = 'active'")
-    active_nobles = cursor.fetchall()
 
-    if not active_nobles:
-        return {'success': False, 'message': "Нет активных дворян для устранения.", 'noble_id': None}
+    if target_noble_id is None:
+        return {'success': False, 'message': "Цель не указана.", 'noble_id': None}
 
-    noble_to_eliminate_id = random.choice(active_nobles)[0]
+    # Проверяем, что этот дворянин активен
+    cursor.execute("SELECT id FROM nobles WHERE id = ? AND status = 'active'", (target_noble_id,))
+    result = cursor.fetchone()
+    if not result:
+        return {'success': False, 'message': "Цель недоступна или уже устранена.", 'noble_id': None}
+
+    noble_to_eliminate_id = target_noble_id
 
     # 70% шанс успеха
     if random.random() > 0.7:
-        return {'success': False, 'message': "Операция провалена. Дворянин ничего не заподозрил.", 'noble_id': None}
+        return {
+            'success': False,
+            'message': "Операция провалена. Дворянин ничего не заподозрил.",
+            'noble_id': None
+        }
 
-    # Устранение дворянина
-    cursor.execute("UPDATE nobles SET status = 'eliminated' WHERE id = ?", (noble_to_eliminate_id,))
+    # Устраняем выбранного дворянина
+    cursor.execute(
+        "UPDATE nobles SET status = 'eliminated' WHERE id = ?",
+        (noble_to_eliminate_id,)
+    )
 
     # Генерация нового дворянина
     faction_race = get_player_faction(conn)
-    # Пытаемся найти уникальное имя
-    available_names = [n for n in NAMES[faction_race] if n not in [noble['name'] for noble in get_all_nobles(conn) if noble['status'] != 'eliminated']]
+    available_names = [
+        n for n in NAMES[faction_race]
+        if n not in [noble['name'] for noble in get_all_nobles(conn) if noble['status'] != 'eliminated']
+    ]
     if not available_names:
         available_names = NAMES[faction_race]
 
     new_name = random.choice(available_names)
     new_loyalty = random.uniform(55, 75)
-    new_priority = 99 # Будет пересчитан
+    new_priority = 99  # Будет пересчитан
     new_status = 'active'
 
     # Новая черта характера
@@ -395,7 +408,7 @@ def attempt_secret_service_action(conn, player_faction=None):
         new_ideology = random.choice(IDEOLOGIES)
     elif trait_type == 'race_love':
         new_ideology = f"Любит {random.choice([r for r in RACES if r != faction_race])}"
-    else: # greed
+    else:  # greed
         base_demand = 1_000_000
         percentage = random.uniform(0.35, 0.75)
         additional_demand = int(10_000_000 * percentage)
@@ -414,11 +427,9 @@ def attempt_secret_service_action(conn, player_faction=None):
     # 50% шанс, что узнают
     message_suffix = ""
     if random.random() <= 0.5:
-        # Раскрыто - повышаем общую лояльность
         increase_all_loyalty(conn, 6.0)
         message_suffix = " Операция раскрыта! Лояльность знати повышена на 6%."
     else:
-        # Не раскрыто - снижаем общую лояльность
         decrease_all_loyalty(conn, 11.0)
         message_suffix = " Операция прошла незамеченной. Лояльность знати снизилась на 11%."
 

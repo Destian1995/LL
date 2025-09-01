@@ -7,6 +7,7 @@ from kivy.uix.popup import Popup
 from kivy.metrics import dp, sp
 from kivy.core.window import Window
 from kivy.uix.scrollview import ScrollView
+from kivy.graphics import Color, RoundedRectangle
 
 from nobles_generator import (
     get_all_nobles,
@@ -140,7 +141,6 @@ def create_noble_widget(noble_data, conn, cash_player):
     """Создание виджета для отображения одного дворянина (без аватара)"""
     # Адаптивные размеры
     is_android = hasattr(Window, 'keyboard') # Простая проверка
-    # Уменьшаем высоту виджета, так как аватар убран
     widget_height = dp(80) if not is_android else dp(70)
     font_large = sp(16) if not is_android else sp(14)
     font_medium = sp(14) if not is_android else sp(12)
@@ -162,33 +162,43 @@ def create_noble_widget(noble_data, conn, cash_player):
         text=noble_data['name'],
         font_size=font_large,
         halign='left',
-        # text_size=(dp(140) if not is_android else dp(120), None), # Можно увеличить ширину
         size_hint_y=None,
         height=dp(25) if not is_android else dp(20)
     )
 
-    # Отображаем % посещений как "проявленное внимание"
-    # Предполагаем, что noble_data['attendance_history'] уже содержит рассчитанный процент (int)
-    # или строку, которую нужно отобразить (например, "75%")
-    attendance_value = noble_data.get('attendance_history', '?')
-
-    # Если это число, форматируем его как процент
-    if isinstance(attendance_value, (int, float)):
-        attention_text = f"Проявленное внимание: {attendance_value}%"
-    else:
-        # Если это строка или другое значение, отображаем как есть
-        attention_text = f"Проявленное внимание: {attendance_value}"
-
-    # Цвет для процента посещений (проявленного внимания)
-    # Используем attendance_value для определения цвета, если это число
+    # --- Изменено: Расчет и отображение процента посещаемости ---
+    # Предполагаем, что noble_data['attendance_history'] - это строка вида "1,0,1,1" или список [1,0,1,1]
+    attendance_history_raw = noble_data.get('attendance_history', '')
+    attention_text = "Проявленное внимание: ?"
     attention_color = (1, 1, 1, 1) # Белый по умолчанию
-    if isinstance(attendance_value, (int, float)):
-        if attendance_value < 30:
-            attention_color = (1, 0, 0, 1) # Красный
-        elif attendance_value < 60:
-            attention_color = (1, 1, 0, 1) # Желтый
-        else:
-            attention_color = (0, 1, 0, 1) # Зеленый
+
+    if isinstance(attendance_history_raw, str) and attendance_history_raw:
+        try:
+            # Преобразуем строку в список целых чисел
+            history_list = [int(x) for x in attendance_history_raw.split(',') if x.isdigit()]
+        except ValueError:
+            history_list = []
+    elif isinstance(attendance_history_raw, list):
+        # Если уже список (например, из get_all_nobles), используем его
+        history_list = [x for x in attendance_history_raw if isinstance(x, int)]
+    else:
+        history_list = []
+
+    if history_list:
+        total_events = len(history_list)
+        attended_events = sum(history_list)
+        if total_events > 0:
+            attendance_percentage = int((attended_events / total_events) * 100)
+            attention_text = f"Проявленное внимание: {attendance_percentage}%"
+            # Цветовая индикация на основе процента
+            if attendance_percentage < 30:
+                attention_color = (1, 0, 0, 1) # Красный
+            elif attendance_percentage < 60:
+                attention_color = (1, 1, 0, 1) # Желтый
+            else:
+                attention_color = (0, 1, 0, 1) # Зеленый
+        # Примечание: Если total_events == 0, останется текст с '?' из инициализации
+    # Если history_list пуст, останется текст с '?' из инициализации
 
     attention_label = Label(
         text=attention_text,
@@ -198,23 +208,10 @@ def create_noble_widget(noble_data, conn, cash_player):
         size_hint_y=None,
         height=dp(25) if not is_android else dp(20)
     )
-
-    # Статус (можно оставить или убрать, если "проявленное внимание" достаточно)
-    # status_label = Label(
-    #     text=f"Статус: {noble_data['status']}",
-    #     font_size=font_small,
-    #     halign='left',
-    #     color=(0.8, 0.8, 0.8, 1),
-    #     size_hint_y=None,
-    #     height=dp(20) if not is_android else dp(18)
-    # )
-
-    # Сохраняем ссылку на label для возможного обновления
-    # noble_data['attention_label'] = attention_label
+    # ---------------------------------------------------------------
 
     info_layout.add_widget(name_label)
     info_layout.add_widget(attention_label)
-    # info_layout.add_widget(status_label) # Убираем, если не нужно
     layout.add_widget(info_layout)
 
     # Кнопка "Договориться" (только для продажных)
@@ -227,11 +224,9 @@ def create_noble_widget(noble_data, conn, cash_player):
             font_size=font_small,
             background_color=(0.3, 0.7, 0.3, 1) # Зеленоватый
         )
-        # Используем замыкание (closure) для захвата значения cash_player
         deal_btn.bind(on_release=lambda btn, nd=noble_data, cp=cash_player: show_deal_popup(conn, nd, cp))
         layout.add_widget(deal_btn)
     else:
-        # Добавляем пустой виджет для выравнивания
         layout.add_widget(Label(size_hint=(None, None), size=(dp(110) if not is_android else dp(100), 1)))
 
     return layout
@@ -429,7 +424,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         height=dp(30)
     )
     info_label = Label(
-        text=f"Стоимость операции: {format_number(COST_SECRET_SERVICE)} крон.\nВыберите дворянина для устранения:",
+        text=f"Стоимость операции: {format_number(COST_SECRET_SERVICE)} крон.\nВыберите цель для устранения:",
         halign='center',
         valign='middle',
         font_size=sp(14),
@@ -471,7 +466,6 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                 deduction_success = cash_player.deduct_resources(COST_SECRET_SERVICE)
                 if deduction_success:
                     # Выполняем действие устранения конкретного дворянина
-                    # Предполагаем, что attempt_secret_service_action адаптирована
                     result = attempt_secret_service_action(conn, get_player_faction(conn), target_noble_id=n_id)
                     on_result_callback(result)
                     # --- Обновляем основной список ---
@@ -611,31 +605,58 @@ def show_event_popup(conn, player_faction, season_index, on_event_applied_callba
 
 def show_nobles_window(conn, faction, class_faction):
     """Открытие окна с дворянами"""
-    # Создаём экземпляр класса CalculateCash
     cash_player = CalculateCash(faction, class_faction)
-
     player_faction = get_player_faction(conn)
     season_index = get_current_season_index(conn)
 
-    # --- Функция для обновления списка дворян внутри основного окна ---
-    # Эта функция теперь полностью пересоздает список
+    # --- Главный layout ---
+    is_android = hasattr(Window, 'keyboard')
+    padding_outer = dp(10) if not is_android else dp(5)
+    spacing_outer = dp(10) if not is_android else dp(7)
+    font_title = sp(20) if not is_android else sp(18)
+    font_info = sp(12) if not is_android else sp(10)
+
+    layout = BoxLayout(orientation='vertical', padding=padding_outer, spacing=spacing_outer)
+
+    # --- Заголовок ---
+    title = Label(
+        text="Дворяне",
+        font_size=font_title,
+        size_hint_y=None,
+        height=dp(45) if not is_android else dp(40),
+        bold=True,
+        color=(0.95, 0.9, 0.7, 1)
+    )
+    layout.add_widget(title)
+
+    # --- Информационная плашка ---
+    info_label = Label(
+        text="Для того чтобы понять лояльность дворян, нужно проводить мероприятия, будьте готовы к любым ситуациям...",
+        font_size=font_info,
+        size_hint_y=None,
+        height=dp(30) if not is_android else dp(25),
+        color=(0.8, 0.8, 0.8, 1),
+        halign='center'
+    )
+    info_label.bind(size=info_label.setter('text_size'))
+    layout.add_widget(info_label)
+
+    # --- Функция обновления списка ---
     def refresh_nobles_list():
-        # 1. Очищаем layout от всех виджетов, кроме заголовка, кнопок и кнопки закрытия
-        # Предполагаем порядок добавления: [close_btn, buttons_layout, title, ...noble_widgets...]
-        # Нам нужно удалить все, что идет после title (индекс 2)
-        while len(layout.children) > 3: # Оставляем title, buttons_layout, close_btn
-            layout.remove_widget(layout.children[2]) # Удаляем виджет с индексом 2 (третий с конца)
+        # Удаляем всех дворян (оставляем title, info_label, buttons_layout, coup_label?, close_btn)
+        while len(layout.children) > 3:
+            if layout.children[2] not in (buttons_layout, close_btn):
+                layout.remove_widget(layout.children[2])
+            else:
+                break
 
-        # 2. Загружаем обновленные данные
-        nobles_data = get_all_nobles(conn) # Эта функция должна быть адаптирована под новую структуру БД
-
-        # 3. Создаем и добавляем виджеты заново
-        for noble_data in reversed(nobles_data): # Добавляем в обратном порядке для правильного отображения
+        # Добавляем дворян заново
+        nobles_data = get_all_nobles(conn)
+        for noble_data in reversed(nobles_data):
             widget = create_noble_widget(noble_data, conn, cash_player)
-            layout.add_widget(widget, index=2) # Вставляем перед buttons_layout (который теперь index=2)
-    # -----------------------------------------------------------------
+            layout.add_widget(widget, index=2)
 
-    # --- Callbacks для обработки результатов действий ---
+    # --- Callbacks ---
     def on_secret_service_result(result):
         message_popup = Popup(
             title="Результат" if result['success'] else "Ошибка",
@@ -644,7 +665,8 @@ def show_nobles_window(conn, faction, class_faction):
         )
         message_popup.content.bind(size=message_popup.content.setter('text_size'))
         message_popup.open()
-        # Обновление списка происходит внутри show_secret_service_popup
+        if result['success']:
+            refresh_nobles_list()
 
     def on_event_result(message):
         message_popup = Popup(
@@ -654,66 +676,65 @@ def show_nobles_window(conn, faction, class_faction):
         )
         message_popup.content.bind(size=message_popup.content.setter('text_size'))
         message_popup.open()
-        # Обновление списка происходит внутри show_event_popup
-    # ----------------------------------------------------
+        if "проведено" in message:
+            refresh_nobles_list()
 
-    # Загружаем начальные данные
-    nobles_data = get_all_nobles(conn) # Должна возвращать данные в формате, понятном create_noble_widget
-
-    # Адаптивный макет
-    is_android = hasattr(Window, 'keyboard')
-    padding_outer = dp(10) if not is_android else dp(5)
-    spacing_outer = dp(10) if not is_android else dp(7)
-    font_title = sp(20) if not is_android else sp(18)
-
-    # Главный layout
-    layout = BoxLayout(orientation='vertical', padding=padding_outer, spacing=spacing_outer)
-
-    title = Label(
-        text="Дворяне",
-        font_size=font_title,
-        size_hint_y=None,
-        height=dp(45) if not is_android else dp(40),
-        bold=True
-    )
-    layout.add_widget(title)
-
-    # Добавляем виджеты дворян (первичное заполнение)
+    # --- Первичное заполнение дворянами ---
+    nobles_data = get_all_nobles(conn)
     for noble_data in nobles_data:
         widget = create_noble_widget(noble_data, conn, cash_player)
         layout.add_widget(widget)
 
-    # Общие кнопки
+    # --- Кнопка с мягким стилем ---
+    def styled_btn(text, on_release_callback, bg_color=(0.6, 0.2, 0.2, 1)):
+        btn = Button(
+            text=text,
+            font_size=sp(14),
+            size_hint_y=None,
+            height=dp(50),
+            background_normal='',
+            background_color=(0, 0, 0, 0),
+            color=(1, 1, 1, 1)
+        )
+        with btn.canvas.before:
+            from kivy.graphics import Color, RoundedRectangle
+            Color(*bg_color)
+            btn.bg = RoundedRectangle(radius=[dp(12)])
+        def update_bg(instance, value):
+            btn.bg.pos = instance.pos
+            btn.bg.size = instance.size
+        btn.bind(pos=update_bg, size=update_bg)
+        btn.bind(on_release=on_release_callback)
+        return btn
+
+    # --- Кнопки действий ---
     buttons_layout = BoxLayout(
         size_hint_y=None,
-        height=dp(55) if not is_android else dp(50),
-        spacing=dp(10) if not is_android else dp(7)
+        height=dp(55),
+        spacing=dp(10)
     )
 
-    secret_service_btn = Button(
-        text="Тайная служба\n(20 млн)",
-        background_color=(0.8, 0.2, 0.2, 1),
-        font_size=sp(14) if not is_android else sp(12)
+    secret_service_btn = styled_btn(
+        "Тайная служба\n(20 млн)",
+        lambda btn: show_secret_service_popup(conn, on_secret_service_result, cash_player, refresh_nobles_list),
+        bg_color=(0.8, 0.5, 0.5, 1)
     )
-    secret_service_btn.bind(on_release=lambda btn: show_secret_service_popup(conn, on_secret_service_result, cash_player, refresh_nobles_list))
 
-    organize_event_btn = Button(
-        text=f"Организовать\n{get_event_type_by_season(season_index)}",
-        background_color=(0.2, 0.6, 0.8, 1),
-        font_size=sp(14) if not is_android else sp(12)
+    organize_event_btn = styled_btn(
+        f"Организовать\n{get_event_type_by_season(season_index)}",
+        lambda btn: show_event_popup(conn, player_faction, season_index, on_event_result, refresh_nobles_list, cash_player),
+        bg_color=(0.5, 0.7, 0.9, 1)
     )
-    organize_event_btn.bind(on_release=lambda btn: show_event_popup(
-        conn, player_faction, season_index, on_event_result, refresh_nobles_list, cash_player))
 
     buttons_layout.add_widget(secret_service_btn)
     buttons_layout.add_widget(organize_event_btn)
     layout.add_widget(buttons_layout)
 
-    # Проверка на переворот
+    # --- Проверка на переворот ---
     coup_occurred = check_coup_attempts(conn)
     if coup_occurred:
         coup_label = Label(
-            text="⚠️ Попытка переворота!",
+            text="Попытка переворота!",
             color=(1, 0, 0, 1),
             font_size=sp(16) if not is_android else sp(14),
             size_hint_y=None,
@@ -722,12 +743,11 @@ def show_nobles_window(conn, faction, class_faction):
         )
         layout.add_widget(coup_label)
 
-    # Кнопка закрытия
-    close_btn = Button(
-        text="Закрыть",
-        size_hint_y=None,
-        height=dp(50) if not is_android else dp(45),
-        font_size=sp(16) if not is_android else sp(14)
+    # --- Кнопка закрытия ---
+    close_btn = styled_btn(
+        "Закрыть",
+        lambda btn: popup.dismiss(),
+        bg_color=(0.5, 0.5, 0.5, 1)
     )
 
     scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
@@ -740,10 +760,12 @@ def show_nobles_window(conn, faction, class_faction):
         size_hint=(0.96, 0.96) if not is_android else (1, 1),
         pos_hint=popup_pos_hint
     )
-    close_btn.bind(on_release=popup.dismiss)
-    layout.add_widget(close_btn) # Добавляем кнопку закрытия в самый конец layout
 
+    layout.add_widget(close_btn)
     popup.open()
+
+
+
 
 # --- calculate_event_cost остается без изменений ---
 def calculate_event_cost(season_index):
@@ -752,3 +774,4 @@ def calculate_event_cost(season_index):
     seasonal_multiplier = {0: 1.2, 1: 1.0, 2: 1.5, 3: 1.1}
     multiplier = seasonal_multiplier.get(season_index, 1.0)
     return int(base_cost * multiplier)
+# -------------------------------------------------------------------------
