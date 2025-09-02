@@ -262,7 +262,7 @@ def calculate_attendance_probability(conn, noble_id, player_faction, event_type,
         if event_race and loved_race != event_race:
             # Проверяем дипломатические отношения
             relation = get_diplomacy_relation(conn, player_faction, loved_race)
-            if relation in ['вражда', 'холодно']:
+            if relation in ['война', 'нейтралитет']:
                 probability *= 0.4 # 40% если отношения плохие
 
     final_prob = max(0.0, min(1.0, probability))

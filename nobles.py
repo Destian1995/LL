@@ -843,7 +843,7 @@ def show_nobles_window(conn, faction, class_faction):
 # --- calculate_event_cost остается без изменений ---
 def calculate_event_cost(season_index):
     """Рассчитывает стоимость мероприятия в зависимости от сезона."""
-    base_cost = 5_000_000
+    base_cost = 1_000_000
     seasonal_multiplier = {0: 1.2, 1: 1.0, 2: 1.5, 3: 1.1}
     multiplier = seasonal_multiplier.get(season_index, 1.0)
     return int(base_cost * multiplier)
