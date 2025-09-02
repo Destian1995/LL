@@ -765,29 +765,6 @@ def show_nobles_window(conn, faction, class_faction):
 
     layout = BoxLayout(orientation='vertical', padding=padding_outer, spacing=spacing_outer)
 
-    # --- Заголовок ---
-    title = Label(
-        text="Члены Совета",
-        font_size=font_title,
-        size_hint_y=None,
-        height=dp(45) if not is_android else dp(40),
-        bold=True,
-        color=(0.95, 0.9, 0.7, 1)
-    )
-    layout.add_widget(title)
-
-    # --- Информационная плашка ---
-    info_label = Label(
-        text="Для того чтобы понять лояльность дворян(членов совета), нужно проводить мероприятия, будьте готовы к любым ситуациям...",
-        font_size=font_info,
-        size_hint_y=None,
-        height=dp(30) if not is_android else dp(25),
-        color=(0.8, 0.8, 0.8, 1),
-        halign='center'
-    )
-    info_label.bind(size=info_label.setter('text_size'))
-    layout.add_widget(info_label)
-
     # --- Заголовки таблицы ---
     headers_layout = GridLayout(cols=2, size_hint_y=None, height=dp(35) if not is_android else dp(30))
 
