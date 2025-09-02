@@ -767,7 +767,7 @@ def show_nobles_window(conn, faction, class_faction):
     layout = BoxLayout(orientation='vertical', padding=padding_outer, spacing=spacing_outer)
 
     # --- Заголовки таблицы ---
-    headers_layout = GridLayout(cols=2, size_hint_y=None, height=dp(35) if not is_android else dp(30))
+    headers_layout = GridLayout(cols=3, size_hint_y=None, height=dp(35) if not is_android else dp(30))
 
     name_header = Label(
         text="[b]Имя[/b]",
@@ -789,8 +789,19 @@ def show_nobles_window(conn, faction, class_faction):
     )
     attention_header.bind(size=attention_header.setter('text_size'))
 
+    action_header = Label(
+        text="[b]Действия[/b]",
+        font_size=font_header,
+        markup=True,
+        halign='center',
+        valign='middle',
+        color=(0.8, 0.9, 1, 1)  # Светло-голубой
+    )
+    action_header.bind(size=action_header.setter('text_size'))
+
     headers_layout.add_widget(name_header)
     headers_layout.add_widget(attention_header)
+    headers_layout.add_widget(action_header)
     layout.add_widget(headers_layout)
 
     # --- Контейнер для списка дворян ---
@@ -805,7 +816,7 @@ def show_nobles_window(conn, faction, class_faction):
         # Добавляем дворян заново в контейнер
         nobles_data = get_all_nobles(conn)
         for noble_data in nobles_data:  # Убран reversed, чтобы сохранить порядок
-            widget = create_noble_widget(noble_data, conn, cash_player)
+            widget = create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_nobles_list)
             nobles_container.add_widget(widget)
 
     # --- Callbacks ---
@@ -834,7 +845,7 @@ def show_nobles_window(conn, faction, class_faction):
     # --- Первичное заполнение дворянами ---
     nobles_data = get_all_nobles(conn)
     for noble_data in nobles_data:
-        widget = create_noble_widget(noble_data, conn, cash_player)
+        widget = create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_nobles_list)
         nobles_container.add_widget(widget)
 
     # --- Кнопка с мягким стилем ---
@@ -918,6 +929,113 @@ def show_nobles_window(conn, faction, class_faction):
     )
 
     popup.open()
+
+def create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_callback):
+    """Создание виджета для отображения одного дворянина с кнопкой 'Договориться'"""
+    # Адаптивные размеры
+    global json
+    is_android = hasattr(Window, 'keyboard') # Простая проверка
+    widget_height = dp(60) if not is_android else dp(55)
+    font_large = sp(16) if not is_android else sp(14)
+    font_medium = sp(14) if not is_android else sp(12)
+    font_small = sp(12) if not is_android else sp(10)
+    padding_inner = dp(8) if not is_android else dp(5)
+    spacing_inner = dp(5) if not is_android else dp(3)
+
+    # --- Используем GridLayout для табличного формата ---
+    layout = GridLayout(cols=3, size_hint_y=None, height=widget_height, padding=padding_inner, spacing=spacing_inner)
+
+    # Имя
+    name_label = Label(
+        text=noble_data['name'],
+        font_size=font_large,
+        halign='left',
+        valign='middle',
+        text_size=(None, None) # Позволить обрезать длинные имена
+    )
+    name_label.bind(size=name_label.setter('text_size'))
+
+    # --- Расчет и отображение процента посещаемости ---
+    attendance_history_raw = noble_data.get('attendance_history', '')
+    attention_text = "?"
+    attention_color = (1, 1, 1, 1) # Белый по умолчанию
+    if isinstance(attendance_history_raw, str) and attendance_history_raw:
+        try:
+            history_list = [int(x) for x in attendance_history_raw.split(',') if x.isdigit()]
+        except ValueError:
+            history_list = []
+    elif isinstance(attendance_history_raw, list):
+        history_list = [x for x in attendance_history_raw if isinstance(x, int)]
+    else:
+        history_list = []
+
+    if history_list:
+        total_events = len(history_list)
+        attended_events = sum(history_list)
+        if total_events > 0:
+            attendance_percentage = int((attended_events / total_events) * 100)
+            attention_text = f"{attendance_percentage}%"
+            # Цветовая индикация на основе процента
+            if attendance_percentage < 30:
+                attention_color = (1, 0, 0, 1) # Красный
+            elif attendance_percentage < 60:
+                attention_color = (1, 1, 0, 1) # Желтый
+            else:
+                attention_color = (0, 1, 0, 1) # Зеленый
+
+    attention_label = Label(
+        text=attention_text,
+        font_size=font_medium,
+        halign='center', # Центрируем внутри ячейки
+        valign='middle',
+        color=attention_color,
+        text_size=(None, None)
+    )
+    attention_label.bind(size=attention_label.setter('text_size'))
+
+    # --- Кнопка "Договориться" ---
+    try:
+        import json
+        ideology_data = json.loads(noble_data['ideology']) if isinstance(noble_data['ideology'], str) else noble_data['ideology']
+        if isinstance(ideology_data, dict) and ideology_data.get('type') == 'greed':
+            deal_btn = Button(
+                text="Договориться",
+                font_size=font_small,
+                size_hint_y=None,
+                height=dp(30) if not is_android else dp(25),
+                background_color=(0.3, 0.7, 0.3, 1)  # Зеленый
+            )
+            def on_deal(instance):
+                show_deal_popup(conn, noble_data, cash_player)
+                # После закрытия popup обновляем список
+                from kivy.clock import Clock
+                Clock.schedule_once(lambda dt: refresh_callback(), 0.1)
+
+            deal_btn.bind(on_release=on_deal)
+        else:
+            deal_btn = Label(
+                text="-",
+                font_size=font_small,
+                halign='center',
+                valign='middle',
+                color=(0.7, 0.7, 0.7, 1)
+            )
+            deal_btn.bind(size=deal_btn.setter('text_size'))
+    except (json.JSONDecodeError, TypeError):
+        deal_btn = Label(
+            text="-",
+            font_size=font_small,
+            halign='center',
+            valign='middle',
+            color=(0.7, 0.7, 0.7, 1)
+        )
+        deal_btn.bind(size=deal_btn.setter('text_size'))
+
+    layout.add_widget(name_label)
+    layout.add_widget(attention_label)
+    layout.add_widget(deal_btn)
+
+    return layout
 
 def show_result_popup(title, message, is_success=True):
     """Отображает красивый popup с результатом действия."""
