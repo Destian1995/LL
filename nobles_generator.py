@@ -1,7 +1,6 @@
 # nobles_generator.py
 import random
-import sqlite3
-import json # Для хранения сложных данных о продажных дворянах
+import json
 
 # Список рас (5 штук)
 RACES = ['Люди', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']
@@ -11,11 +10,46 @@ IDEOLOGIES = ['Борьба', 'Смирение']
 
 # Список имен для каждой расы
 NAMES = {
-    'Люди': ['Николай', 'Леонид', 'Карами', 'Генрих', 'Уильям', 'Мирослав'],
-    'Эльфы': ['Закани', 'Миордания', 'Риндайли', 'Широни', 'Глория', 'Амрелия'],
-    'Адепты': ['Серафим', 'Михаил', 'Гавриил', 'Рафаил', 'Уриил', 'Иоанн'],
-    'Вампиры': ['Люци', 'Стефан', 'Вильгельм', 'Виктор', 'Бальтазар', 'Габриэль'],
-    'Элины': ['Ария', 'Шакира', 'Селена', 'Элион', 'Мирана', 'Фаари']
+    'Люди': [
+        'Николай', 'Леонид', 'Карами', 'Генрих', 'Уильям', 'Мирослав',
+        'Александр', 'Дмитрий', 'Иван', 'Сергей', 'Людмила', 'Алексей',
+        'Евгений', 'Владимир', 'Павел', 'Максим', 'Олег', 'Виктор',
+        'Антон', 'Игорь', 'Юрий', 'Анастасия', 'Фёдор', 'Константин',
+        'Артём', 'Роман', 'Станислав', 'Борис', 'Валерий', 'Григорий',
+        'Екатерина', 'Анатолий', 'Валентин', 'Эдуард', 'Дарья', 'Ульяна'
+    ],
+    'Эльфы': [
+        'Закани', 'Миордания', 'Риндайли', 'Широни', 'Глория', 'Амрелия',
+        'Леголас', 'Арвен', 'Галадриэль', 'Элронд', 'Трандуил', 'Финрод',
+        'Идрис', 'Кейлибан', 'Нимуэ', 'Эрандир', 'Гиль-Галад', 'Фингольфин',
+        'Маглор', 'Маэглин', 'Нармелин', 'Орфен', 'Тинуviэль', 'Аэдриан',
+        'Брендуил', 'Каландрель', 'Дориат', 'Имильме', 'Линду', 'Морвен',
+        'Нимфадор', 'Олорин', 'Пенлар', 'Румил', 'Туор'
+    ],
+    'Адепты': [
+        'Серафим', 'Михаил', 'Гавриил', 'Рафаил', 'Уриил', 'Иоанн',
+        'Хафез', 'Матфей', 'Марк', 'Лука', 'Иуда', 'Варнава',
+        'Тимофей', 'Тит', 'Филипп', 'Яков', 'Иоанн', 'Пётр',
+        'Андрей', 'Фома', 'Варфоломей', 'Матфей', 'Симон', 'Фаддей',
+        'Авраам', 'Исаак', 'Иаков', 'Иосиф', 'Моисей', 'Аарон',
+        'Давид', 'Соломон', 'Иеремия', 'Даниил', 'Ездра'
+    ],
+    'Вампиры': [
+        'Люци', 'Стефан', 'Вильгельм', 'Виктор', 'Бальтазар', 'Габриэль',
+        'Дракула', 'Каин', 'Абель', 'Азраэль', 'Баал', 'Валентин',
+        'Герман', 'Дамиан', 'Эдриан', 'Фредерик', 'Готиер', 'Иннокентий',
+        'Йохан', 'Клаус', 'Лоренцо', 'Маркус', 'Никодим', 'Орландо',
+        'Персиваль', 'Рудольф', 'Сильвестр', 'Теодор', 'Ульрих', 'Фауст',
+        'Хаим', 'Кайзер', 'Чарльз', 'Эрик', 'Юлиан'
+    ],
+    'Элины': [
+        'Ария', 'Шакира', 'Селена', 'Элион', 'Мирана', 'Фаари',
+        'Лиана', 'Кассандра', 'Изольда', 'Ариэль', 'Бьянка', 'Вивиана',
+        'Габриэлла', 'Диана', 'Елена', 'Жасмин', 'Зара', 'Инесса',
+        'Йорин', 'Камилла', 'Лилия', 'Мелания', 'Ника', 'Офелия',
+        'Полина', 'Регина', 'София', 'Татьяна', 'Флора',
+        'Хлоя', 'Цветана', 'Чарлотта', 'Элоиза', 'Юлия', 'Карами'
+    ]
 }
 
 # --- Вспомогательные функции ---
@@ -146,22 +180,6 @@ def generate_initial_nobles(conn):
     conn.commit()
     print("Начальные советники (дворяне) инициализированы.")
 
-
-def update_nobles_periodically(conn, current_turn):
-    """
-    Периодическое обновление состояния дворян.
-    Вызывается из process_turn.
-    """
-    # 1. Снижение лояльности (каждые ход)
-    if current_turn % 1 == 0:
-        decrease_loyalty_over_time(conn)
-
-    # 2. Проверка попыток переворота
-    check_coup_attempts(conn) # Проверяем каждый ход
-
-    # 3. Смена приоритетов (каждые 13 ходов)
-    if current_turn % 13 == 0 and current_turn > 0:
-        change_noble_priorities(conn)
 
 
 def decrease_loyalty_over_time(conn):
@@ -300,18 +318,18 @@ def check_coup_attempts(conn):
     cursor.execute("SELECT id, loyalty FROM nobles WHERE status = 'active'")
     all_nobles = cursor.fetchall()
 
-    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 30)
+    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 25)
     very_disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 15)
 
     coup_occurred = False
     coup_successful = False
 
-    # Условие 1: 2+ дворян с лояльностью < 30
+    # Условие 1: 2+ дворян с лояльностью < 25
     if disloyal_count >= 2:
         if random.random() < 0.5: # 50% шанс
             coup_occurred = True
             coup_successful = True
-            print("⚠️ Попытка переворота (2+ дворян с лояльностью < 30)!")
+            print("⚠️ Попытка переворота (2+ дворян с лояльностью < 25)!")
             # Записываем успешный переворот
             record_coup_attempt(conn, True)
 
@@ -333,6 +351,75 @@ def check_coup_attempts(conn):
 
     return coup_occurred
 
+def update_nobles_periodically(conn, current_turn):
+    """
+    Периодическое обновление состояния дворян.
+    Вызывается из process_turn.
+    """
+    # 1. Обновление лояльности (каждые ход)
+    if current_turn % 1 == 0:
+        update_loyalty_dynamically(conn)
+
+    # 2. Проверка попыток переворота
+    check_coup_attempts(conn) # Проверяем каждый ход
+
+    # 3. Смена приоритетов (каждые 13 ходов)
+    if current_turn % 13 == 0 and current_turn > 0:
+        change_noble_priorities(conn)
+
+
+def update_loyalty_dynamically(conn):
+    """Обновление лояльности всех дворян на основе их предпочтений и текущей ситуации."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, loyalty, ideology FROM nobles WHERE status = 'active'")
+    nobles = cursor.fetchall()
+
+    player_faction = get_player_faction(conn)
+    player_ideology = get_player_ideology(conn)
+
+    for noble_id, current_loyalty, ideology_str in nobles:
+        noble_traits = get_noble_traits(ideology_str)
+        loyalty_change = 0
+
+        # Базовое снижение лояльности
+        loyalty_change -= 1.0
+
+        # Проверка предпочтений дворянина
+        if noble_traits['type'] == 'ideology':
+            # Лояльность растет если идеология совпадает
+            if noble_traits['value'] == player_ideology:
+                loyalty_change += 2.0  # Рост лояльности
+            else:
+                loyalty_change -= 1.0  # Падение лояльности
+
+        elif noble_traits['type'] == 'race_love':
+            loved_race = noble_traits['value']
+            # Проверяем отношения между фракцией игрока и любимой расой
+            relation = get_diplomacy_relation(conn, player_faction, loved_race)
+            # Преобразуем строковое значение в число (например, "60%" -> 60)
+            try:
+                if isinstance(relation, str) and relation.endswith('%'):
+                    relation_value = int(relation.rstrip('%'))
+                else:
+                    relation_value = int(relation) if relation else 0
+            except (ValueError, TypeError):
+                relation_value = 0
+
+            # Лояльность растет если отношения >= 60%
+            if relation_value >= 60:
+                loyalty_change += 2.0  # Рост лояльности
+            else:
+                loyalty_change -= 1.5  # Падение лояльности
+
+        # Продажные дворяне не получают бонусов от предпочтений
+        elif noble_traits['type'] == 'greed':
+            # Для продажных просто базовое снижение
+            pass
+
+        new_loyalty = max(0.0, min(100.0, current_loyalty + loyalty_change))
+        cursor.execute("UPDATE nobles SET loyalty = ? WHERE id = ?", (new_loyalty, noble_id))
+
+    conn.commit()
 
 def change_noble_priorities(conn):
     """Смена приоритетов дворян каждые 13 ходов"""
