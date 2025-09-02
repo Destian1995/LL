@@ -620,7 +620,7 @@ def show_nobles_window(conn, faction, class_faction):
 
     # --- Заголовок ---
     title = Label(
-        text="Дворяне",
+        text="Члены Совета",
         font_size=font_title,
         size_hint_y=None,
         height=dp(45) if not is_android else dp(40),
@@ -631,7 +631,7 @@ def show_nobles_window(conn, faction, class_faction):
 
     # --- Информационная плашка ---
     info_label = Label(
-        text="Для того чтобы понять лояльность дворян, нужно проводить мероприятия, будьте готовы к любым ситуациям...",
+        text="Для того чтобы понять лояльность дворян(членов совета), нужно проводить мероприятия, будьте готовы к любым ситуациям...",
         font_size=font_info,
         size_hint_y=None,
         height=dp(30) if not is_android else dp(25),
@@ -721,7 +721,7 @@ def show_nobles_window(conn, faction, class_faction):
     )
 
     organize_event_btn = styled_btn(
-        f"Организовать\n{get_event_type_by_season(season_index)}",
+        f'Провести мероприятие: ' f'\n"{get_event_type_by_season(season_index)}"',
         lambda btn: show_event_popup(conn, player_faction, season_index, on_event_result, refresh_nobles_list, cash_player),
         bg_color=(0.5, 0.7, 0.9, 1)
     )
@@ -755,7 +755,7 @@ def show_nobles_window(conn, faction, class_faction):
 
     popup_pos_hint = {'center_x': 0.5, 'center_y': 0.5} if is_android else {}
     popup = Popup(
-        title="Знать",
+        title="Парламент",
         content=scroll_view,
         size_hint=(0.96, 0.96) if not is_android else (1, 1),
         pos_hint=popup_pos_hint
