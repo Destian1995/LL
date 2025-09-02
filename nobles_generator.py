@@ -563,7 +563,7 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
 
     return {
         'success': True,
-        'message': f"Цель {noble_name} устранена.{message_suffix}",
+        'message': f"Цель {noble_name} успешно устранена.{message_suffix}",
         'noble_name': noble_name
     }
 
