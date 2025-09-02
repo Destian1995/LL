@@ -2,6 +2,12 @@
 import random
 import json
 
+from kivy.core.window import Window
+from kivy.metrics import dp, sp
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
+
 # Список рас (5 штук)
 RACES = ['Люди', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']
 
@@ -567,6 +573,60 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
         'noble_name': noble_name
     }
 
+def show_secret_service_result_popup(result_dict):
+    """Отображает красивый popup с результатом операции Тайной Службы."""
+    is_android = hasattr(Window, 'keyboard')
+
+    # Адаптивные размеры
+    font_title = sp(18) if not is_android else sp(16)
+    font_message = sp(15) if not is_android else sp(13)
+    padding_main = dp(20) if not is_android else dp(15)
+    spacing_main = dp(10) if not is_android else dp(8)
+
+    content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
+
+    # Заголовок в зависимости от успеха
+    if result_dict.get('success', False):
+        title_text = "Операция выполнена"
+        title_color = (0.2, 0.8, 0.2, 1)  # Зеленый
+    else:
+        title_text = "Операция провалена"
+        title_color = (0.9, 0.2, 0.2, 1)  # Красный
+
+    title_label = Label(
+        text=f"[b]{title_text}[/b]",
+        font_size=font_title,
+        markup=True,
+        halign='center',
+        valign='middle',
+        size_hint_y=None,
+        height=dp(40) if not is_android else dp(35),
+        color=title_color
+    )
+    title_label.bind(size=title_label.setter('text_size'))
+
+    # Сообщение
+    message_label = Label(
+        text=result_dict.get('message', 'Неизвестный результат операции'),
+        font_size=font_message,
+        halign='center',
+        valign='middle',
+        markup=True,
+        color=(0.9, 0.9, 0.9, 1)
+    )
+    message_label.bind(size=message_label.setter('text_size'))
+
+    content.add_widget(title_label)
+    content.add_widget(message_label)
+
+    popup = Popup(
+        title="",
+        content=content,
+        size_hint=(0.85, 0.5) if not is_android else (0.9, 0.55),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        auto_dismiss=True
+    )
+    popup.open()
 
 def increase_all_loyalty(conn, amount):
     """Повышение лояльности всех активных дворян."""

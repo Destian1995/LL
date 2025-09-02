@@ -15,7 +15,8 @@ from nobles_generator import (
     attempt_secret_service_action,
     get_player_faction,
     get_noble_traits,
-    pay_greedy_noble
+    pay_greedy_noble,
+    show_secret_service_result_popup
 )
 
 def format_number(number):
@@ -494,7 +495,8 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
 
     except Exception as e:
         print(f"[ERROR] Ошибка при получении списка активных дворян: {e}")
-        on_result_callback({'success': False, 'message': "Ошибка получения списка целей."})
+        # Заменяем on_result_callback на красивый popup
+        show_secret_service_result_popup({'success': False, 'message': "Ошибка получения списка целей."})
         return
 
     if not nobles_data:
@@ -510,7 +512,8 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         )
         no_targets_popup.content.bind(size=no_targets_popup.content.setter('text_size'))
         no_targets_popup.open()
-        on_result_callback({'success': False, 'message': "Нет доступных целей для устранения."})
+        # Заменяем on_result_callback на красивый popup
+        show_secret_service_result_popup({'success': False, 'message': "Нет доступных целей для устранения."})
         return
 
     # --- Адаптивные размеры для Android ---
@@ -624,15 +627,13 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                 if deduction_success:
                     # Выполняем действие устранения конкретного дворянина
                     result = attempt_secret_service_action(conn, get_player_faction(conn), target_noble_id=n_id)
-
+                    show_secret_service_result_popup(result)  # Показываем красивый результат
                     # --- Обновляем основной список ---
                     if callable(refresh_main_list_callback):
                         refresh_main_list_callback()
-
-                    # Вызываем callback с результатом
-                    on_result_callback(result)
                 else:
-                    on_result_callback({'success': False, 'message': "Ошибка списания средств."})
+                    # Показываем ошибку списания средств
+                    show_secret_service_result_popup({'success': False, 'message': "Ошибка списания средств."})
             return on_select
 
         select_btn.bind(on_release=make_select_handler(noble_data['id'], noble_data['name'], noble_data['loyalty']))
