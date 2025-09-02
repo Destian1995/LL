@@ -418,7 +418,8 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                     # Если было проведено минимум 3 мероприятия за последние 7 ходов
                     if len(recent_history) >= 3:
                         noble_dict['show_loyalty'] = True
-                        noble_dict['calculated_loyalty'] = noble_dict['loyalty']
+                        # Округляем loyalty в меньшую сторону
+                        noble_dict['calculated_loyalty'] = int(noble_dict['loyalty']) if noble_dict['loyalty'] is not None else None
                     else:
                         noble_dict['show_loyalty'] = False
                         noble_dict['calculated_loyalty'] = None
