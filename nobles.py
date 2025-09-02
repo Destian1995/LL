@@ -17,7 +17,6 @@ from nobles_generator import (
     get_player_faction,
     get_noble_traits,
     pay_greedy_noble
-    # Убраны check_player_money и deduct_player_money
 )
 
 def format_number(number):
@@ -135,7 +134,6 @@ def get_event_type_by_season(season_index):
     return events.get(season_index, 'Неизвестное мероприятие')
 
 # --- Функции интерфейса ---
-
 
 def create_noble_widget(noble_data, conn, cash_player):
     """Создание виджета для отображения одного дворянина (без аватара)"""
@@ -349,7 +347,7 @@ def show_deal_popup(conn, noble_data, cash_player): # Добавлен cash_play
 
 def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_main_list_callback):
     """Показывает всплывающее окно для Тайной службы с выбором цели."""
-    COST_SECRET_SERVICE = 20_000_000 # Константа стоимости
+    COST_SECRET_SERVICE = 20_000_000  # Константа стоимости
 
     # --- Проверка баланса ---
     cash_player.load_resources()
@@ -370,38 +368,62 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         return
     # ------------------------------------
 
-    # --- Получаем список нелояльных дворян (без аватара) ---
+    # --- Получаем список всех активных дворян ---
     try:
         cursor = conn.cursor()
-        # Запрашиваем нужные поля, исключая avatar
         cursor.execute("""
-            SELECT id, name, loyalty, status, ideology
+            SELECT id, name, loyalty, status, ideology, attendance_history
             FROM nobles 
-            WHERE status = 'active' AND loyalty < 60
-            ORDER BY loyalty ASC
+            WHERE status = 'active'
+            ORDER BY name ASC
         """)
-        disloyal_nobles = cursor.fetchall()
+        all_active_nobles = cursor.fetchall()
         # Преобразуем кортежи в словари для удобства
-        disloyal_nobles_data = [
-            {
+        nobles_data = []
+        for row in all_active_nobles:
+            noble_dict = {
                 'id': row[0],
                 'name': row[1],
                 'loyalty': row[2],
                 'status': row[3],
-                'ideology': row[4]
+                'ideology': row[4],
+                'attendance_history': row[5]
             }
-            for row in disloyal_nobles
-        ]
+
+            # Проверяем, можно ли показывать лояльность (3+ мероприятий за последние 7 ходов)
+            attendance_history_raw = noble_dict.get('attendance_history', '')
+            if isinstance(attendance_history_raw, str) and attendance_history_raw:
+                try:
+                    history_list = [int(x) for x in attendance_history_raw.split(',') if x.isdigit()]
+                    # Проверяем последние 7 записей
+                    recent_history = history_list[-7:] if len(history_list) >= 7 else history_list
+                    attended_count = sum(recent_history)
+                    # Если было проведено минимум 3 мероприятия за последние 7 ходов
+                    if len(recent_history) >= 3:
+                        noble_dict['show_loyalty'] = True
+                        noble_dict['calculated_loyalty'] = noble_dict['loyalty']
+                    else:
+                        noble_dict['show_loyalty'] = False
+                        noble_dict['calculated_loyalty'] = None
+                except ValueError:
+                    noble_dict['show_loyalty'] = False
+                    noble_dict['calculated_loyalty'] = None
+            else:
+                noble_dict['show_loyalty'] = False
+                noble_dict['calculated_loyalty'] = None
+
+            nobles_data.append(noble_dict)
+
     except Exception as e:
-        print(f"[ERROR] Ошибка при получении списка нелояльных дворян: {e}")
+        print(f"[ERROR] Ошибка при получении списка активных дворян: {e}")
         on_result_callback({'success': False, 'message': "Ошибка получения списка целей."})
         return
 
-    if not disloyal_nobles_data:
+    if not nobles_data:
         no_targets_popup = Popup(
             title="Нет целей",
             content=Label(
-                text="Нет нелояльных дворян для устранения.",
+                text="Нет активных дворян для устранения.",
                 halign='center',
                 valign='middle',
                 text_size=(dp(250), None)
@@ -433,20 +455,48 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     )
     info_label.bind(size=info_label.setter('text_size'))
 
-    # --- Список дворян для выбора (без аватара) ---
+    # --- Список дворян для выбора ---
     nobles_list_layout = BoxLayout(orientation='vertical', spacing=dp(5))
     scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
     scroll_view.add_widget(nobles_list_layout)
 
-    # Создаем кнопки для каждого нелояльного дворянина
-    for noble_data in disloyal_nobles_data:
-        # noble_id, noble_name, noble_loyalty, noble_status = noble_row
+    # Создаем кнопки для каждого активного дворянина
+    for noble_data in nobles_data:
         noble_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(50), padding=dp(5))
 
-        # Информация (без аватара)
+        # Информация о дворянине
         info_layout = BoxLayout(orientation='vertical')
         name_label = Label(text=noble_data['name'], halign='left', font_size=sp(14), size_hint_y=None, height=dp(20))
-        loyalty_label = Label(text=f"Лояльность: {noble_data['loyalty']}%", halign='left', font_size=sp(12), size_hint_y=None, height=dp(15))
+
+        # Отображаем лояльность только если есть достаточная история
+        if noble_data.get('show_loyalty', False) and noble_data.get('calculated_loyalty') is not None:
+            loyalty = noble_data['calculated_loyalty']
+            # Цветовая индикация лояльности (для подсказки)
+            if loyalty < 30:
+                loyalty_color = (1, 0, 0, 1)  # Красный
+            elif loyalty < 60:
+                loyalty_color = (1, 1, 0, 1)  # Жёлтый
+            else:
+                loyalty_color = (0, 1, 0, 1)  # Зелёный
+
+            loyalty_label = Label(
+                text=f"Лояльность: {loyalty}%",
+                halign='left',
+                font_size=sp(12),
+                size_hint_y=None,
+                height=dp(15),
+                color=loyalty_color
+            )
+        else:
+            loyalty_label = Label(
+                text="Лояльность: ?",
+                halign='left',
+                font_size=sp(12),
+                size_hint_y=None,
+                height=dp(15),
+                color=(0.7, 0.7, 0.7, 1)  # Серый цвет для неопределенной лояльности
+            )
+
         info_layout.add_widget(name_label)
         info_layout.add_widget(loyalty_label)
         noble_layout.add_widget(info_layout)
@@ -457,25 +507,28 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
             size_hint=(None, None),
             size=(dp(80), dp(40)),
             font_size=sp(12),
-            background_color=(0.8, 0.2, 0.2, 1) # Красный
+            background_color=(0.8, 0.2, 0.2, 1)  # Красный
         )
 
-        def make_select_handler(n_id, n_name):
+        def make_select_handler(n_id, n_name, n_loyalty):
             def on_select(instance):
                 target_selection_popup.dismiss()
                 deduction_success = cash_player.deduct_resources(COST_SECRET_SERVICE)
                 if deduction_success:
                     # Выполняем действие устранения конкретного дворянина
                     result = attempt_secret_service_action(conn, get_player_faction(conn), target_noble_id=n_id)
-                    on_result_callback(result)
+
                     # --- Обновляем основной список ---
                     if callable(refresh_main_list_callback):
                         refresh_main_list_callback()
+
+                    # Вызываем callback с результатом
+                    on_result_callback(result)
                 else:
                     on_result_callback({'success': False, 'message': "Ошибка списания средств."})
             return on_select
 
-        select_btn.bind(on_release=make_select_handler(noble_data['id'], noble_data['name']))
+        select_btn.bind(on_release=make_select_handler(noble_data['id'], noble_data['name'], noble_data['loyalty']))
         noble_layout.add_widget(select_btn)
 
         nobles_list_layout.add_widget(noble_layout)
@@ -644,17 +697,37 @@ def show_nobles_window(conn, faction, class_faction):
     # --- Функция обновления списка ---
     def refresh_nobles_list():
         # Удаляем всех дворян (оставляем title, info_label, buttons_layout, coup_label?, close_btn)
-        while len(layout.children) > 3:
-            if layout.children[2] not in (buttons_layout, close_btn):
-                layout.remove_widget(layout.children[2])
-            else:
-                break
+        # Находим индексы элементов, которые нужно сохранить
+        children_to_keep = []
+        if hasattr(layout, '_buttons_layout'):
+            children_to_keep.append(layout._buttons_layout)
+        if hasattr(layout, '_close_btn'):
+            children_to_keep.append(layout._close_btn)
+        if hasattr(layout, '_coup_label'):
+            children_to_keep.append(layout._coup_label)
+        if hasattr(layout, '_info_label'):
+            children_to_keep.append(layout._info_label)
+        if hasattr(layout, '_title'):
+            children_to_keep.append(layout._title)
+
+        # Удаляем все виджеты, кроме сохраняемых
+        children_to_remove = []
+        for child in layout.children:
+            if child not in children_to_keep and hasattr(child, 'height') and child.height > 40:
+                children_to_remove.append(child)
+
+        for child in children_to_remove:
+            layout.remove_widget(child)
 
         # Добавляем дворян заново
         nobles_data = get_all_nobles(conn)
         for noble_data in reversed(nobles_data):
             widget = create_noble_widget(noble_data, conn, cash_player)
-            layout.add_widget(widget, index=2)
+            layout.add_widget(widget, index=len(layout.children) - 2 if len(layout.children) >= 2 else 0)
+
+    # Сохраняем ссылки на важные элементы
+    layout._title = title
+    layout._info_label = info_label
 
     # --- Callbacks ---
     def on_secret_service_result(result):
@@ -729,6 +802,7 @@ def show_nobles_window(conn, faction, class_faction):
     buttons_layout.add_widget(secret_service_btn)
     buttons_layout.add_widget(organize_event_btn)
     layout.add_widget(buttons_layout)
+    layout._buttons_layout = buttons_layout
 
     # --- Проверка на переворот ---
     coup_occurred = check_coup_attempts(conn)
@@ -742,6 +816,7 @@ def show_nobles_window(conn, faction, class_faction):
             bold=True
         )
         layout.add_widget(coup_label)
+        layout._coup_label = coup_label
 
     # --- Кнопка закрытия ---
     close_btn = styled_btn(
@@ -749,6 +824,8 @@ def show_nobles_window(conn, faction, class_faction):
         lambda btn: popup.dismiss(),
         bg_color=(0.5, 0.5, 0.5, 1)
     )
+    layout.add_widget(close_btn)
+    layout._close_btn = close_btn
 
     scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
     scroll_view.add_widget(layout)
@@ -761,11 +838,7 @@ def show_nobles_window(conn, faction, class_faction):
         pos_hint=popup_pos_hint
     )
 
-    layout.add_widget(close_btn)
     popup.open()
-
-
-
 
 # --- calculate_event_cost остается без изменений ---
 def calculate_event_cost(season_index):

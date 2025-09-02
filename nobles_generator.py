@@ -25,7 +25,7 @@ def get_player_faction(conn):
     cursor = conn.cursor()
     cursor.execute("SELECT faction_name FROM user_faction")
     result = cursor.fetchone()
-    return result[0]
+    return result[0] if result else None
 
 def get_faction_ideology(conn, faction_name):
     """Получение идеологии фракции из БД"""
@@ -33,6 +33,13 @@ def get_faction_ideology(conn, faction_name):
     cursor.execute("SELECT system FROM political_systems WHERE faction = ?", (faction_name,))
     result = cursor.fetchone()
     return result[0] if result else 'Борьба' # По умолчанию 'Борьба'
+
+def get_player_ideology(conn):
+    """Получает текущую идеологию фракции игрока."""
+    faction = get_player_faction(conn)
+    if faction:
+        return get_faction_ideology(conn, faction)
+    return 'Борьба'
 
 def get_diplomacy_relation(conn, faction1, faction2):
     """Получение статуса отношений между двумя фракциями."""
@@ -79,6 +86,8 @@ def generate_initial_nobles(conn):
 
     # Получаем фракцию игрока
     faction_race = get_player_faction(conn)
+    if not faction_race:
+        return
 
     # Генерируем 3 случайных советника из фракции игрока
     available_names = NAMES[faction_race].copy()
@@ -128,8 +137,8 @@ def update_nobles_periodically(conn, current_turn):
     Периодическое обновление состояния дворян.
     Вызывается из process_turn.
     """
-    # 1. Снижение лояльности (каждые 2 хода)
-    if current_turn % 2 == 0:
+    # 1. Снижение лояльности (каждые ход)
+    if current_turn % 1 == 0:
         decrease_loyalty_over_time(conn)
 
     # 2. Проверка попыток переворота
@@ -141,13 +150,24 @@ def update_nobles_periodically(conn, current_turn):
 
 
 def decrease_loyalty_over_time(conn):
-    """Снижение лояльности всех дворян на 0.5% (1% за 2 хода)"""
+    """Снижение лояльности всех дворян на 3% за ход, с учетом идеологии."""
     cursor = conn.cursor()
-    cursor.execute("SELECT id, loyalty FROM nobles WHERE status = 'active'")
+    cursor.execute("SELECT id, loyalty, ideology FROM nobles WHERE status = 'active'")
     nobles = cursor.fetchall()
 
-    for noble_id, current_loyalty in nobles:
-        new_loyalty = max(0.0, current_loyalty - 0.5)
+    player_ideology = get_player_ideology(conn)
+
+    for noble_id, current_loyalty, ideology_str in nobles:
+        noble_traits = get_noble_traits(ideology_str)
+
+        # Базовое снижение
+        decrease = 3.0
+
+        # Если идеология совпадает — снижение меньше
+        if noble_traits['type'] == 'ideology' and noble_traits['value'] == player_ideology:
+            decrease = 1.5  # Меньше, если совпадает идеология
+
+        new_loyalty = max(0.0, current_loyalty - decrease)
         cursor.execute("UPDATE nobles SET loyalty = ? WHERE id = ?", (new_loyalty, noble_id))
 
     conn.commit()
@@ -156,6 +176,7 @@ def decrease_loyalty_over_time(conn):
 def calculate_attendance_probability(conn, noble_id, player_faction, event_type, event_season):
     """
     Рассчитывает вероятность посещения мероприятия дворянином.
+    Учитывает актуальную идеологию фракции игрока.
     """
     cursor = conn.cursor()
     cursor.execute("SELECT name, ideology, attendance_history FROM nobles WHERE id = ?", (noble_id,))
@@ -193,7 +214,7 @@ def calculate_attendance_probability(conn, noble_id, player_faction, event_type,
 
     # Проверка идеологии
     if noble_traits['type'] == 'ideology':
-        player_ideology = get_faction_ideology(conn, player_faction)
+        player_ideology = get_player_ideology(conn)  # АКТУАЛЬНАЯ идеология
         if noble_traits['value'] != player_ideology:
             probability *= 0.4 # 40% если не совпадает
 
@@ -310,51 +331,26 @@ def change_noble_priorities(conn):
 
 
 def get_all_nobles(conn):
-    """Получение всех советников с полной информацией для отображения"""
     cursor = conn.cursor()
-    cursor.execute("SELECT id, priority, loyalty, status, name, ideology, attendance_history FROM nobles")
+    cursor.execute("""
+        SELECT id, priority, loyalty, status, name, ideology, attendance_history
+        FROM nobles
+        WHERE status = 'active'
+        ORDER BY priority ASC
+    """)
     rows = cursor.fetchall()
-
-    faction_race = get_player_faction(conn)
-    nobles_data = []
-
+    nobles = []
     for row in rows:
-        noble_id, priority, loyalty, status, name, ideology_str, attendance_history = row
-
-        name_index = 0
-        if name in NAMES[faction_race]:
-            name_index = NAMES[faction_race].index(name)
-        avatar_index = name_index + 1
-
-        avatar = f'file/sov/parlament/nobles{faction_race}_{avatar_index}.png'
-
-        # Рассчитываем "предполагаемую" лояльность на основе истории
-        known_loyalty = '?'
-        if attendance_history:
-            history_list = attendance_history.split(',')
-            if len(history_list) >= 4: # После 4 мероприятий
-                try:
-                    attended_count = sum(int(h) for h in history_list if h in ['0', '1'])
-                    total_count = len(history_list)
-                    if total_count > 0:
-                        known_loyalty = int((attended_count / total_count) * 100)
-                except (ValueError, ZeroDivisionError):
-                    known_loyalty = '?'
-
-        nobles_data.append({
-            'id': noble_id,
-            'priority': priority,
-            'loyalty': round(loyalty, 1),
-            'status': status,
-            'name': name,
-            'avatar': avatar,
-            'ideology': ideology_str, # Сырая строка
-            'known_loyalty': known_loyalty,
-            'attendance_history': attendance_history
+        nobles.append({
+            'id': row[0],
+            'priority': row[1],
+            'loyalty': row[2],
+            'status': row[3],
+            'name': row[4],
+            'ideology': row[5],
+            'attendance_history': row[6]
         })
-
-    nobles_data.sort(key=lambda x: x['priority'])
-    return nobles_data
+    return nobles
 
 
 def attempt_secret_service_action(conn, player_faction=None, target_noble_id=None):
@@ -364,24 +360,46 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
     cursor = conn.cursor()
 
     if target_noble_id is None:
-        return {'success': False, 'message': "Цель не указана.", 'noble_id': None}
+        return {'success': False, 'message': "Цель не указана.", 'noble_name': None}
+
+    # Получаем имя дворянина по ID
+    cursor.execute("SELECT name FROM nobles WHERE id = ?", (target_noble_id,))
+    name_result = cursor.fetchone()
+    if not name_result:
+        return {'success': False, 'message': "Цель не найдена.", 'noble_name': None}
+
+    noble_name = name_result[0]
 
     # Проверяем, что этот дворянин активен
     cursor.execute("SELECT id FROM nobles WHERE id = ? AND status = 'active'", (target_noble_id,))
     result = cursor.fetchone()
     if not result:
-        return {'success': False, 'message': "Цель недоступна или уже устранена.", 'noble_id': None}
+        return {'success': False, 'message': f"{noble_name} недоступен или уже устранён.", 'noble_name': noble_name}
 
     noble_to_eliminate_id = target_noble_id
 
-    # 70% шанс успеха
-    if random.random() > 0.7:
-        return {
-            'success': False,
-            'message': "Операция провалена. Дворянин ничего не заподозрил.",
-            'noble_id': None
-        }
+    # Шанс успеха от 55% до 70%
+    success_chance = random.uniform(0.55, 0.70)
+    is_success = random.random() <= success_chance
 
+    if not is_success:
+        # 50% шанс, что узнают о провале
+        is_discovered = random.random() <= 0.5
+        if is_discovered:
+            decrease_all_loyalty(conn, 11.0)
+            return {
+                'success': False,
+                'message': f"Операция против {noble_name} провалена и раскрыта! Лояльность знати снизилась на 11%.",
+                'noble_name': noble_name
+            }
+        else:
+            return {
+                'success': False,
+                'message': f"Операция против {noble_name} провалена, но осталась незамеченной.",
+                'noble_name': noble_name
+            }
+
+    # Операция успешна
     # Устраняем выбранного дворянина
     cursor.execute(
         "UPDATE nobles SET status = 'eliminated' WHERE id = ?",
@@ -390,6 +408,9 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
 
     # Генерация нового дворянина
     faction_race = get_player_faction(conn)
+    if not faction_race:
+        faction_race = 'Люди'  # fallback
+
     available_names = [
         n for n in NAMES[faction_race]
         if n not in [noble['name'] for noble in get_all_nobles(conn) if noble['status'] != 'eliminated']
@@ -424,19 +445,18 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
 
     conn.commit()
 
-    # 50% шанс, что узнают
-    message_suffix = ""
-    if random.random() <= 0.5:
+    # 50% шанс, что узнают об успешной операции
+    is_discovered = random.random() <= 0.5
+    if is_discovered:
         increase_all_loyalty(conn, 6.0)
-        message_suffix = " Операция раскрыта! Лояльность знати повышена на 6%."
+        message_suffix = " Операция раскрыта! Акция устрашения повысила лояльность парламента на 6%."
     else:
-        decrease_all_loyalty(conn, 11.0)
-        message_suffix = " Операция прошла незамеченной. Лояльность знати снизилась на 11%."
+        message_suffix = " Операция прошла незамеченной. Лояльность осталась на прежнем уровне"
 
     return {
         'success': True,
-        'message': f"Дворянин ID {noble_to_eliminate_id} устранен.{message_suffix}",
-        'noble_id': noble_to_eliminate_id
+        'message': f"Цель {noble_name} устранена.{message_suffix}",
+        'noble_name': noble_name
     }
 
 
