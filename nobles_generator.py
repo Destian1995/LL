@@ -300,27 +300,27 @@ def check_coup_attempts(conn):
     cursor.execute("SELECT id, loyalty FROM nobles WHERE status = 'active'")
     all_nobles = cursor.fetchall()
 
-    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 50)
-    very_disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 35)
+    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 30)
+    very_disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 15)
 
     coup_occurred = False
     coup_successful = False
 
-    # Условие 1: 2+ дворян с лояльностью < 50
+    # Условие 1: 2+ дворян с лояльностью < 30
     if disloyal_count >= 2:
         if random.random() < 0.5: # 50% шанс
             coup_occurred = True
             coup_successful = True
-            print("⚠️ Попытка переворота (2+ дворян с лояльностью < 50)!")
+            print("⚠️ Попытка переворота (2+ дворян с лояльностью < 30)!")
             # Записываем успешный переворот
             record_coup_attempt(conn, True)
 
-    # Условие 2: 1+ дворян с лояльностью < 35
+    # Условие 2: 1+ дворян с лояльностью < 15
     elif very_disloyal_count >= 1:
         if random.random() < 0.3: # 30% шанс
             coup_occurred = True
             coup_successful = True
-            print("⚠️ Попытка переворота (1+ дворян с лояльностью < 35)!")
+            print("⚠️ Попытка переворота (1+ дворян с лояльностью < 15)!")
             # Записываем успешный переворот
             record_coup_attempt(conn, True)
 
