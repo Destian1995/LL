@@ -70,6 +70,21 @@ def get_noble_traits(ideology_str):
     else: # Простая идеология
         return {'type': 'ideology', 'value': ideology_str}
 
+def record_coup_attempt(conn, is_successful):
+    """
+    Записывает результат попытки переворота в таблицу coup_attempts.
+    Записывает только успешные перевороты.
+
+    Args:
+        conn: Соединение с БД
+        is_successful (bool): True если переворот успешен, False если провален
+    """
+    if is_successful:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO coup_attempts (status) VALUES (?)", ('successful',))
+        conn.commit()
+        print("✅ Успешный переворот записан в базу данных")
+
 
 # --- Основные функции управления дворянами ---
 
@@ -295,13 +310,19 @@ def check_coup_attempts(conn):
     if disloyal_count >= 2:
         if random.random() < 0.5: # 50% шанс
             coup_occurred = True
+            coup_successful = True
             print("⚠️ Попытка переворота (2+ дворян с лояльностью < 50)!")
+            # Записываем успешный переворот
+            record_coup_attempt(conn, True)
 
     # Условие 2: 1+ дворян с лояльностью < 35
     elif very_disloyal_count >= 1:
         if random.random() < 0.3: # 30% шанс
             coup_occurred = True
+            coup_successful = True
             print("⚠️ Попытка переворота (1+ дворян с лояльностью < 35)!")
+            # Записываем успешный переворот
+            record_coup_attempt(conn, True)
 
     if coup_occurred:
         # Отмечаем в БД, что была попытка (например, меняем status одного из них)
@@ -532,7 +553,6 @@ def pay_greedy_noble(conn, noble_id, amount):
     cursor.execute("UPDATE nobles SET attendance_history = ? WHERE id = ?", (new_history_str, noble_id))
     conn.commit()
 
-    print(f"Дворянину ID {noble_id} успешно оплачено {amount} крон. Его посещаемость будет увеличена.")
     return True
 
 # --- Функции для интеграции с GameScreen ---

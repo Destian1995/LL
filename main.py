@@ -490,7 +490,9 @@ def clear_tables(conn):
         "hero_equipment",
         "ai_hero_equipment",
         "effects_seasons",
-        "nobles"
+        "nobles",
+        "noble_events",
+        "coup_attempts",
     ]
 
     cursor = conn.cursor()

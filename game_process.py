@@ -847,6 +847,38 @@ class GameScreen(Screen):
 
         self.season_label.text = season_info.get('name', '')
 
+    def check_coup_and_trigger_defeat(self, conn):
+        """
+        Проверяет таблицу coup_attempts на наличие успешных переворотов.
+        Если найден успешный переворот, инициирует поражение игрока.
+
+        Args:
+            conn: Соединение с базой данных
+
+        Returns:
+            bool: True если был успешный переворот и игра должна закончиться, False otherwise
+        """
+        try:
+            cursor = conn.cursor()
+            # Проверяем наличие успешных переворотов
+            cursor.execute("SELECT COUNT(*) FROM coup_attempts WHERE status = 'successful'")
+            result = cursor.fetchone()
+
+            if result and result[0] > 0:
+                # Найден успешный переворот - инициируем поражение
+                reason = "Вас свергли нелояльные члены парламента"
+                status = "lose"
+
+                # Создаем и показываем результаты игры
+                results_game_instance = ResultsGame(status, reason, conn)
+                results_game_instance.show_results(self.selected_faction, status, reason)
+                App.get_running_app().restart_app()
+                return True
+
+            return False
+        except Exception as e:
+            print(f"Ошибка при проверке переворота: {e}")
+            return False
 
     def process_turn(self, instance=None):
         """
@@ -860,6 +892,10 @@ class GameScreen(Screen):
         self.save_turn(self.selected_faction, self.turn_counter)
         # Сохраняем историю ходов в таблицу turn_save
         self.save_turn_history(self.selected_faction, self.turn_counter)
+
+        # Проверяем переворот перед обработкой хода
+        if self.check_coup_and_trigger_defeat(self.conn):
+            return  # Игра закончена из-за переворота
 
         # Обновляем ресурсы игрока и получаем прирост
         profit_details = self.faction.update_resources()  # Теперь возвращает словарь
@@ -913,14 +949,13 @@ class GameScreen(Screen):
         # Обновляем статус городов и отрисовываем звёздочки мощи армий
         # Принудительно обновляем рейтинг один раз
         self.update_army_rating()
-        # Логирование или обновление интерфейса после хода
-        print(f"Ход {self.turn_counter} завершён")
-
         self.event_now = random.randint(1, 100)
         # Проверяем, нужно ли запустить событие
         if self.turn_counter % self.event_now == 0:
             print("Генерация события...")
             self.event_manager.generate_event(self.turn_counter)
+        # Логирование или обновление интерфейса после хода
+        print(f"Ход {self.turn_counter} завершён")
 
     def update_season(self, turn_count: int) -> dict:
         """
