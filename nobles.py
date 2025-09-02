@@ -183,21 +183,13 @@ def create_noble_widget(noble_data, conn, cash_player):
 
     layout.add_widget(name_label)
     layout.add_widget(attention_label)
-
-    # --- Кнопка "Договориться" (если нужно) ---
-    # В табличном формате кнопка "Договориться" может быть сложной.
-    # Лучше добавить её в отдельный ряд или использовать другой механизм (например, долгое нажатие).
-    # Для простоты, мы можем добавить строку с кнопкой под каждой строкой данных.
-    # Но для базовой таблицы оставим только имя и внимание.
-    # Ниже приведен пример добавления кнопки в отдельный виджет под таблицей.
-
     return layout
 
 # --- calculate_event_cost остается без изменений ---
 def calculate_event_cost(season_index):
     """Рассчитывает стоимость мероприятия в зависимости от сезона."""
-    base_cost = 1_000_000
-    seasonal_multiplier = {0: 1.2, 1: 1.0, 2: 1.5, 3: 1.1}
+    base_cost = 2_000_000
+    seasonal_multiplier = {0: 1.9, 1: 1.0, 2: 4.5, 3: 7.1}
     multiplier = seasonal_multiplier.get(season_index, 1.0)
     return int(base_cost * multiplier)
 
@@ -641,17 +633,6 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
     # ------------------------------------
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
     # --- Улучшенный заголовок с визуальным оформлением ---
-    title_label = Label(
-        text=f"Организовать мероприятие",
-        font_size=font_title,
-        bold=True,
-        halign='center',
-        valign='middle',
-        size_hint_y=None,
-        height=dp(30) if not is_android else dp(25),
-        color=(0.9, 0.7, 0.2, 1)  # Золотистый цвет
-    )
-    title_label.bind(size=title_label.setter('text_size'))
     # --- Тип мероприятия с акцентом ---
     event_type_label = Label(
         text=f"[b]{event_type}[/b]",
@@ -763,7 +744,6 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
     btn_layout.add_widget(confirm_btn)
     btn_layout.add_widget(cancel_btn)
     # Добавляем все элементы в контент
-    content.add_widget(title_label)
     content.add_widget(event_type_label)
     content.add_widget(info_box)
     content.add_widget(btn_layout)
@@ -781,6 +761,7 @@ def show_nobles_window(conn, faction, class_faction):
     spacing_outer = dp(10) if not is_android else dp(7)
     font_title = sp(20) if not is_android else sp(18)
     font_info = sp(12) if not is_android else sp(10)
+    font_header = sp(14) if not is_android else sp(12)
 
     layout = BoxLayout(orientation='vertical', padding=padding_outer, spacing=spacing_outer)
 
@@ -807,40 +788,47 @@ def show_nobles_window(conn, faction, class_faction):
     info_label.bind(size=info_label.setter('text_size'))
     layout.add_widget(info_label)
 
+    # --- Заголовки таблицы ---
+    headers_layout = GridLayout(cols=2, size_hint_y=None, height=dp(35) if not is_android else dp(30))
+
+    name_header = Label(
+        text="[b]Имя[/b]",
+        font_size=font_header,
+        markup=True,
+        halign='left',
+        valign='middle',
+        color=(0.8, 0.9, 1, 1)  # Светло-голубой
+    )
+    name_header.bind(size=name_header.setter('text_size'))
+
+    attention_header = Label(
+        text="[b]Уровень внимания[/b]",
+        font_size=font_header,
+        markup=True,
+        halign='center',
+        valign='middle',
+        color=(0.8, 0.9, 1, 1)  # Светло-голубой
+    )
+    attention_header.bind(size=attention_header.setter('text_size'))
+
+    headers_layout.add_widget(name_header)
+    headers_layout.add_widget(attention_header)
+    layout.add_widget(headers_layout)
+
+    # --- Контейнер для списка дворян ---
+    nobles_container = BoxLayout(orientation='vertical', size_hint_y=1)
+    layout.add_widget(nobles_container)
+
     # --- Функция обновления списка ---
     def refresh_nobles_list():
-        # Удаляем всех дворян (оставляем title, info_label, buttons_layout, coup_label?, close_btn)
-        # Находим индексы элементов, которые нужно сохранить
-        children_to_keep = []
-        if hasattr(layout, '_buttons_layout'):
-            children_to_keep.append(layout._buttons_layout)
-        if hasattr(layout, '_close_btn'):
-            children_to_keep.append(layout._close_btn)
-        if hasattr(layout, '_coup_label'):
-            children_to_keep.append(layout._coup_label)
-        if hasattr(layout, '_info_label'):
-            children_to_keep.append(layout._info_label)
-        if hasattr(layout, '_title'):
-            children_to_keep.append(layout._title)
+        # Очищаем только контейнер с дворянами
+        nobles_container.clear_widgets()
 
-        # Удаляем все виджеты, кроме сохраняемых
-        children_to_remove = []
-        for child in layout.children:
-            if child not in children_to_keep and hasattr(child, 'height') and child.height > 40:
-                children_to_remove.append(child)
-
-        for child in children_to_remove:
-            layout.remove_widget(child)
-
-        # Добавляем дворян заново
+        # Добавляем дворян заново в контейнер
         nobles_data = get_all_nobles(conn)
-        for noble_data in reversed(nobles_data):
+        for noble_data in nobles_data:  # Убран reversed, чтобы сохранить порядок
             widget = create_noble_widget(noble_data, conn, cash_player)
-            layout.add_widget(widget, index=len(layout.children) - 2 if len(layout.children) >= 2 else 0)
-
-    # Сохраняем ссылки на важные элементы
-    layout._title = title
-    layout._info_label = info_label
+            nobles_container.add_widget(widget)
 
     # --- Callbacks ---
     def on_secret_service_result(result):
@@ -869,7 +857,7 @@ def show_nobles_window(conn, faction, class_faction):
     nobles_data = get_all_nobles(conn)
     for noble_data in nobles_data:
         widget = create_noble_widget(noble_data, conn, cash_player)
-        layout.add_widget(widget)
+        nobles_container.add_widget(widget)
 
     # --- Кнопка с мягким стилем ---
     def styled_btn(text, on_release_callback, bg_color=(0.6, 0.2, 0.2, 1)):
