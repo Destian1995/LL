@@ -894,20 +894,6 @@ def show_nobles_window(conn, faction, class_faction):
     layout.add_widget(buttons_layout)
     layout._buttons_layout = buttons_layout
 
-    # --- Проверка на переворот ---
-    coup_occurred = check_coup_attempts(conn)
-    if coup_occurred:
-        coup_label = Label(
-            text="Попытка переворота!",
-            color=(1, 0, 0, 1),
-            font_size=sp(16) if not is_android else sp(14),
-            size_hint_y=None,
-            height=dp(35) if not is_android else dp(30),
-            bold=True
-        )
-        layout.add_widget(coup_label)
-        layout._coup_label = coup_label
-
     # --- Кнопка закрытия ---
     close_btn = styled_btn(
         "Закрыть",

@@ -324,38 +324,103 @@ def check_coup_attempts(conn):
     cursor.execute("SELECT id, loyalty FROM nobles WHERE status = 'active'")
     all_nobles = cursor.fetchall()
 
-    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 25)
-    very_disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 15)
+    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 30)
+    very_disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 25)
 
     coup_occurred = False
-    coup_successful = False
 
     # Условие 1: 2+ дворян с лояльностью < 25
     if disloyal_count >= 2:
         if random.random() < 0.5: # 50% шанс
             coup_occurred = True
-            coup_successful = True
-            print("⚠️ Попытка переворота (2+ дворян с лояльностью < 25)!")
+
             # Записываем успешный переворот
             record_coup_attempt(conn, True)
+
+            # Показываем сообщение о попытке переворота
+            show_coup_attempt_popup(successful=True)
+        else:
+            coup_occurred = False
+            # Показываем сообщение о попытке переворота
+            show_coup_attempt_popup(successful=False)
 
     # Условие 2: 1+ дворян с лояльностью < 15
     elif very_disloyal_count >= 1:
-        if random.random() < 0.3: # 30% шанс
+        # Попытка переворота
+        if random.random() < 0.3: # 30% шанс успеха
             coup_occurred = True
-            coup_successful = True
-            print("⚠️ Попытка переворота (1+ дворян с лояльностью < 15)!")
+
             # Записываем успешный переворот
             record_coup_attempt(conn, True)
 
-    if coup_occurred:
-        # Отмечаем в БД, что была попытка (например, меняем status одного из них)
-        # Или просто логируем. Проверка на поражение будет в основном цикле игры.
-        # Для простоты, просто установим флаг в отдельной таблице или переменной
-        # Здесь просто выводим сообщение. Логика поражения должна быть в GameScreen.
-        pass
+            # Показываем сообщение о попытке переворота
+            show_coup_attempt_popup(successful=True)
+        else:
+            coup_occurred = False
+            # Показываем сообщение о попытке переворота
+            show_coup_attempt_popup(successful=False)
 
     return coup_occurred
+
+def show_coup_attempt_popup(successful=False):
+    """Отображает popup с информацией о попытке переворота."""
+    try:
+        is_android = hasattr(Window, 'keyboard') and Window.keyboard
+
+        # Адаптивные размеры
+        font_title = sp(18) if not is_android else sp(16)
+        font_message = sp(15) if not is_android else sp(13)
+        padding_main = dp(20) if not is_android else dp(15)
+        spacing_main = dp(10) if not is_android else dp(8)
+
+        content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
+
+        if successful:
+            pass
+        else:
+            title_text = "Попытка переворота!"
+            title_color = (0.9, 0.2, 0.2, 1)  # Красный
+            message_text = "Тайная служба пресекла попытку государственного переворота, один из дворян убит!"
+
+        title_label = Label(
+            text=f"[b]{title_text}[/b]",
+            font_size=font_title,
+            markup=True,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40) if not is_android else dp(35),
+            color=title_color
+        )
+        title_label.bind(size=title_label.setter('text_size'))
+
+        message_label = Label(
+            text=message_text,
+            font_size=font_message,
+            halign='center',
+            valign='middle',
+            markup=True,
+            color=(0.9, 0.9, 0.9, 1)
+        )
+        message_label.bind(size=message_label.setter('text_size'))
+
+        content.add_widget(title_label)
+        content.add_widget(message_label)
+
+        popup = Popup(
+            title="",
+            content=content,
+            size_hint=(0.85, 0.5) if not is_android else (0.9, 0.55),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            auto_dismiss=True
+        )
+
+        # Убедимся, что popup отображается в главном потоке
+        from kivy.clock import Clock
+        Clock.schedule_once(lambda dt: popup.open(), 0)
+
+    except Exception as e:
+        print(f"Ошибка при отображении popup: {e}")
 
 def update_nobles_periodically(conn, current_turn):
     """
