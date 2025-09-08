@@ -150,7 +150,7 @@ class AuthorScreen(Screen):
 
 
 class LoadingScreen(FloatLayout):
-    def __init__(self, conn,  selected_map=None, **kwargs):
+    def __init__(self, conn, selected_map=None, **kwargs):
         super(LoadingScreen, self).__init__(**kwargs)
         self.conn = conn
         self.selected_map = selected_map
@@ -219,6 +219,7 @@ class LoadingScreen(FloatLayout):
     # === Методы загрузки ===
     def start_loading(self, dt):
         self.current_progress = 0
+        self.target_progress = 0
         self.loading_steps = [
             self.step_check_db,
             self.step_cleanup_cache,
@@ -234,45 +235,87 @@ class LoadingScreen(FloatLayout):
             step()
         else:
             # Дошли до 100%
-            self.progress_bar.value = 100
+            self.target_progress = 100
+            self.smooth_progress_update()
+
+    def update_progress_target(self, delta):
+        """Устанавливает целевое значение прогресса"""
+        self.target_progress += delta
+
+    def smooth_progress_update(self, dt=0):
+        """Плавное обновление прогресса"""
+        # Плавное приближение текущего значения к целевому
+        if abs(self.target_progress - self.current_progress) > 0.5:
+            self.current_progress += (self.target_progress - self.current_progress) * 0.1
+            self.progress_bar.value = self.current_progress
+            percent = int(self.current_progress)
+            self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
             self.update_pb_canvas()
-            self.label.text = "[color=#00ff00]В БОЙ![/color]"
-            Clock.schedule_once(self.switch_to_menu, 0.8)
+            # Продолжаем анимацию
+            Clock.schedule_once(self.smooth_progress_update, 0.016)  # ~60 FPS
+        else:
+            # Достигли целевого значения
+            self.current_progress = self.target_progress
+            self.progress_bar.value = self.current_progress
+            percent = int(self.current_progress)
+            self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
+            self.update_pb_canvas()
+
+            # Если достигли 100%, переходим к меню
+            if self.target_progress >= 100:
+                self.label.text = "[color=#ff0000]НАЧИНАЕМ![/color]"
+                Clock.schedule_once(self.switch_to_menu, 0.8)
 
     def update_progress(self, delta):
-        self.current_progress += delta
-        self.progress_bar.value = self.current_progress
-        percent = int(self.current_progress)
-        self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
-        self.update_pb_canvas()
+        """Обновление прогресса с плавной анимацией"""
+        self.update_progress_target(delta)
+        self.smooth_progress_update()
 
     # === Шаги загрузки ===
     def step_check_db(self):
         print("Шаг 1: Проверка базы данных...")
         self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0.3)
+        Clock.schedule_once(self.run_next_step, 0.5)
 
     def step_cleanup_cache(self):
         print("Шаг 2: Очистка кэша и временных данных...")
-        clear_tables(self.conn)
-        self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0)
+        # Выполняем очистку в отдельном потоке для плавности
+        def cleanup_task():
+            clear_tables(self.conn)
+            Clock.schedule_once(self.run_next_step, 0)
+
+        from threading import Thread
+        thread = Thread(target=cleanup_task)
+        thread.daemon = True
+        thread.start()
 
     def step_restore_backup(self):
         print("Шаг 3: Восстановление из бэкапа...")
         self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0)
+        Clock.schedule_once(self.run_next_step, 0.5)
 
     def step_load_assets(self):
         print("Шаг 4: Подготовка ресурсов...")
-        time.sleep(0.5)
-        self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0)
+        # Имитируем загрузку с плавным прогрессом
+        self.update_progress(10)
+
+        def load_assets_task():
+            time.sleep(0.3)
+            Clock.schedule_once(lambda dt: self.update_progress(10), 0)
+            time.sleep(0.3)
+            Clock.schedule_once(self.run_next_step, 0)
+
+        from threading import Thread
+        thread = Thread(target=load_assets_task)
+        thread.daemon = True
+        thread.start()
 
     def step_complete(self):
         print("Шаг 5: Подготовка перехода в меню...")
         self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0)
+        # Завершаем плавную анимацию
+        Clock.schedule_once(lambda dt: None, 0.3)
+        Clock.schedule_once(self.run_next_step, 0.3)
 
     def _update_bg(self, *args):
         # Делаем так, чтобы фон всегда тянулся на весь экран

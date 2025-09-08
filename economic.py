@@ -788,13 +788,15 @@ class Faction:
         try:
             system = self.load_political_system()
             if system == "Смирение":
-                crowns_bonus = int(self.money_up * 9.85)
-                self.money += crowns_bonus
-                bonuses["Кроны"] = crowns_bonus
+                crowns_bonus = int(self.money_up * 10.50)
+                if crowns_bonus > 0:
+                    self.money += crowns_bonus
+                    bonuses["Кроны"] = crowns_bonus
             elif system == "Борьба":
-                raw_material_bonus = int(self.food_info * 3.70)
-                self.raw_material += raw_material_bonus
-                bonuses["Кристаллы"] = raw_material_bonus
+                raw_material_bonus = int(self.food_info * 4.00)
+                if raw_material_bonus > 0:
+                    self.raw_material += raw_material_bonus
+                    bonuses["Кристаллы"] = raw_material_bonus
 
             if self.turn % 3 == 0:
                 self.update_relations_based_on_political_system()
@@ -1101,6 +1103,8 @@ class Faction:
             "Кроны": net_profit_coins,
             "Кристаллы": net_profit_raw,
         }
+        # Оставляем только положительные значения
+        profit_details = {k: v for k, v in profit_details.items() if v > 0}
 
         return profit_details
 
