@@ -9,6 +9,7 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.slider import Slider
 from kivy.graphics import Color, RoundedRectangle
 from kivy.utils import get_color_from_hex
+from kivy.clock import Clock
 import random
 import sqlite3
 
@@ -41,11 +42,11 @@ def format_number(number):
         return f"{sign * absolute / 1e24:.1f} септил."
     elif absolute >= 1_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e21:.1f} секст."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e18:.1f} квинт."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e15:.1f} квадр."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e12:.1f} трлн."
     elif absolute >= 1_000_000_000:
         return f"{sign * absolute / 1e9:.1f} млрд."
@@ -281,6 +282,17 @@ def show_diversion_window(conn, faction, class_faction):
 
     scroll_view_factions.add_widget(table_factions)
 
+    # Показываем скроллбар и делаем его мигающим
+    def flash_scrollbar(*args):
+        # Включаем скроллбар на короткое время
+        scroll_view_factions.scroll_y = scroll_view_factions.scroll_y  # обновляем отображение
+        scroll_view_factions.do_scroll_y = True
+        # Через 0.5 секунд отключаем
+        Clock.schedule_once(lambda dt: setattr(scroll_view_factions, 'do_scroll_y', False), 0.5)
+
+    # Запускаем мигание скроллбара через 1 секунду
+    Clock.schedule_once(flash_scrollbar, 1)
+
     select_btn = ThemedButton(
         text="Перейти к операциям",
         size_hint_y=None,
@@ -298,7 +310,6 @@ def show_diversion_window(conn, faction, class_faction):
         font_size=font_btn,
         background_color=WARNING_COLOR
     )
-
 
     content.add_widget(Label(text="Выберите цель:", font_size=font_header, bold=True, halign='center', color=TEXT_COLOR, size_hint_y=None, height=dp(30)))
     content.add_widget(scroll_view_factions)
@@ -349,11 +360,16 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
         }
     }
 
+    # Создаем ScrollView для операций
+    operations_scroll = ScrollView(size_hint_y=0.6)
+    operations_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=spacing_main)
+    operations_layout.bind(minimum_height=operations_layout.setter('height'))
+
     for op_name, op_info in ops_descriptions.items():
         op_btn = ThemedButton(
             text=f"{op_name}\n{op_info['desc']}",
             size_hint_y=None,
-            height=dp(65),
+            height=dp(70),  # Увеличим высоту для лучшего отображения
             font_size=font_info,
             background_color=CARD_COLOR
         )
@@ -366,7 +382,9 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
             return on_op_select
 
         op_btn.bind(on_release=make_op_handler(op_name, op_info))
-        content.add_widget(op_btn)
+        operations_layout.add_widget(op_btn)
+
+    operations_scroll.add_widget(operations_layout)
 
     close_btn = ThemedButton(
         text="Назад",
@@ -377,6 +395,7 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
     )
 
     content.add_widget(title_label)
+    content.add_widget(operations_scroll)
     content.add_widget(close_btn)
 
     popup = ThemedPopup(
