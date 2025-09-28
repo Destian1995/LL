@@ -9,7 +9,6 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.slider import Slider
 from kivy.graphics import Color, RoundedRectangle
 from kivy.utils import get_color_from_hex
-from kivy.clock import Clock
 import random
 import sqlite3
 
@@ -281,17 +280,6 @@ def show_diversion_window(conn, faction, class_faction):
         table_factions.add_widget(Label(text=""))  # Пустая ячейка для выравнивания
 
     scroll_view_factions.add_widget(table_factions)
-
-    # Показываем скроллбар и делаем его мигающим
-    def flash_scrollbar(*args):
-        # Включаем скроллбар на короткое время
-        scroll_view_factions.scroll_y = scroll_view_factions.scroll_y  # обновляем отображение
-        scroll_view_factions.do_scroll_y = True
-        # Через 0.5 секунд отключаем
-        Clock.schedule_once(lambda dt: setattr(scroll_view_factions, 'do_scroll_y', False), 0.5)
-
-    # Запускаем мигание скроллбара через 1 секунду
-    Clock.schedule_once(flash_scrollbar, 1)
 
     select_btn = ThemedButton(
         text="Перейти к операциям",
