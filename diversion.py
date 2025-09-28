@@ -722,7 +722,7 @@ def execute_diversion_operation(conn, player_faction, op_name, op_info, target_f
             """, (original_faction,))
 
         conn.commit()
-        message += f"\nФракция '{original_faction}' теперь в состоянии войны с Мятежниками."
+        message += f"\nФракция '{original_faction}' начала борьбу с Мятежниками."
 
     elif op_name == 'Заказ':
         # Найти всех героев 3 класса фракции цели, которые находятся в гарнизонах
