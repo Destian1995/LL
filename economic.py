@@ -2084,7 +2084,7 @@ def open_auto_build_popup(faction):
         faction.auto_build_enabled = True
         faction.save_auto_build_settings()
         auto_popup.dismiss()
-        show_message("Сохранено", "Теперь будем строить по-новому!")
+        show_message("Сохранено", "Как прикажете!")
 
     save_btn.bind(on_release=save_settings)
     cancel_btn.bind(on_release=auto_popup.dismiss)

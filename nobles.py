@@ -376,7 +376,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         insufficient_funds_popup = Popup(
             title="Недостаточно средств",
             content=Label(
-                text=f"Недостаточно Крон для операции Тайной Службы.\nСтоимость: {format_number(COST_SECRET_SERVICE)}\nУ вас: {format_number(current_money)}",
+                text=f"Не хватает крон, для доступа к засекреченной информации.\nСтоимость: {format_number(COST_SECRET_SERVICE)}\nУ вас: {format_number(current_money)}",
                 halign='center',
                 valign='middle',
                 text_size=(dp(250), None)

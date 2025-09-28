@@ -964,8 +964,8 @@ class AIController:
         """
         Рассчитывает максимальный лимит армии на основе базового значения и бонуса от городов.
         """
-        base_limit = 400_000  # Базовый лимит 1 млн
-        city_bonus = 100_000 * len(self.cities)  # Бонус за каждый город
+        base_limit = 500_000  # Базовый лимит 1 млн
+        city_bonus = 250_000 * len(self.cities)  # Бонус за каждый город
         total_limit = base_limit + city_bonus
         return total_limit
 
@@ -2286,7 +2286,7 @@ class AIController:
                     print(f"Фракция {self.faction} объявила войну фракции {target_faction} по запросу союзника.")
 
                     # Выполняем атаку на город — теперь вторым параметром передаётся target_faction
-                    self.launch_attack_on_city(attack_city, target_faction)  # ← Здесь изменение!
+                    self.launch_attack_on_city(attack_city, target_faction)
 
             # Очищаем таблицу queries, только если был ход союзника
             if is_ally_turn:
@@ -2577,35 +2577,80 @@ class AIController:
             print(f"Ошибка при поиске нейтрального города: {e}")
             return None
 
+    def get_factions_at_war(self):
+        """
+        Возвращает список фракций, с которыми текущая фракция находится в состоянии войны.
+        """
+        try:
+            query = """SELECT faction2 FROM diplomacies WHERE faction1 = ? AND relationship = 'война'"""
+            self.cursor.execute(query, (self.faction,))
+            rows = self.cursor.fetchall()
+            return [row[0] for row in rows]
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении списка вражеских фракций: {e}")
+            return []
+
+    def attack_enemy_cities(self):
+        """
+        Организует атаки на вражеские города.
+        """
+        try:
+            # Получаем список всех фракций, с которыми ведется война
+            at_war_with = self.get_factions_at_war()
+            if not at_war_with:
+                print("Нет фракций, с которыми ведется война.")
+                return
+
+            for enemy_faction in at_war_with:
+                target_city = self.find_nearest_city(enemy_faction)
+                if target_city:
+                    print(f"Атакуем город {target_city} фракции {enemy_faction}")
+                    self.attack_city(target_city, enemy_faction)
+                else:
+                    print(f"Не удалось найти подходящий город для атаки у фракции {enemy_faction}.")
+
+        except Exception as e:
+            print(f"Ошибка при атаке вражеских городов: {e}")
+
     # ---------------------------------------------------------------------
 
     # Основная логика хода ИИ
     def make_turn(self):
         """
         Основная логика хода ИИ фракции.
+        Для фракции 'Мятежники' — только военные действия.
         """
         print(f'---------ХОДИТ ФРАКЦИЯ: {self.faction}-------------------')
         try:
             # 0. Обнуляем использование героя на этом ходу
             self.hero_used_in_turn = False
-            # 1. Обновляем ресурсы из базы данных
-            self.update_resources()
-            self.process_queries()
-            # 2. Проверяем и объявляем войну, если необходимо
-            self.check_and_declare_war()
-            # 3. Применяем бонусы от политической системы
-            self.apply_political_system_bonus()
-            # 4. Изменяем отношения на основе политической системы
-            self.update_relations_based_on_political_system()
-            # 5. Загружаем данные о зданиях
-            self.update_buildings_from_db()
-            # 6. Управление строительством (99% крон на строительство)
-            self.manage_buildings()
-            # 7. Продажа Кристаллы (99% Кристаллы, если его больше 1000)
-            self.sell_resources()
-            # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
-            if self.resources['Кроны'] > 0:
-                self.hire_army()
+
+            # Проверяем, является ли фракция "Мятежники"
+            if self.faction == "Мятежники":
+                print("Фракция 'Мятежники' выполняет только военные действия.")
+                # Выполняем атаки на вражеские города
+                self.attack_enemy_cities()
+            else:
+                # Для всех других фракций — полный ход
+                # 1. Обновляем ресурсы из базы данных
+                self.update_resources()
+                self.process_queries()
+                # 2. Проверяем и объявляем войну, если необходимо
+                self.check_and_declare_war()
+                # 3. Применяем бонусы от политической системы
+                self.apply_political_system_bonus()
+                # 4. Изменяем отношения на основе политической системы
+                self.update_relations_based_on_political_system()
+                # 5. Загружаем данные о зданиях
+                self.update_buildings_from_db()
+                # 6. Управление строительством (99% крон на строительство)
+                self.manage_buildings()
+                # 7. Продажа Кристаллы (99% Кристаллы, если его больше 1000)
+                self.sell_resources()
+                # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
+                if self.resources['Кроны'] > 0:
+                    self.hire_army()
+
             # 9. Сохраняем все изменения в базу данных
             self.save_all_data()
             # Увеличиваем счетчик ходов
@@ -2613,3 +2658,5 @@ class AIController:
             print(f'-----------КОНЕЦ {self.turn} ХОДА----------------  ФРАКЦИИ', self.faction)
         except Exception as e:
             print(f"Ошибка при выполнении хода: {e}")
+            import traceback
+            traceback.print_exc()

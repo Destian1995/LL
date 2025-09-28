@@ -570,6 +570,12 @@ class GameScreen(Screen):
 
         Clock.schedule_interval(self.update_artifact_bonuses, 1)
 
+    def init_ai_controllers(self):
+        """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
+        for faction in FACTIONS:
+            if faction != self.selected_faction:
+                self.ai_controllers[faction] = AIController(faction, self.conn)
+
     def update_artifact_bonuses(self, dt):
         """Обертка для вызова apply_artifact_bonuses с правильными параметрами"""
         self.season_manager.apply_artifact_bonuses(self.conn)
@@ -812,6 +818,95 @@ class GameScreen(Screen):
         self.root_overlay.add_widget(end_turn_container)
         self.save_interface_element("EndTurnButton", "bottom_right", self.end_turn_button)
 
+    def process_turn(self, instance=None):
+        """
+        Обработка хода игрока и ИИ.
+        """
+        # Увеличиваем счетчик ходов
+        self.turn_counter += 1
+        # Обновляем метку с текущим ходом
+        self.turn_label.text = f"Текущий ход: {self.turn_counter}"
+        # Сохраняем текущее значение хода в таблицу turn
+        self.save_turn(self.selected_faction, self.turn_counter)
+        # Сохраняем историю ходов в таблицу turn_save
+        self.save_turn_history(self.selected_faction, self.turn_counter)
+
+        # Проверяем переворот перед обработкой хода
+        if self.check_coup_and_trigger_defeat(self.conn):
+            return  # Игра закончена из-за переворота
+
+        # Обновляем ресурсы игрока и получаем прирост
+        profit_details = self.faction.update_resources()  # Теперь возвращает словарь
+        bonus_details = self.faction.apply_player_bonuses()  # Получаем бонусы
+
+        # Объединяем прирост и бонусы
+        delta_resources = {}
+        for res in profit_details:
+            base_gain = profit_details[res]
+            bonus_gain = bonus_details.get(res, 0)
+            delta_resources[res] = {"base": base_gain, "bonus": bonus_gain}
+
+        # Обновляем интерфейс и передаем дельту для подсветки
+        self.resource_box.update_resources(delta=delta_resources)
+        self.faction.save_resources_to_db()
+        # Проверяем условие завершения игры
+        game_continues, reason = self.faction.end_game()  # Получаем статус и причину завершения
+        if not game_continues:
+            print("Условия завершения игры выполнены.")
+
+            # Определяем статус завершения (win или lose)
+            if "Мир во всем мире" in reason or "Все фракции были уничтожены" in reason:
+                status = "win"  # Условия победы
+            else:
+                status = "lose"  # Условия поражения
+            # Запускаем модуль results_game для обработки результатов
+            results_game_instance = ResultsGame(status, reason, self.conn)  # Создаем экземпляр класса ResultsGame
+            results_game_instance.show_results(self.selected_faction, status, reason)
+            App.get_running_app().restart_app()  # Добавляем прямой вызов перезагрузки
+            return  # Прерываем выполнение дальнейших действий
+
+        # Проверяем, есть ли Мятежники в городах, и создаём ИИ для них
+        self.ensure_rebellion_ai_controller()
+        # Выполнение хода для всех ИИ
+        for ai_controller in self.ai_controllers.values():
+            ai_controller.make_turn()
+        # Удаляем лишних героев 2, 3, 4 классов которых мог наплодить ИИ
+        self.enforce_garrison_hero_limits()
+        # Обновляем статус уничтоженных фракций
+        self.update_destroyed_factions()
+        # Обновляем статус ходов
+        self.reset_check_attack_flags()
+
+        process_nobles_turn(self.conn, self.turn_counter)
+        self.initialize_turn_check_move()
+        # Обновляем текущий сезон
+        new_season = self.update_season(self.turn_counter)
+        self._update_season_display(new_season)
+        self.season_manager.update(self.current_idx, self.conn)
+        # Сбрасываем характеристики отсутствующих юнитов 3 класса
+        self.season_manager.reset_absent_third_class_units(self.conn)
+        print("Здесь должны вызываться функции отрисовки звезд мощи городов")
+        # Обновляем статус городов и отрисовываем звёздочки мощи армий
+        # Принудительно обновляем рейтинг один раз
+        self.update_army_rating()
+        self.event_now = random.randint(1, 100)
+        # Проверяем, нужно ли запустить событие
+        if self.turn_counter % self.event_now == 0:
+            print("Генерация события...")
+            self.event_manager.generate_event(self.turn_counter)
+        # Логирование или обновление интерфейса после хода
+        print(f"Ход {self.turn_counter} завершён")
+
+    def ensure_rebellion_ai_controller(self):
+        """Проверяет, есть ли в городах Мятежники, и добавляет ИИ, если его ещё нет."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT 1 FROM cities WHERE faction = 'Мятежники' LIMIT 1")
+        rebellion_exists = cursor.fetchone()
+
+        if rebellion_exists and 'Мятежники' not in self.ai_controllers:
+            print("Фракция 'Мятежники' обнаружена в городах. Создаём AIController.")
+            self.ai_controllers['Мятежники'] = AIController('Мятежники', self.conn)
+
     def initialize_nobles(self):
         """Генерация начальных дворян при старте игры."""
         try:
@@ -880,82 +975,6 @@ class GameScreen(Screen):
             print(f"Ошибка при проверке переворота: {e}")
             return False
 
-    def process_turn(self, instance=None):
-        """
-        Обработка хода игрока и ИИ.
-        """
-        # Увеличиваем счетчик ходов
-        self.turn_counter += 1
-        # Обновляем метку с текущим ходом
-        self.turn_label.text = f"Текущий ход: {self.turn_counter}"
-        # Сохраняем текущее значение хода в таблицу turn
-        self.save_turn(self.selected_faction, self.turn_counter)
-        # Сохраняем историю ходов в таблицу turn_save
-        self.save_turn_history(self.selected_faction, self.turn_counter)
-
-        # Проверяем переворот перед обработкой хода
-        if self.check_coup_and_trigger_defeat(self.conn):
-            return  # Игра закончена из-за переворота
-
-        # Обновляем ресурсы игрока и получаем прирост
-        profit_details = self.faction.update_resources()  # Теперь возвращает словарь
-        bonus_details = self.faction.apply_player_bonuses()  # Получаем бонусы
-
-        # Объединяем прирост и бонусы
-        delta_resources = {}
-        for res in profit_details:
-            base_gain = profit_details[res]
-            bonus_gain = bonus_details.get(res, 0)
-            delta_resources[res] = {"base": base_gain, "bonus": bonus_gain}
-
-        # Обновляем интерфейс и передаем дельту для подсветки
-        self.resource_box.update_resources(delta=delta_resources)
-        self.faction.save_resources_to_db()
-        # Проверяем условие завершения игры
-        game_continues, reason = self.faction.end_game()  # Получаем статус и причину завершения
-        if not game_continues:
-            print("Условия завершения игры выполнены.")
-
-            # Определяем статус завершения (win или lose)
-            if "Мир во всем мире" in reason or "Все фракции были уничтожены" in reason:
-                status = "win"  # Условия победы
-            else:
-                status = "lose"  # Условия поражения
-            # Запускаем модуль results_game для обработки результатов
-            results_game_instance = ResultsGame(status, reason, self.conn)  # Создаем экземпляр класса ResultsGame
-            results_game_instance.show_results(self.selected_faction, status, reason)
-            App.get_running_app().restart_app()  # Добавляем прямой вызов перезагрузки
-            return  # Прерываем выполнение дальнейших действий
-
-        # Выполнение хода для всех ИИ
-        for ai_controller in self.ai_controllers.values():
-            ai_controller.make_turn()
-        # Удаляем лишних героев 2, 3, 4 классов которых мог наплодить ИИ
-        self.enforce_garrison_hero_limits()
-        # Обновляем статус уничтоженных фракций
-        self.update_destroyed_factions()
-        # Обновляем статус ходов
-        self.reset_check_attack_flags()
-
-        process_nobles_turn(self.conn, self.turn_counter)
-        self.initialize_turn_check_move()
-        # Обновляем текущий сезон
-        new_season = self.update_season(self.turn_counter)
-        self._update_season_display(new_season)
-        self.season_manager.update(self.current_idx, self.conn)
-        # Сбрасываем характеристики отсутствующих юнитов 3 класса
-        self.season_manager.reset_absent_third_class_units(self.conn)
-        print("Здесь должны вызываться функции отрисовки звезд мощи городов")
-        # Обновляем статус городов и отрисовываем звёздочки мощи армий
-        # Принудительно обновляем рейтинг один раз
-        self.update_army_rating()
-        self.event_now = random.randint(1, 100)
-        # Проверяем, нужно ли запустить событие
-        if self.turn_counter % self.event_now == 0:
-            print("Генерация события...")
-            self.event_manager.generate_event(self.turn_counter)
-        # Логирование или обновление интерфейса после хода
-        print(f"Ход {self.turn_counter} завершён")
 
     def update_season(self, turn_count: int) -> dict:
         """
@@ -1314,6 +1333,7 @@ class GameScreen(Screen):
         Обновляет статус фракций в таблице diplomacies.
         Если у фракции нет ни одного города в таблице cities,
         все записи для этой фракции в таблице diplomacies помечаются как "уничтожена".
+        Исключает фракцию "Мятежники".
         """
         cursor = self.conn.cursor()
         try:
@@ -1330,6 +1350,10 @@ class GameScreen(Screen):
                 FROM diplomacies
             """)
             all_factions = {row[0] for row in cursor.fetchall()}
+
+            # Исключаем "Мятежников" из проверки на уничтожение
+            all_factions.discard("Мятежники")
+            factions_with_cities.discard("Мятежники")
 
             # Шаг 3: Определяем фракции, у которых нет ни одного города
             destroyed_factions = all_factions - factions_with_cities
@@ -1614,11 +1638,6 @@ class GameScreen(Screen):
         except sqlite3.Error as e:
             print(f"Ошибка при сбросе флагов can_move: {e}")
 
-    def init_ai_controllers(self):
-        """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
-        for faction in FACTIONS:
-            if faction != self.selected_faction:
-                self.ai_controllers[faction] = AIController(faction, self.conn)
 
     def load_turn(self, faction):
         """Загрузка текущего значения хода для фракции."""

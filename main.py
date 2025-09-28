@@ -1206,15 +1206,17 @@ class KingdomSelectionWidget(FloatLayout):
     def load_factions_from_db(self):
         """
         Загружает список уникальных фракций из таблицы diplomacies_default.
+        Исключает фракцию "Мятежники".
         :return: Список словарей с информацией о фракциях.
         """
         factions = []
         try:
             cursor = self.conn.cursor()
-            # Выполняем запрос к таблице diplomacies_default
+            # Выполняем запрос к таблице diplomacies_default, исключая "Мятежники"
             cursor.execute("""
                 SELECT DISTINCT faction1 
                 FROM diplomacies_default
+                WHERE faction1 != 'Мятежники'
             """)
             rows = cursor.fetchall()
 

@@ -7,7 +7,7 @@ from economic import format_number
 db_lock = threading.Lock()
 from manage_friend import ManageFriend
 from nobles import show_nobles_window
-
+from diversion import show_diversion_window
 
 translation_dict = {
     "Люди": "arkadia",
@@ -765,7 +765,7 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     # Описание
     description_label = Label(
         text="Обмен культурными ценностями повышает доверие между фракциями (+7% к отношениям).\n"
-             "Стоимость: от 25 млн. крон.",
+             "Стоимость: от 5 млн. крон.",
         size_hint=(1, None),
         height=font_size * 4,
         font_size=font_size,
@@ -832,7 +832,7 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
             target_city_count = cursor2.fetchone()[0]
 
             # Стоимость договора
-            cost = 5_000_000 + (20_000_000 * target_city_count)
+            cost = 1_000_000 + (4_000_000 * target_city_count)
 
             # Баланс игрока
             current_balance = political_cash.resources["Кроны"]
@@ -1105,11 +1105,11 @@ def show_peace_form(player_faction, conn):
             if player_points > enemy_points:
                 superiority_percentage = ((player_points - enemy_points) / max(enemy_points, 1)) * 100
                 if superiority_percentage >= 70:
-                    response = "Это что сейчас было?...Пора менять командование"
+                    response = "Какой дебил нас сюда послал?.."
                 elif 50 <= superiority_percentage < 70:
                     response = "Нихера себе повоевали...."
                 elif 20 <= superiority_percentage < 50:
-                    response = "Какой дебил нас сюда послал?.."
+                    response = "Мы похоже вас недооценили..."
                 elif 5 <= superiority_percentage < 20:
                     response = "Вам не стыдно слабых обижать?"
                 else:
@@ -1313,7 +1313,7 @@ def show_alliance_form(faction, game_area, class_faction, conn):
         target_city_count = cursor.fetchone()[0]
 
         # Стоимость альянса
-        alliance_cost = 80_000_000 + (35_000_000 * target_city_count)
+        alliance_cost = 10_000_000 + (30_000_000 * target_city_count)
 
         # Баланс игрока
         political_cash = PoliticalCash(faction, class_faction)
@@ -1922,7 +1922,7 @@ def start_politic_mode(faction, game_area, class_faction, conn):
         orientation='horizontal',
         size_hint=(1, None),
         height=dp(70) if is_android else 60,
-        pos_hint={'x': -0.15, 'y': 0},
+        pos_hint={'x': -0.34, 'y': 0},
         spacing=dp(10) if is_android else 10,
         padding=[dp(10), dp(5), dp(10), dp(5)] if is_android else [10, 5, 10, 5]
     )
@@ -1961,10 +1961,12 @@ def start_politic_mode(faction, game_area, class_faction, conn):
     btn_allies = styled_btn("Союзник", lambda btn: manage_friend_popup.open_popup())
     btn_army = styled_btn("Сила армий", lambda btn: show_ratings_popup(conn))
     btn_nobles = styled_btn("Парламент", lambda btn: show_nobles_window(conn, faction, class_faction))
+    btn_diversion = styled_btn("Диверсия", lambda btn: show_diversion_window(conn, faction, class_faction))
 
     politics_layout.add_widget(btn_new)
     politics_layout.add_widget(btn_allies)
     politics_layout.add_widget(btn_army)
     politics_layout.add_widget(btn_nobles)
+    politics_layout.add_widget(btn_diversion)
 
     game_area.add_widget(politics_layout)
