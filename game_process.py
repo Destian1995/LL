@@ -8,7 +8,7 @@ from event_manager import EventManager
 from results_game import ResultsGame
 from seasons import SeasonManager
 from nobles_generator import generate_initial_nobles
-from nobles_generator import initialize_nobles_if_needed, process_nobles_turn
+from nobles_generator import process_nobles_turn
 
 # Новые кастомные виджеты
 class ModernButton(Button):

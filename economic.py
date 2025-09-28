@@ -126,10 +126,10 @@ class Faction:
             'Лимит армии': self.max_army_limit
         }
         self.economic_params = {
-            "Люди": {"tax_rate": 0.03},
-            "Эльфы": {"tax_rate": 0.015},
+            "Люди": {"tax_rate": 0.07},
+            "Эльфы": {"tax_rate": 0.03},
             "Вампиры": {"tax_rate": 0.02},
-            "Адепты": {"tax_rate": 0.012},
+            "Адепты": {"tax_rate": 0.017},
             "Элины": {"tax_rate": 0.01},
         }
 
@@ -457,13 +457,13 @@ class Faction:
         elif 25 <= tax_rate < 35:
             return 0  # Нейтральный эффект (0%)
         elif 16 <= tax_rate < 25:
-            return 5  # Небольшой рост (5%)
+            return 11  # Небольшой рост (5%)
         elif 10 <= tax_rate < 16:
-            return 11  # Небольшой рост населения (+11%)
+            return 20  # Небольшой рост населения (+11%)
         elif 1 <= tax_rate < 10:
-            return 18  # Небольшой рост населения (+18%)
+            return 32  # Небольшой рост населения (+18%)
         else:
-            return 34  # Существенный рост населения (+34%)
+            return 54  # Существенный рост населения (+34%)
 
     def apply_tax_effect(self, tax_rate):
         """

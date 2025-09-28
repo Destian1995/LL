@@ -8,6 +8,10 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 
+EVENT_COUNT_FOR_SYMPATHIES = 6  # После N мероприятий появляются симпатии
+SHOW_SYMPATHIES = False         # Флаг, показывать ли симпатии
+SYMPATHIES_VISIBLE_UNTIL_PRIORITY_CHANGE = False  # Симпатии скрываются при смене приоритетов
+
 # Список рас (5 штук)
 RACES = ['Люди', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']
 
@@ -125,6 +129,46 @@ def record_coup_attempt(conn, is_successful):
         conn.commit()
         print("✅ Успешный переворот записан в базу данных")
 
+def generate_new_noble(conn, faction_race):
+    """
+    Генерирует нового дворянина.
+    Используется при устранении через Тайную Службу и при неудачной попытке переворота.
+    """
+    cursor = conn.cursor()
+
+    available_names = [
+        n for n in NAMES[faction_race]
+        if n not in [noble['name'] for noble in get_all_nobles(conn) if noble['status'] != 'eliminated']
+    ]
+    if not available_names:
+        available_names = NAMES[faction_race]
+
+    new_name = random.choice(available_names)
+    new_loyalty = random.uniform(55, 75)
+    new_priority = 99  # Будет пересчитан
+    new_status = 'active'
+
+    # Новая черта характера
+    trait_type = random.choice(['ideology', 'race_love', 'greed'])
+    if trait_type == 'ideology':
+        new_ideology = random.choice(IDEOLOGIES)
+    elif trait_type == 'race_love':
+        new_ideology = f"Любит {random.choice([r for r in RACES if r != faction_race])}"
+    else:  # greed
+        base_demand = 1_000_000
+        percentage = random.uniform(0.35, 0.75)
+        additional_demand = int(10_000_000 * percentage)
+        total_demand = base_demand + additional_demand
+        new_ideology = json.dumps({'type': 'greed', 'demand': total_demand})
+
+    new_attendance_history = ""
+
+    cursor.execute("""
+        INSERT INTO nobles (priority, loyalty, status, name, ideology, attendance_history) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (new_priority, new_loyalty, new_status, new_name, new_ideology, new_attendance_history))
+
+    conn.commit()
 
 # --- Основные функции управления дворянами ---
 
@@ -186,8 +230,6 @@ def generate_initial_nobles(conn):
     conn.commit()
     print("Начальные советники (дворяне) инициализированы.")
 
-
-
 def decrease_loyalty_over_time(conn):
     """Снижение лояльности всех дворян на 3% за ход, с учетом идеологии."""
     cursor = conn.cursor()
@@ -210,7 +252,6 @@ def decrease_loyalty_over_time(conn):
         cursor.execute("UPDATE nobles SET loyalty = ? WHERE id = ?", (new_loyalty, noble_id))
 
     conn.commit()
-
 
 def calculate_attendance_probability(conn, noble_id, player_faction, event_type, event_season):
     """
@@ -275,7 +316,6 @@ def calculate_attendance_probability(conn, noble_id, player_faction, event_type,
     # print(f"DEBUG: Noble {noble_id} финальная вероятность {final_prob}")
     return final_prob
 
-
 def update_noble_loyalty_for_event(conn, noble_id, player_faction, event_type, event_season):
     """
     Обновление лояльности конкретного советника после мероприятия.
@@ -315,17 +355,16 @@ def update_noble_loyalty_for_event(conn, noble_id, player_faction, event_type, e
     cursor.execute("UPDATE nobles SET loyalty = ?, attendance_history = ? WHERE id = ?", (new_loyalty, new_history_str, noble_id))
     conn.commit()
 
-
 def check_coup_attempts(conn):
     """
     Проверка попыток переворота.
     """
     cursor = conn.cursor()
-    cursor.execute("SELECT id, loyalty FROM nobles WHERE status = 'active'")
+    cursor.execute("SELECT id, loyalty, name FROM nobles WHERE status = 'active'")
     all_nobles = cursor.fetchall()
 
-    disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 30)
-    very_disloyal_count = sum(1 for _, loyalty in all_nobles if loyalty < 25)
+    disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 30)
+    very_disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 25)
 
     coup_occurred = False
 
@@ -333,36 +372,68 @@ def check_coup_attempts(conn):
     if disloyal_count >= 2:
         if random.random() < 0.5: # 50% шанс
             coup_occurred = True
-
-            # Записываем успешный переворот
             record_coup_attempt(conn, True)
-
-            # Показываем сообщение о попытке переворота
             show_coup_attempt_popup(successful=True)
         else:
-            coup_occurred = False
-            # Показываем сообщение о попытке переворота
-            show_coup_attempt_popup(successful=False)
+            handle_failed_coup(conn, all_nobles)
 
     # Условие 2: 1+ дворян с лояльностью < 15
     elif very_disloyal_count >= 1:
-        # Попытка переворота
         if random.random() < 0.3: # 30% шанс успеха
             coup_occurred = True
-
-            # Записываем успешный переворот
             record_coup_attempt(conn, True)
-
-            # Показываем сообщение о попытке переворота
             show_coup_attempt_popup(successful=True)
         else:
-            coup_occurred = False
-            # Показываем сообщение о попытке переворота
-            show_coup_attempt_popup(successful=False)
+            handle_failed_coup(conn, all_nobles)
 
     return coup_occurred
 
-def show_coup_attempt_popup(successful=False):
+def handle_failed_coup(conn, all_nobles):
+    """
+    Обработка неудачной попытки переворота:
+    - Убить одного из нелояльных дворян.
+    - Три исхода: страх, безразличие, слабость.
+    - Сгенерировать нового дворянина на его место.
+    """
+    cursor = conn.cursor()
+
+    # Список нелояльных дворян (loyalty < 30)
+    disloyal_nobles = [(id, name) for id, loyalty, name in all_nobles if loyalty < 30]
+    if not disloyal_nobles:
+        # Если нет нелояльных — выбираем любого активного
+        disloyal_nobles = [(id, name) for id, _, name in all_nobles]
+
+    if not disloyal_nobles:
+        return
+
+    # Выбираем случайного нелояльного дворянина для убийства
+    target_id, target_name = random.choice(disloyal_nobles)
+
+    # Убиваем
+    cursor.execute("UPDATE nobles SET status = 'eliminated' WHERE id = ?", (target_id,))
+    conn.commit()
+
+    # Три исхода
+    outcome = random.choice(['fear', 'indifferent', 'weakness'])
+
+    if outcome == 'fear':
+        increase_all_loyalty(conn, 8.0)
+        message = f"Попытка переворота провалилась. {target_name} убит. Оперативность службы вызвала шок, лояльность повысилась на 8%."
+    elif outcome == 'indifferent':
+        message = f"Попытка переворота провалилась. {target_name} убит. Ну и земля стекловатой, лояльность не изменилась."
+    elif outcome == 'weakness':
+        decrease_all_loyalty(conn, 4.0)
+        message = f"Попытка переворота провалилась. {target_name} убит. Многие увидели в этом слабость, лояльность снизилась на 4%."
+
+    # Генерируем нового дворянина на его место
+    faction_race = get_player_faction(conn)
+    if not faction_race:
+        faction_race = 'Люди'  # fallback
+    generate_new_noble(conn, faction_race)
+
+    show_coup_attempt_popup(successful=False, message_override=message)
+
+def show_coup_attempt_popup(successful=False, message_override=None):
     """Отображает popup с информацией о попытке переворота."""
     try:
         is_android = hasattr(Window, 'keyboard') and Window.keyboard
@@ -376,11 +447,13 @@ def show_coup_attempt_popup(successful=False):
         content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
         if successful:
-            pass
-        else:
             title_text = "Попытка переворота!"
             title_color = (0.9, 0.2, 0.2, 1)  # Красный
             message_text = "Тайная служба пресекла попытку государственного переворота, один из дворян убит!"
+        else:
+            title_text = "Попытка переворота!"
+            title_color = (0.9, 0.6, 0.2, 1)  # Оранжевый
+            message_text = message_override or "Тайная служба пресекла попытку государственного переворота, один из нелояльных дворян казнён."
 
         title_label = Label(
             text=f"[b]{title_text}[/b]",
@@ -415,29 +488,63 @@ def show_coup_attempt_popup(successful=False):
             auto_dismiss=True
         )
 
-        # Убедимся, что popup отображается в главном потоке
         from kivy.clock import Clock
         Clock.schedule_once(lambda dt: popup.open(), 0)
 
     except Exception as e:
         print(f"Ошибка при отображении popup: {e}")
 
-def update_nobles_periodically(conn, current_turn):
+def update_nobles_periodically(conn, current_turn, events_count=0):
     """
     Периодическое обновление состояния дворян.
-    Вызывается из process_turn.
+    events_count — количество проведённых мероприятий.
     """
     # 1. Обновление лояльности (каждые ход)
     if current_turn % 1 == 0:
         update_loyalty_dynamically(conn)
 
     # 2. Проверка попыток переворота
-    check_coup_attempts(conn) # Проверяем каждый ход
+    check_coup_attempts(conn)
 
-    # 3. Смена приоритетов (каждые 13 ходов)
+    # 3. Включение симпатий после 6 мероприятий
+    global SHOW_SYMPATHIES
+    if events_count >= EVENT_COUNT_FOR_SYMPATHIES:
+        SHOW_SYMPATHIES = True
+    else:
+        SHOW_SYMPATHIES = False
+
+    # 4. Смена приоритетов (каждые 13 ходов)
     if current_turn % 13 == 0 and current_turn > 0:
         change_noble_priorities(conn)
+        SHOW_SYMPATHIES = False  # Сброс симпатий при смене приоритетов
 
+def get_noble_display_name_with_sympathies(noble):
+    """
+    Возвращает имя дворянина с симпатиями в скобках, если SHOW_SYMPATHIES = True.
+    """
+    name = noble['name']
+    if not SHOW_SYMPATHIES:
+        return name
+
+    traits = get_noble_traits(noble['ideology'])
+
+    # Продажные дворяне не отображаются
+    if traits['type'] == 'greed':
+        return name
+
+    # Маппинг идеологий на отображаемый текст
+    ideology_to_text = {
+        'Борьба': " (Выжить можно только в Борьбе!)",
+        'Смирение': " (Смирение залог процветания!)",
+        'Любит Эльфы': " (Только Эльфы знают как жить в гармонии!)",
+        'Любит Элины': " (Как же грациозен повелитель Элинов!)",
+        'Любит Люди': " (Люди единственный баланс в мире!)",
+        'Любит Вампиры': " (Наш мир принадлежит Вампирам!)",
+        'Любит Адепты': " (Вера наше спасение!)",
+    }
+
+    sympathies = ideology_to_text.get(traits['value'], "")
+    return name + sympathies
 
 def update_loyalty_dynamically(conn):
     """Обновление лояльности всех дворян на основе их предпочтений и текущей ситуации."""
@@ -508,7 +615,6 @@ def change_noble_priorities(conn):
         conn.commit()
         print("Приоритеты дворян изменены.")
 
-
 def get_all_nobles(conn):
     cursor = conn.cursor()
     cursor.execute("""
@@ -530,7 +636,6 @@ def get_all_nobles(conn):
             'attendance_history': row[6]
         })
     return nobles
-
 
 def attempt_secret_service_action(conn, player_faction=None, target_noble_id=None):
     """
@@ -585,44 +690,11 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
         (noble_to_eliminate_id,)
     )
 
-    # Генерация нового дворянина
+    # Генерация нового дворянина на его место
     faction_race = get_player_faction(conn)
     if not faction_race:
         faction_race = 'Люди'  # fallback
-
-    available_names = [
-        n for n in NAMES[faction_race]
-        if n not in [noble['name'] for noble in get_all_nobles(conn) if noble['status'] != 'eliminated']
-    ]
-    if not available_names:
-        available_names = NAMES[faction_race]
-
-    new_name = random.choice(available_names)
-    new_loyalty = random.uniform(55, 75)
-    new_priority = 99  # Будет пересчитан
-    new_status = 'active'
-
-    # Новая черта характера
-    trait_type = random.choice(['ideology', 'race_love', 'greed'])
-    if trait_type == 'ideology':
-        new_ideology = random.choice(IDEOLOGIES)
-    elif trait_type == 'race_love':
-        new_ideology = f"Любит {random.choice([r for r in RACES if r != faction_race])}"
-    else:  # greed
-        base_demand = 1_000_000
-        percentage = random.uniform(0.35, 0.75)
-        additional_demand = int(10_000_000 * percentage)
-        total_demand = base_demand + additional_demand
-        new_ideology = json.dumps({'type': 'greed', 'demand': total_demand})
-
-    new_attendance_history = ""
-
-    cursor.execute("""
-        INSERT INTO nobles (priority, loyalty, status, name, ideology, attendance_history) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (new_priority, new_loyalty, new_status, new_name, new_ideology, new_attendance_history))
-
-    conn.commit()
+    generate_new_noble(conn, faction_race)
 
     # 50% шанс, что узнают об успешной операции
     is_discovered = random.random() <= 0.5
@@ -768,10 +840,6 @@ def pay_greedy_noble(conn, noble_id, amount):
     return True
 
 # --- Функции для интеграции с GameScreen ---
-
-def initialize_nobles_if_needed(conn):
-    """Инициализация дворян при старте игры."""
-    generate_initial_nobles(conn)
 
 def process_nobles_turn(conn, current_turn):
     """Обработка хода для дворян."""

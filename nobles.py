@@ -10,13 +10,13 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout # Добавлено для таблиц
 from nobles_generator import (
     get_all_nobles,
-    check_coup_attempts,
     update_noble_loyalty_for_event,
     attempt_secret_service_action,
     get_player_faction,
     get_noble_traits,
     pay_greedy_noble,
-    show_secret_service_result_popup
+    show_secret_service_result_popup,
+    get_noble_display_name_with_sympathies
 )
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
@@ -103,6 +103,8 @@ class CalculateCash:
         except Exception as e:
             print(f"Ошибка при списании ресурсов: {e}")
             return False
+
+
 # --- Функции для работы с мероприятиями ---
 def get_current_season_index(conn):
     """Получает индекс текущего сезона из БД."""
@@ -110,14 +112,20 @@ def get_current_season_index(conn):
     cursor.execute("SELECT season_index FROM season WHERE id = 1")
     result = cursor.fetchone()
     return result[0] if result else 0
+
+
 def get_season_name_by_index(index):
     """Получает название сезона по его индексу."""
     season_names = ['Зима', 'Весна', 'Лето', 'Осень']
     return season_names[index] if 0 <= index < len(season_names) else 'Зима'
+
+
 def get_event_type_by_season(season_index):
     """Получает тип мероприятия по индексу сезона."""
     events = {0: 'Бал', 1: 'Королевский совет', 2: 'Королевская охота', 3: 'Рыцарский турнир'}
     return events.get(season_index, 'Неизвестное мероприятие')
+
+
 # --- Функции интерфейса ---
 def create_noble_widget(noble_data, conn, cash_player):
     """Создание виджета для отображения одного дворянина (табличный формат)"""
@@ -132,10 +140,10 @@ def create_noble_widget(noble_data, conn, cash_player):
 
     # --- Используем GridLayout для табличного формата ---
     layout = GridLayout(cols=2, size_hint_y=None, height=widget_height, padding=padding_inner, spacing=spacing_inner)
-
+    display_name = get_noble_display_name_with_sympathies(noble_data)
     # Имя
     name_label = Label(
-        text=noble_data['name'],
+        text=display_name,
         font_size=font_large,
         halign='left',
         valign='middle',
@@ -189,12 +197,9 @@ def create_noble_widget(noble_data, conn, cash_player):
 def calculate_event_cost(season_index):
     """Рассчитывает стоимость мероприятия в зависимости от сезона."""
     base_cost = 2_000_000
-    seasonal_multiplier = {0: 1.9, 1: 1.0, 2: 4.5, 3: 7.1}
+    seasonal_multiplier = {0: 1.9, 1: 0.4, 2: 4.5, 3: 9.1}
     multiplier = seasonal_multiplier.get(season_index, 1.0)
     return int(base_cost * multiplier)
-
-# --- show_deal_popup, show_event_result_popup, show_secret_service_result_popup остаются без изменений ---
-# (Предполагается, что они определены в оригинальном файле)
 
 def show_deal_popup(conn, noble_data, cash_player): # Добавлен cash_player
     """Показывает всплывающее окно с требованием продажного дворянина."""
@@ -236,7 +241,7 @@ def show_deal_popup(conn, noble_data, cash_player): # Добавлен cash_play
     )
     demand_label.bind(size=demand_label.setter('text_size'))
     info_label = Label(
-        text="Если Вы заплатите, я буду лоббировать Ваши интересы.",
+        text="Если Вы заплатите, я буду продвигать Ваши интересы.",
         font_size=sp(14),
         color=(0.8, 0.8, 0.8, 1),
         halign='center',
@@ -260,10 +265,6 @@ def show_deal_popup(conn, noble_data, cash_player): # Добавлен cash_play
             # Списание прошло успешно, теперь оплачиваем дворянина
             pay_success = pay_greedy_noble(conn, noble_data['id'], demand)
             if pay_success:
-                # Обновляем отображение (например, меняем статус или цвет)
-                # В данном случае, предположим, что лояльность увеличивается или статус меняется
-                # Для простоты, просто покажем сообщение. Обновление списка произойдет при перезагрузке.
-                # Можно добавить обновление конкретного виджета, если нужно.
                 success_popup = Popup(
                     title="Успех",
                     content=Label(text=f"Вы заплатили {format_number(demand)} крон. {noble_data['name']} теперь лоялен.", halign='center'),
@@ -435,6 +436,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         # Заменяем on_result_callback на красивый popup
         show_secret_service_result_popup({'success': False, 'message': "Ошибка получения списка целей."})
         return
+
     if not nobles_data:
         no_targets_popup = Popup(
             title="Нет целей",
@@ -451,6 +453,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         # Заменяем on_result_callback на красивый popup
         show_secret_service_result_popup({'success': False, 'message': "Нет доступных целей для устранения."})
         return
+
     # --- Адаптивные размеры для Android ---
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(10) if not is_android else dp(5)
@@ -463,6 +466,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     btn_height = dp(35) if not is_android else dp(30)
     btn_font_size = sp(11) if not is_android else sp(9)
     noble_item_height = dp(50) if not is_android else dp(45)
+
     # --- Создаем попап для выбора цели ---
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
     title_label = Label(
@@ -472,6 +476,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         size_hint_y=None,
         height=dp(35) if not is_android else dp(30)
     )
+
     # --- Таблица дворян для выбора ---
     scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
     # Используем GridLayout для табличного формата
@@ -479,7 +484,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     table_layout.bind(minimum_height=table_layout.setter('height'))
 
     # --- Заголовки таблицы ---
-    header_names = ["Имя", "Лояльность", "", ""] # Пустые заголовки для кнопок
+    header_names = ["Имя", "Лояльность", "Взгляды", ""] # Пустые заголовки для кнопок
     for header_text in header_names:
         header_label = Label(
             text=f"[b]{header_text}[/b]",
@@ -496,9 +501,10 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
 
     # --- Создаем строки для каждого активного дворянина ---
     for noble_data in nobles_data:
-        # Имя
+        display_name = get_noble_display_name_with_sympathies(noble_data)
+
         name_label = Label(
-            text=noble_data['name'],
+            text=display_name,  # ✅ Новое имя с симпатиями
             halign='left',
             valign='middle',
             font_size=font_noble_name,
@@ -522,7 +528,6 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         else:
             loyalty_color = (0.7, 0.7, 0.7, 1)  # Серый цвет для неопределенной лояльности
             loyalty_text = "?"
-
         loyalty_label = Label(
             text=loyalty_text,
             halign='center',
@@ -535,10 +540,45 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         )
         loyalty_label.bind(size=loyalty_label.setter('text_size'))
 
-        # Пустые ячейки для выравнивания
+        # --- НОВЫЙ КОД: Взгляды ---
+        # Извлекаем идеологию и отображаем её как "Взгляды"
+        noble_traits = get_noble_traits(noble_data['ideology'])
+
+        # Маппинг идеологий на отображаемый текст "взглядов" (без симпатий)
+        ideology_to_text = {
+            'Борьба': "Борьба",
+            'Смирение': "Смирение",
+            'Любит Эльфы': "Любит Эльфов",
+            'Любит Элины': "Любит Элинов",
+            'Любит Люди': "Любит Людей",
+            'Любит Вампиры': "Любит Вампиров",
+            'Любит Адепты': "Любит Адептов",
+        }
+
+        # Продажные дворяне отображаются как "Продажный"
+        if noble_traits['type'] == 'greed':
+            views_text = "Продажный"
+        else:
+            # Используем маппинг для получения краткого описания взгляда
+            views_text = ideology_to_text.get(noble_traits['value'], noble_traits['value'])
+
+        views_label = Label(
+            text=views_text,
+            halign='center',  # Центрируем текст взгляда
+            valign='middle',
+            font_size=font_noble_loyalty, # Используем тот же размер, что и для лояльности
+            size_hint_y=None,
+            height=noble_item_height,
+            color=(0.9, 0.9, 0.9, 1), # Беловатый цвет
+            text_size=(None, None)
+        )
+        views_label.bind(size=views_label.setter('text_size'))
+        # --- КОНЕЦ НОВОГО КОДА ---
+
+        # Добавляем ячейки в таблицу
         table_layout.add_widget(name_label)
         table_layout.add_widget(loyalty_label)
-        table_layout.add_widget(Label(size_hint_y=None, height=noble_item_height)) # Пустая ячейка
+        table_layout.add_widget(views_label) # Добавляем ячейку с "Взглядами" вместо пустой
 
         # Кнопка выбора
         select_btn = Button(
@@ -579,10 +619,11 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     cancel_btn_layout.add_widget(Label())  # Пустой виджет для центрирования
     cancel_btn_layout.add_widget(cancel_btn)
     cancel_btn_layout.add_widget(Label())  # Пустой виджет для центрирования
-    content.add_widget(title_label)
 
+    content.add_widget(title_label)
     content.add_widget(scroll_view)
     content.add_widget(cancel_btn_layout)
+
     # Адаптивные размеры попапа
     popup_size_hint = (0.95, 0.85) if not is_android else (1, 1)
     popup_pos_hint = {} if not is_android else {'center_x': 0.5, 'center_y': 0.5}

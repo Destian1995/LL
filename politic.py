@@ -1967,7 +1967,4 @@ def start_politic_mode(faction, game_area, class_faction, conn):
     politics_layout.add_widget(btn_army)
     politics_layout.add_widget(btn_nobles)
 
-    # Опционально: добавить отступ справа
-    # politics_layout.add_widget(Widget(size_hint_x=None, width=dp(20)))
-
     game_area.add_widget(politics_layout)
