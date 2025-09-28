@@ -821,4 +821,4 @@ def show_result_popup(title, message, is_success=True):
         size_hint=(0.85, 0.5),
         auto_dismiss=True
     )
-    popup.open()
+    popup.open() 
