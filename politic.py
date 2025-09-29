@@ -61,7 +61,7 @@ def all_factions(cursor):
                 UNION
                 SELECT faction2 AS faction, relationship FROM diplomacies
             ) AS all_factions
-            WHERE relationship != 'уничтожена'
+            WHERE relationship != 'уничтожена' AND faction != 'Мятежники'
         """
         cursor.execute(query)
         factions = [row[0] for row in cursor.fetchall()]

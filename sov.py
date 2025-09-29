@@ -184,7 +184,7 @@ class AdvisorView(FloatLayout):
         Возвращает словарь, где ключи — названия фракций, а значения — информация о системе и её влиянии.
         """
         try:
-            query = "SELECT faction, system FROM political_systems"
+            query = "SELECT faction, system FROM political_systems WHERE faction != 'Мятежники'"
             self.cursor.execute(query)
             rows = self.cursor.fetchall()
 
@@ -198,6 +198,70 @@ class AdvisorView(FloatLayout):
             return systems
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке политических систем: {e}")
+            return {}
+
+    def load_relations(self):
+        """
+        Загружает текущие отношения из таблицы relations в базе данных.
+        Возвращает словарь, где ключи — названия фракций, а значения — уровни отношений.
+        """
+        try:
+            # Выполняем запрос к таблице relations
+            self.cursor.execute('''
+                SELECT faction2, relationship
+                FROM relations
+                WHERE faction1 = ? AND faction2 != 'Мятежники'
+            ''', (self.faction,))
+            rows = self.cursor.fetchall()
+
+            # Преобразуем результат в словарь
+            relations = {faction2: relationship for faction2, relationship in rows}
+            return relations
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при загрузке отношений из таблицы relations: {e}")
+            return {}
+
+    def load_diplomacies(self):
+        """
+        Загружает дипломатические соглашения из базы данных для текущей фракции (self.faction).
+        Возвращает словарь, где ключи — названия фракций, а значения — статусы отношений.
+        """
+        diplomacies_data = {}
+        try:
+            cursor = self.db_connection.cursor()
+            # Добавляем условие WHERE faction1 = ? и исключаем Мятежников
+            query = "SELECT faction2, relationship FROM diplomacies WHERE faction1 = ? AND faction2 != 'Мятежники'"
+            cursor.execute(query, (self.faction,))
+            rows = cursor.fetchall()
+
+            print("Загруженные данные из таблицы diplomacies:", rows)  # Отладочный вывод
+
+            # Преобразуем результат в словарь
+            for faction2, relationship in rows:
+                diplomacies_data[faction2] = relationship
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при работе с базой данных: {e}")
+        finally:
+            print("Результат загрузки diplomacies_data:", diplomacies_data)  # Отладочный вывод
+            return diplomacies_data
+
+    def load_relations_for_target(self, target_faction):
+        """
+        Загружает отношения для указанной целевой фракции.
+        Возвращает словарь, где ключи — названия фракций, а значения — уровни отношений.
+        """
+        try:
+            self.cursor.execute('''
+                SELECT faction2, relationship
+                FROM relations
+                WHERE faction1 = ? AND faction2 != 'Мятежники'
+            ''', (target_faction,))
+            rows = self.cursor.fetchall()
+            return {faction2: relationship for faction2, relationship in rows}
+        except sqlite3.Error as e:
+            print(f"Ошибка при загрузке отношений для фракции {target_faction}: {e}")
             return {}
 
     def get_influence_description(self, system):
@@ -281,28 +345,6 @@ class AdvisorView(FloatLayout):
             self.popup.dismiss()
         else:
             print("Ошибка: Попап не найден.")
-
-    def load_relations(self):
-        """
-        Загружает текущие отношения из таблицы relations в базе данных.
-        Возвращает словарь, где ключи — названия фракций, а значения — уровни отношений.
-        """
-        try:
-            # Выполняем запрос к таблице relations
-            self.cursor.execute('''
-                SELECT faction2, relationship
-                FROM relations
-                WHERE faction1 = ?
-            ''', (self.faction,))
-            rows = self.cursor.fetchall()
-
-            # Преобразуем результат в словарь
-            relations = {faction2: relationship for faction2, relationship in rows}
-            return relations
-
-        except sqlite3.Error as e:
-            print(f"Ошибка при загрузке отношений из таблицы relations: {e}")
-            return {}
 
     def calculate_coefficient(self, relation_level):
         """Рассчитывает коэффициент на основе уровня отношений"""
@@ -445,30 +487,6 @@ class AdvisorView(FloatLayout):
 
         self.popup.content = self.interface_window
 
-    def load_diplomacies(self):
-        """
-        Загружает дипломатические соглашения из базы данных для текущей фракции (self.faction).
-        Возвращает словарь, где ключи — названия фракций, а значения — статусы отношений.
-        """
-        diplomacies_data = {}
-        try:
-            cursor = self.db_connection.cursor()
-            # Добавляем условие WHERE faction1 = ?
-            query = "SELECT faction2, relationship FROM diplomacies WHERE faction1 = ?"
-            cursor.execute(query, (self.faction,))
-            rows = cursor.fetchall()
-
-            print("Загруженные данные из таблицы diplomacies:", rows)  # Отладочный вывод
-
-            # Преобразуем результат в словарь
-            for faction2, relationship in rows:
-                diplomacies_data[faction2] = relationship
-
-        except sqlite3.Error as e:
-            print(f"Ошибка при работе с базой данных: {e}")
-        finally:
-            print("Результат загрузки diplomacies_data:", diplomacies_data)  # Отладочный вывод
-            return diplomacies_data
 
     def manage_relations(self):
         """
@@ -506,23 +524,6 @@ class AdvisorView(FloatLayout):
 
         # Сохраняем обновленные данные в базу данных
         self.save_relations_to_db(relations_data)
-
-    def load_relations_for_target(self, target_faction):
-        """
-        Загружает отношения для указанной целевой фракции.
-        Возвращает словарь, где ключи — названия фракций, а значения — уровни отношений.
-        """
-        try:
-            self.cursor.execute('''
-                SELECT faction2, relationship
-                FROM relations
-                WHERE faction1 = ?
-            ''', (target_faction,))
-            rows = self.cursor.fetchall()
-            return {faction2: relationship for faction2, relationship in rows}
-        except sqlite3.Error as e:
-            print(f"Ошибка при загрузке отношений для фракции {target_faction}: {e}")
-            return {}
 
     def update_relations_in_db(self, target_faction, new_value):
         """

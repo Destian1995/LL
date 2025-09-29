@@ -138,7 +138,8 @@ def show_diversion_window(conn, faction, class_faction):
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT faction FROM cities WHERE faction != ?", (player_faction,))
+    # Исключаем Мятежников из списка целей
+    cursor.execute("SELECT DISTINCT faction FROM cities WHERE faction != ? AND faction != 'Мятежники'", (player_faction,))
     target_factions_result = cursor.fetchall()
     target_factions = [row[0] for row in target_factions_result if row[0]]
 
