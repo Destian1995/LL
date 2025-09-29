@@ -891,89 +891,6 @@ class MapWidget(Widget):
         self.check_fortress_click(touch)
 
 
-class RoundedButton(Button):
-    instances = []  # Список всех созданных кнопок
-    bg_color = ListProperty((0.1, 0.5, 0.9, 1))
-    border_width = NumericProperty(2)
-
-    def __init__(self, bg_color=(0.1, 0.5, 0.9, 1), radius=25, border_width=2, **kwargs):
-        super().__init__(**kwargs)
-        self.bg_color = bg_color
-        self.radius = radius
-        self.border_width = border_width
-        self.background_color = (0, 0, 0, 0)  # Отключаем стандартный фон
-        self.active = False  # Состояние кнопки: активна ли она
-        self.darken_factor = 0.8  # Коэффициент затемнения
-
-        # Сохраняем инстанс кнопки
-        RoundedButton.instances.append(self)
-
-        with self.canvas.before:
-            self.rect_color = Color(*self.bg_color)
-            self.rect = RoundedRectangle(
-                pos=self.pos,
-                size=self.size,
-                radius=[self.radius]
-            )
-
-            # Рамка (по умолчанию невидимая)
-            self.border_color = Color(1, 0, 0, 0)  # красная рамка
-            self.border_rect = RoundedRectangle(
-                pos=self.pos,
-                size=self.size,
-                radius=[self.radius]
-            )
-
-        # Привязываем обновление координат
-        self.bind(pos=self.update_rect, size=self.update_rect)
-
-    def update_rect(self, *args):
-        # Обновляем позицию и размер основного прямоугольника
-        self.rect.pos = self.pos
-        self.rect.size = self.size
-        self.rect.radius = [self.radius]
-
-        # Обновляем позицию и размер рамки
-        self.border_rect.pos = (
-            self.pos[0] - self.border_width / 2,
-            self.pos[1] - self.border_width / 2
-        )
-        self.border_rect.size = (
-            self.size[0] + self.border_width,
-            self.size[1] + self.border_width
-        )
-        self.border_rect.radius = [self.radius + self.border_width / 2]
-
-    def show_border(self, show=True):
-        """Показываем/скрываем рамку"""
-        self.border_color.a = 1 if show else 0
-
-    def darken_color(self, color, factor):
-        return [c * factor for c in color[:3]] + list(color[3:])
-
-    def on_press(self):
-        # Сообщаем всем кнопкам, что эта активна
-        self.set_active_button(self)
-
-    def deactivate(self):
-        self.active = False
-        self.rect_color.rgba = self.bg_color
-        self.show_border(False)
-
-    def activate(self):
-        self.active = True
-        self.rect_color.rgba = self.darken_color(self.bg_color, self.darken_factor)
-        self.show_border(True)
-
-    @classmethod
-    def set_active_button(cls, active_button):
-        for btn in cls.instances:
-            if btn == active_button:
-                btn.activate()
-            else:
-                btn.deactivate()
-
-
 class RectangularButton(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1120,7 +1037,7 @@ class KingdomSelectionWidget(FloatLayout):
             font_size='18sp' if is_android else '16sp',
             bold=True,
             color=(1, 1, 1, 1),
-            bg_color=(0.2, 0.8, 0.2, 1),
+            background_color=(0.2, 0.8, 0.2, 1),
             pos_hint={'center_x': 0.75, 'y': 0.1},
             opacity=1
         )
@@ -1133,7 +1050,7 @@ class KingdomSelectionWidget(FloatLayout):
             pos_hint={'x': 0.005, 'y': 0.05},
             color=(1, 1, 1, 1),
             font_size='16sp',
-            bg_color=(0.8, 0.2, 0.2, 1),
+            background_color=(0.8, 0.2, 0.2, 1),
             opacity=1
         )
         self.back_btn.bind(on_release=self.back_to_menu)
@@ -1426,11 +1343,68 @@ class KingdomSelectionWidget(FloatLayout):
                 child.disabled = disabled
 
 
+from kivy.animation import Animation
+from kivy.graphics import Color, RoundedRectangle, Line
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.image import Image
+from kivy.uix.floatlayout import FloatLayout
+from kivy.app import App
+from kivy.clock import Clock
+import random
+import math
+
+class RoundedButton(Button):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_color = (0, 0, 0, 0)
+        self.color = (1, 1, 1, 1)  # Белый текст по умолчанию
+        self.bind(pos=self.update_canvas, size=self.update_canvas)
+
+    def update_canvas(self, *args):
+        self.canvas.before.clear()
+        with self.canvas.before:
+            # Основной цвет кнопки
+            Color(0.1, 0.1, 0.3, 0.85)
+            RoundedRectangle(
+                pos=self.pos,
+                size=self.size,
+                radius=[25]
+            )
+            # Рамка с эффектом свечения
+            Color(0.3, 0.3, 0.8, 0.7)
+            Line(
+                rounded_rectangle=(self.x, self.y, self.width, self.height, 25),
+                width=1.2
+            )
+
+class AnimatedLabel(Label):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.animation = None
+
+    def start_glow_animation(self):
+        if self.animation:
+            self.animation.cancel(self)
+
+        anim = Animation(
+            outline_color=(0.8, 0.8, 1, 1),
+            duration=2.0
+        ) + Animation(
+            outline_color=(0.2, 0.2, 0.4, 1),
+            duration=2.0
+        )
+        anim.repeat = True
+        anim.start(self)
+
 class MenuWidget(FloatLayout):
-    def __init__(self, conn, selected_map=None,**kwargs):
+    def __init__(self, conn, selected_map=None, **kwargs):
         super(MenuWidget, self).__init__(**kwargs)
         self.conn = conn
-        # ======== Фоновые изображения (попеременно сменяются) ========
+        self.buttons_locked = True  # Инициализируем сразу
+
+        # ======== Фоновые изображения ========
         self.bg_image_1 = Image(
             source='files/menu/vampire.jpg',
             allow_stretch=True,
@@ -1449,128 +1423,159 @@ class MenuWidget(FloatLayout):
         self.add_widget(self.bg_image_1)
         self.add_widget(self.bg_image_2)
 
-        # ======== Логотип / Заголовок ========
-        self.title_label = Label(
+        # ======== Инициализация переменных для анимации фона ========
+        self.current_image = self.bg_image_1
+        self.next_image = self.bg_image_2
+
+        # ======== Логотип / Заголовок с анимацией ========
+        self.title_label = AnimatedLabel(
             text="Легенды Лэрдона",
             font_size='48sp',
             bold=True,
             color=(1, 1, 1, 1),
-            outline_color=(0, 0, 0, 1),
-            outline_width=2,
+            outline_color=(0.2, 0.2, 0.4, 1),
+            outline_width=3,
             halign='center',
             valign='middle',
-            size_hint=(0.6, 0.3),
-            pos_hint={'center_x': 0.5, 'top': 1.05},
+            size_hint=(0.8, 0.15),
+            pos_hint={'center_x': 0.5, 'top': 0.92},
             markup=True
         )
         self.add_widget(self.title_label)
 
-        # ======== Создаём кнопки, но оставляем их невидимыми (opacity=0) ========
-        # При помощи pos_hint задаём вертикальные «якоря» (y-координаты),
-        # чтобы потом просто менять opacity.
-        self.btn_start_game = RoundedButton(
-            text="В Лэрдон",
-            size_hint=(0.4, 0.08),
-            pos_hint={'center_x': 0.5, 'y': 0.68},
-            background_normal='',
-            background_color=(0, 0, 0, 0),
-            color=(1, 1, 1, 1),
-            font_size='20sp',
-            opacity=0
-        )
-        self.btn_dossier = RoundedButton(
-            text="Рейтинг",
-            size_hint=(0.4, 0.08),
-            pos_hint={'center_x': 0.5, 'y': 0.53},
-            background_normal='',
-            background_color=(0, 0, 0, 0),
-            color=(1, 1, 1, 1),
-            font_size='20sp',
-            opacity=0
-        )
-        self.btn_how_to_play = RoundedButton(
-            text="Как играть",
-            size_hint=(0.4, 0.08),
-            pos_hint={'center_x': 0.5, 'y': 0.38},
-            background_normal='',
-            background_color=(0, 0, 0, 0),
-            color=(1, 1, 1, 1),
-            font_size='20sp',
-            opacity=0
-        )
-        self.btn_author = RoundedButton(
-            text="Автор",
-            size_hint=(0.4, 0.08),
-            pos_hint={'center_x': 0.5, 'y': 0.23},
-            background_normal='',
-            background_color=(0, 0, 0, 0),
-            color=(1, 1, 1, 1),
-            font_size='20sp',
-            opacity=0
-        )
-        self.btn_exit = RoundedButton(
-            text="Выход",
-            size_hint=(0.4, 0.08),
-            pos_hint={'center_x': 0.5, 'y': 0.07},
-            background_normal='',
-            background_color=(0, 0, 0, 0),
-            color=(1, 1, 1, 1),
-            font_size='20sp',
-            opacity=0
-        )
+        # ======== Контейнер для кнопок ========
+        self.button_container = FloatLayout(size_hint=(1, 0.7), pos_hint={'center_x': 0.5, 'y': 0.15})
+        self.add_widget(self.button_container)
 
-        # ======== Привязываем обработчики нажатий ========
-        self.btn_start_game.bind(on_release=self.start_game)
-        self.btn_dossier.bind(on_release=self.open_dossier)
-        self.btn_how_to_play.bind(on_release=self.open_how_to_play)
-        self.btn_author.bind(on_release=self.open_author)
-        self.btn_exit.bind(on_release=self.exit_game)
+        # ======== Создаём стилизованные кнопки ========
+        button_configs = [
+            {"text": "В Лэрдон", "y_pos": 0.75, "color": (0.2, 0.6, 0.9, 1), "action": self.start_game},
+            {"text": "Рейтинг", "y_pos": 0.58, "color": (0.3, 0.8, 0.5, 1), "action": self.open_dossier},
+            {"text": "Как играть", "y_pos": 0.41, "color": (0.9, 0.7, 0.2, 1), "action": self.open_how_to_play},
+            {"text": "Автор", "y_pos": 0.24, "color": (0.8, 0.4, 0.8, 1), "action": self.open_author},
+            {"text": "Выход", "y_pos": 0.07, "color": (0.9, 0.3, 0.3, 1), "action": self.exit_game}
+        ]
 
-        # ======== Добавляем кнопки в виджет ========
-        self.add_widget(self.btn_start_game)
-        self.add_widget(self.btn_dossier)
-        self.add_widget(self.btn_how_to_play)
-        self.add_widget(self.btn_author)
-        self.add_widget(self.btn_exit)
+        self.buttons = []
+        for config in button_configs:
+            btn = RoundedButton(
+                text=config["text"],
+                size_hint=(0.5, 0.12),
+                pos_hint={'center_x': 0.5, 'y': config["y_pos"]},
+                color=(1, 1, 1, 1),
+                font_size='18sp',
+                bold=True,
+                opacity=0
+            )
+            # Сохраняем цвет для использования в анимациях
+            btn.base_color = config["color"]
+            btn.bind(on_release=config["action"])
+            self.buttons.append(btn)
+            self.button_container.add_widget(btn)
 
-        # ======== По таймеру запускаем появление кнопок ========
-        Clock.schedule_once(self.animate_buttons_in, 0.5)
+        # ======== Декоративные элементы ========
+        self.particles = []
+        self.add_decoration()
 
-        # ======== Анимация смены фоновых картинок каждые 5 секунд ========
-        self.current_image = self.bg_image_1
-        self.next_image = self.bg_image_2
+        # ======== Анимации ========
+        Clock.schedule_once(self.animate_title, 0.5)
+        Clock.schedule_once(self.animate_buttons_in, 1.0)
         Clock.schedule_interval(self.animate_background, 5)
+        Clock.schedule_interval(self.float_animation, 0.05)
+
+    def add_decoration(self):
+        """Добавляем декоративные элементы"""
+        for i in range(6):
+            particle = Label(
+                text="✦",
+                font_size='20sp',
+                color=(1, 1, 1, 0),
+                opacity=0
+            )
+            self.particles.append(particle)
+            self.add_widget(particle)
+
+    def animate_title(self, dt):
+        """Анимация заголовка"""
+        self.title_label.start_glow_animation()
+
+    def animate_particles(self):
+        """Анимация декоративных частиц"""
+        positions = [
+            {'x': 0.1, 'y': 0.85}, {'x': 0.9, 'y': 0.8},
+            {'x': 0.15, 'y': 0.65}, {'x': 0.85, 'y': 0.6},
+            {'x': 0.2, 'y': 0.45}, {'x': 0.8, 'y': 0.4}
+        ]
+
+        for i, particle in enumerate(self.particles):
+            if i < len(positions):
+                particle.pos_hint = positions[i]
+                anim = Animation(opacity=0.6, duration=2.0) + Animation(opacity=0.2, duration=2.0)
+                anim.repeat = True
+                Clock.schedule_once(lambda dt, p=particle, a=anim: a.start(p), i * 0.3)
 
     def animate_buttons_in(self, dt):
-        """
-        Последовательно увеличиваем opacity для каждой кнопки,
-        чтобы они «появлялись» сверху вниз.
-        """
-        self.buttons_locked = True
-        buttons = [
-            self.btn_start_game,
-            self.btn_dossier,
-            self.btn_how_to_play,
-            self.btn_author,
-            self.btn_exit
-        ]
-        delay_between = 0.2  # задержка между появлением соседних кнопок
+        """Анимированное появление кнопок с эффектом волны"""
+        # Сначала показываем декоративные элементы
+        self.animate_particles()
 
-        for index, btn in enumerate(buttons):
-            # Для каждого btn через index * delay_between запускаем анимацию opacity=1
-            Clock.schedule_once(
-                lambda dt, widget=btn: Animation(opacity=1, duration=0.4).start(widget),
-                index * delay_between
+        # Анимация кнопок с эффектом "волны"
+        for i, btn in enumerate(self.buttons):
+            # Начальная позиция - смещены вправо
+            original_y = btn.pos_hint['y']
+            btn.pos_hint = {'center_x': 1.5, 'y': original_y}
+
+            # Анимация движения и появления
+            anim = Animation(
+                pos_hint={'center_x': 0.5, 'y': original_y},
+                duration=0.7,
+                transition='out_back'
+            ) & Animation(
+                opacity=1,
+                duration=0.5
             )
 
-        # Когда появится последняя кнопка, разблокируем все кнопки
-        total_delay = (len(buttons) - 1) * delay_between + 0.4
+            Clock.schedule_once(
+                lambda dt, widget=btn, animation=anim: animation.start(widget),
+                i * 0.12
+            )
+
+        # Разблокировка кнопок после анимации
+        total_delay = len(self.buttons) * 0.12 + 0.8
         Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), total_delay)
 
+    def float_animation(self, dt):
+        """Плавное плавающее движение кнопок"""
+        if hasattr(self, 'buttons_locked') and self.buttons_locked:
+            return
+
+        current_time = Clock.get_time()
+        for i, btn in enumerate(self.buttons):
+            if not hasattr(btn, 'original_y'):
+                btn.original_y = btn.pos_hint['y']
+
+            # Плавное движение вверх-вниз
+            float_offset = math.sin(current_time * 2 + i * 0.5) * 0.003
+            new_y = btn.original_y + float_offset
+            btn.pos_hint = {'center_x': 0.5, 'y': new_y}
+
+    def create_button_animation(self, instance):
+        """Анимация при нажатии на кнопку"""
+        if getattr(self, 'buttons_locked', True):
+            return
+
+        # Анимация нажатия
+        anim = Animation(
+            size_hint=(0.48, 0.115),
+            duration=0.08
+        ) + Animation(
+            size_hint=(0.5, 0.12),
+            duration=0.08
+        )
+        anim.start(instance)
+
     def animate_background(self, dt):
-        """
-        Фоновая подмена изображений с плавным переходом.
-        """
+        """Фоновая подмена изображений с плавным переходом"""
         new_source = random.choice([
             'files/menu/people.jpg',
             'files/menu/elfs.jpg',
@@ -1578,7 +1583,8 @@ class MenuWidget(FloatLayout):
             'files/menu/poly.jpg',
             'files/menu/adept.jpg'
         ])
-        # гарантируем, что источник изменится:
+
+        # Гарантируем, что источник изменится
         while new_source == self.next_image.source:
             new_source = random.choice([
                 'files/menu/people.jpg',
@@ -1589,48 +1595,67 @@ class MenuWidget(FloatLayout):
             ])
 
         self.next_image.source = new_source
-        fade_out = Animation(opacity=0, duration=1.5)
-        fade_in = Animation(opacity=1, duration=1.5)
+        fade_out = Animation(opacity=0, duration=2.0)
+        fade_in = Animation(opacity=1, duration=2.0)
         fade_out.start(self.current_image)
         fade_in.start(self.next_image)
-        # меняем указатели, чтобы следующий раз фейдить к другой картинке
+
+        # Меняем указатели для следующей анимации
         self.current_image, self.next_image = self.next_image, self.current_image
 
-    # === Обработчики перехода между экранами ===
-
+    # === Обёртки для обработчиков кнопок с анимацией ===
     def open_dossier(self, instance):
-        if getattr(self, 'buttons_locked', False):
+        self.button_action_wrapper(self._open_dossier, instance)
+
+    def open_how_to_play(self, instance):
+        self.button_action_wrapper(self._open_how_to_play, instance)
+
+    def open_author(self, instance):
+        self.button_action_wrapper(self._open_author, instance)
+
+    def start_game(self, instance):
+        self.button_action_wrapper(self._start_game, instance)
+
+    def exit_game(self, instance):
+        self.button_action_wrapper(self._exit_game, instance)
+
+    def button_action_wrapper(self, action_func, instance):
+        """Обёртка для добавления анимации к действиям кнопок"""
+        self.create_button_animation(instance)
+        Clock.schedule_once(lambda dt: action_func(instance), 0.16)
+
+    def _open_dossier(self, instance):
+        if getattr(self, 'buttons_locked', True):
             return
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(DossierScreen(self.conn))
 
-    def open_how_to_play(self, instance):
-        if getattr(self, 'buttons_locked', False):
+    def _open_how_to_play(self, instance):
+        if getattr(self, 'buttons_locked', True):
             return
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(HowToPlayScreen(self.conn))
 
-    def open_author(self, instance):
-        if getattr(self, 'buttons_locked', False):
+    def _open_author(self, instance):
+        if getattr(self, 'buttons_locked', True):
             return
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(AuthorScreen(self.conn))
 
-    def start_game(self, instance):
-        if getattr(self, 'buttons_locked', False):
+    def _start_game(self, instance):
+        if getattr(self, 'buttons_locked', True):
             return
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(KingdomSelectionWidget(self.conn))
 
-    def exit_game(self, instance):
+    def _exit_game(self, instance):
         app = App.get_running_app()
-        app.on_stop()  # Явно вызываем on_stop(), чтобы закрыть соединения
-        app.stop()     # Завершаем приложение
-
+        app.on_stop()
+        app.stop()
 
 class CustomTab(TabbedPanelItem):
     def __init__(self, **kwargs):

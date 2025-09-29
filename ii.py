@@ -965,7 +965,7 @@ class AIController:
         Рассчитывает максимальный лимит армии на основе базового значения и бонуса от городов.
         """
         base_limit = 500_000  # Базовый лимит 1 млн
-        city_bonus = 250_000 * len(self.cities)  # Бонус за каждый город
+        city_bonus = 350_000 * len(self.cities)  # Бонус за каждый город
         total_limit = base_limit + city_bonus
         return total_limit
 

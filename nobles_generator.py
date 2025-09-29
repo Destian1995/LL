@@ -8,7 +8,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 
-EVENT_COUNT_FOR_SYMPATHIES = 6  # После N мероприятий появляются симпатии
+EVENT_COUNT_FOR_SYMPATHIES = 3  # После N мероприятий появляются симпатии (взгляды)
 SHOW_SYMPATHIES = False         # Флаг, показывать ли симпатии
 SYMPATHIES_VISIBLE_UNTIL_PRIORITY_CHANGE = False  # Симпатии скрываются при смене приоритетов
 
@@ -212,9 +212,9 @@ def generate_initial_nobles(conn):
             loved_race = random.choice([r for r in RACES if r != faction_race])
             ideology = f"Любит {loved_race}"
         else: # greed
-            # Генерируем требование: 1,000,000 + 35%-75% от 10,000,000
+            # Генерируем требование: 1,000,000 + 25%-85% от 10,000,000
             base_demand = 1_000_000
-            percentage = random.uniform(0.35, 0.75)
+            percentage = random.uniform(0.25, 0.85)
             additional_demand = int(10_000_000 * percentage)
             total_demand = base_demand + additional_demand
             ideology = json.dumps({'type': 'greed', 'demand': total_demand})
@@ -246,7 +246,7 @@ def decrease_loyalty_over_time(conn):
 
         # Если идеология совпадает — снижение меньше
         if noble_traits['type'] == 'ideology' and noble_traits['value'] == player_ideology:
-            decrease = 1.5  # Меньше, если совпадает идеология
+            decrease = 0.5  # Меньше, если совпадает идеология
 
         new_loyalty = max(0.0, current_loyalty - decrease)
         cursor.execute("UPDATE nobles SET loyalty = ? WHERE id = ?", (new_loyalty, noble_id))
@@ -277,7 +277,7 @@ def calculate_attendance_probability(conn, noble_id, player_faction, event_type,
 
     if noble_traits['type'] == 'greed' and attendance_history:
         history_list = attendance_history.split(',')
-        # Проверяем последние RECENT_HISTORY_LENGTH записей
+        # Проверяем последние RECENT_HISTORY_LENGTH записи
         recent_history = history_list[-RECENT_HISTORY_LENGTH:]
         if 'P' in recent_history:
             # print(f"DEBUG: Noble {noble_id} оплачен, вероятность посещения 100%")
@@ -358,56 +358,109 @@ def update_noble_loyalty_for_event(conn, noble_id, player_faction, event_type, e
 def check_coup_attempts(conn):
     """
     Проверка попыток переворота.
+    Теперь уничтожает всех дворян с loyalty < 30 при попытке переворота.
     """
     cursor = conn.cursor()
     cursor.execute("SELECT id, loyalty, name FROM nobles WHERE status = 'active'")
     all_nobles = cursor.fetchall()
 
-    disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 30)
-    very_disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 25)
+    # Найдем всех дворян с loyalty < 30
+    disloyal_nobles = [(id, name) for id, loyalty, name in all_nobles if loyalty < 30]
+    very_disloyal_nobles = [(id, name) for id, loyalty, name in all_nobles if loyalty < 15]
 
     coup_occurred = False
 
-    # Условие 1: 2+ дворян с лояльностью < 25
-    if disloyal_count >= 2:
-        if random.random() < 0.5: # 50% шанс
-            coup_occurred = True
-            record_coup_attempt(conn, True)
-            show_coup_attempt_popup(successful=True)
-        else:
-            handle_failed_coup(conn, all_nobles)
+    # --- НОВАЯ ЛОГИКА: Уничтожение всех дворян с loyalty < 30 ---
+    if disloyal_nobles:
+        # Проверим, есть ли 2+ с loyalty < 30 или 1+ с loyalty < 15
+        if len(disloyal_nobles) >= 2 or len(very_disloyal_nobles) >= 1:
+            # Считаем шанс переворота
+            success_chance = 0.5 if len(disloyal_nobles) >= 2 else 0.3
 
-    # Условие 2: 1+ дворян с лояльностью < 15
-    elif very_disloyal_count >= 1:
-        if random.random() < 0.3: # 30% шанс успеха
-            coup_occurred = True
-            record_coup_attempt(conn, True)
-            show_coup_attempt_popup(successful=True)
-        else:
-            handle_failed_coup(conn, all_nobles)
+            if random.random() < success_chance: # Попытка переворота успешна
+                coup_occurred = True
+                record_coup_attempt(conn, True)
+                # Уничтожаем ВСЕХ нелояльных (loyalty < 30)
+                eliminated_names = []
+                for noble_id, noble_name in disloyal_nobles:
+                    cursor.execute("UPDATE nobles SET status = 'eliminated' WHERE id = ?", (noble_id,))
+                    eliminated_names.append(noble_name)
+                    # Генерируем нового дворянина на его место
+                    faction_race = get_player_faction(conn)
+                    if not faction_race:
+                        faction_race = 'Люди'  # fallback
+                    generate_new_noble(conn, faction_race)
+
+                conn.commit()
+                message = f"Попытка переворота пресечена! Уничтожены дворяне: {', '.join(eliminated_names)}."
+                show_coup_attempt_popup(successful=True, message_override=message)
+            else: # Попытка переворота провалилась
+                # Уничтожаем ВСЕХ нелояльных (loyalty < 30) как в случае провала
+                eliminated_names = []
+                for noble_id, noble_name in disloyal_nobles:
+                    cursor.execute("UPDATE nobles SET status = 'eliminated' WHERE id = ?", (noble_id,))
+                    eliminated_names.append(noble_name)
+                    # Генерируем нового дворянина на его место
+                    faction_race = get_player_faction(conn)
+                    if not faction_race:
+                        faction_race = 'Люди'  # fallback
+                    generate_new_noble(conn, faction_race)
+
+                conn.commit()
+                # Три исхода для провала
+                outcome = random.choice(['fear', 'indifferent', 'weakness'])
+                if outcome == 'fear':
+                    increase_all_loyalty(conn, 8.0)
+                    message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Оперативность службы вызвала шок, лояльность повысилась на 8%."
+                elif outcome == 'indifferent':
+                    message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Ну и земля стекловатой, лояльность не изменилась."
+                elif outcome == 'weakness':
+                    decrease_all_loyalty(conn, 4.0)
+                    message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Многие увидели в этом слабость, лояльность снизилась на 4%."
+                show_coup_attempt_popup(successful=False, message_override=message)
+
+    # --- СТАРАЯ ЛОГИКА: Если нет дворян с loyalty < 30, но есть условия для переворота ---
+    # Это может произойти, если, например, все дворяне были уничтожены в предыдущем ходу.
+    # Оставим на всякий случай, но в новом контексте это маловероятно.
+    else:
+        # Проверяем старые условия, но теперь они не приведут к уничтожению, если нет <30
+        disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 30)
+        very_disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 15)
+
+        if disloyal_count >= 2:
+            if random.random() < 0.5: # 50% шанс
+                coup_occurred = True
+                record_coup_attempt(conn, True)
+                show_coup_attempt_popup(successful=True)
+            else:
+                handle_failed_coup(conn, all_nobles) # Старая логика для этого случая
+        elif very_disloyal_count >= 1:
+            if random.random() < 0.3: # 30% шанс успеха
+                coup_occurred = True
+                record_coup_attempt(conn, True)
+                show_coup_attempt_popup(successful=True)
+            else:
+                handle_failed_coup(conn, all_nobles) # Старая логика для этого случая
 
     return coup_occurred
 
 def handle_failed_coup(conn, all_nobles):
     """
-    Обработка неудачной попытки переворота:
-    - Убить одного из нелояльных дворян.
-    - Три исхода: страх, безразличие, слабость.
-    - Сгенерировать нового дворянина на его место.
+    Обработка неудачной попытки переворота, когда нет дворян с loyalty < 30.
+    Использует старую логику: убить одного случайного нелояльного (если есть) или любого.
     """
     cursor = conn.cursor()
 
-    # Список нелояльных дворян (loyalty < 30)
+    # Список нелояльных дворян (loyalty < 30) - но в этом случае он пустой
+    # Проверим снова на всякий случай
     disloyal_nobles = [(id, name) for id, loyalty, name in all_nobles if loyalty < 30]
     if not disloyal_nobles:
-        # Если нет нелояльных — выбираем любого активного
-        disloyal_nobles = [(id, name) for id, _, name in all_nobles]
-
-    if not disloyal_nobles:
-        return
-
-    # Выбираем случайного нелояльного дворянина для убийства
-    target_id, target_name = random.choice(disloyal_nobles)
+        active_nobles = [(id, name) for id, _, name in all_nobles]
+        if not active_nobles:
+            return
+        target_id, target_name = random.choice(active_nobles)
+    else:
+        target_id, target_name = random.choice(disloyal_nobles)
 
     # Убиваем
     cursor.execute("UPDATE nobles SET status = 'eliminated' WHERE id = ?", (target_id,))
@@ -449,7 +502,7 @@ def show_coup_attempt_popup(successful=False, message_override=None):
         if successful:
             title_text = "Попытка переворота!"
             title_color = (0.9, 0.2, 0.2, 1)  # Красный
-            message_text = "Тайная служба пресекла попытку государственного переворота, один из дворян убит!"
+            message_text = message_override or "Тайная служба пресекла попытку государственного переворота, один из дворян убит!"
         else:
             title_text = "Попытка переворота!"
             title_color = (0.9, 0.6, 0.2, 1)  # Оранжевый
@@ -506,9 +559,9 @@ def update_nobles_periodically(conn, current_turn, events_count=0):
     # 2. Проверка попыток переворота
     check_coup_attempts(conn)
 
-    # 3. Включение симпатий после 6 мероприятий
+    # 3. Включение симпатий после 3 мероприятий
     global SHOW_SYMPATHIES
-    if events_count >= EVENT_COUNT_FOR_SYMPATHIES:
+    if events_count >= EVENT_COUNT_FOR_SYMPATHIES: # Теперь 3
         SHOW_SYMPATHIES = True
     else:
         SHOW_SYMPATHIES = False
@@ -827,7 +880,7 @@ def pay_greedy_noble(conn, noble_id, amount):
     history_list.append('P') # Маркер оплаты
 
     # Ограничиваем длину истории, чтобы не разрасталась бесконечно
-    # Будем хранить последние 20 записей (больше, чем TURNS_PAID_EFFECT_LASTS)
+    # Будем хранить последние 20 записи (больше, чем TURNS_PAID_EFFECT_LASTS)
     MAX_HISTORY_LENGTH = 20
     if len(history_list) > MAX_HISTORY_LENGTH:
         history_list = history_list[-MAX_HISTORY_LENGTH:]

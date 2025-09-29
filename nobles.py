@@ -366,9 +366,32 @@ def show_event_result_popup(message):
     content.add_widget(close_btn)
     popup.open()
 
+def get_events_count_from_history(conn):
+    """Получает количество проведённых мероприятий из истории посещений всех активных дворян."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT attendance_history FROM nobles WHERE status = 'active'")
+    all_histories = cursor.fetchall()
+
+    all_lengths = []
+    for history_row in all_histories:
+        history_str = history_row[0] if history_row[0] else ""
+        if history_str:
+            try:
+                history_list = [x for x in history_str.split(',') if x.isdigit()]
+                all_lengths.append(len(history_list))
+            except Exception:
+                continue  # Игнорируем некорректные данные
+        else:
+            all_lengths.append(0)
+
+    # Возвращаем максимальную длину истории, что соответствует количеству проведённых мероприятий
+    return max(all_lengths) if all_lengths else 0
+
+
 def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_main_list_callback):
     """Показывает всплывающее окно для Тайной службы с выбором цели (табличный формат)."""
     COST_SECRET_SERVICE = 20_000_000  # Константа стоимости
+
     # --- Проверка баланса ---
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
@@ -376,7 +399,9 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         insufficient_funds_popup = Popup(
             title="Недостаточно средств",
             content=Label(
-                text=f"Не хватает крон, для доступа к засекреченной информации.\nСтоимость: {format_number(COST_SECRET_SERVICE)}\nУ вас: {format_number(current_money)}",
+                text=f"Не хватает крон, для доступа к засекреченной информации.\n"
+                     f"Стоимость: {format_number(COST_SECRET_SERVICE)}\n"
+                     f"У вас: {format_number(current_money)}",
                 halign='center',
                 valign='middle',
                 text_size=(dp(250), None)
@@ -387,6 +412,10 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         insufficient_funds_popup.open()
         return
     # ------------------------------------
+
+    # --- Получаем количество проведённых мероприятий ---
+    events_count = get_events_count_from_history(conn)
+
     # --- Получаем список всех активных дворян ---
     try:
         cursor = conn.cursor()
@@ -397,7 +426,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
             ORDER BY name ASC
         """)
         all_active_nobles = cursor.fetchall()
-        # Преобразуем кортежи в словари для удобства
+
         nobles_data = []
         for row in all_active_nobles:
             noble_dict = {
@@ -408,32 +437,21 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                 'ideology': row[4],
                 'attendance_history': row[5]
             }
-            # Проверяем, можно ли показывать лояльность (3+ мероприятий за последние 7 ходов)
-            attendance_history_raw = noble_dict.get('attendance_history', '')
-            if isinstance(attendance_history_raw, str) and attendance_history_raw:
-                try:
-                    history_list = [int(x) for x in attendance_history_raw.split(',') if x.isdigit()]
-                    # Проверяем последние 7 записей
-                    recent_history = history_list[-7:] if len(history_list) >= 7 else history_list
-                    attended_count = sum(recent_history)
-                    # Если было проведено минимум 3 мероприятия за последние 7 ходов
-                    if len(recent_history) >= 3:
-                        noble_dict['show_loyalty'] = True
-                        # Округляем loyalty в меньшую сторону
-                        noble_dict['calculated_loyalty'] = int(noble_dict['loyalty']) if noble_dict['loyalty'] is not None else None
-                    else:
-                        noble_dict['show_loyalty'] = False
-                        noble_dict['calculated_loyalty'] = None
-                except ValueError:
-                    noble_dict['show_loyalty'] = False
-                    noble_dict['calculated_loyalty'] = None
+
+            # --- Лояльность и Взгляды открываются только после 3 мероприятий ---
+            if events_count >= 3:
+                noble_dict['show_loyalty'] = True
+                noble_dict['show_views'] = True
+                noble_dict['calculated_loyalty'] = int(noble_dict['loyalty']) if noble_dict['loyalty'] is not None else None
             else:
                 noble_dict['show_loyalty'] = False
+                noble_dict['show_views'] = False
                 noble_dict['calculated_loyalty'] = None
+
             nobles_data.append(noble_dict)
+
     except Exception as e:
         print(f"[ERROR] Ошибка при получении списка активных дворян: {e}")
-        # Заменяем on_result_callback на красивый popup
         show_secret_service_result_popup({'success': False, 'message': "Ошибка получения списка целей."})
         return
 
@@ -450,11 +468,10 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         )
         no_targets_popup.content.bind(size=no_targets_popup.content.setter('text_size'))
         no_targets_popup.open()
-        # Заменяем on_result_callback на красивый popup
         show_secret_service_result_popup({'success': False, 'message': "Нет доступных целей для устранения."})
         return
 
-    # --- Адаптивные размеры для Android ---
+    # --- Адаптивные размеры ---
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(10) if not is_android else dp(5)
     spacing_main = dp(10) if not is_android else dp(7)
@@ -467,7 +484,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     btn_font_size = sp(11) if not is_android else sp(9)
     noble_item_height = dp(50) if not is_android else dp(45)
 
-    # --- Создаем попап для выбора цели ---
+    # --- Создаем попап ---
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
     title_label = Label(
         text="Санкция на физическое устранение (20 млн. крон)",
@@ -477,14 +494,12 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         height=dp(35) if not is_android else dp(30)
     )
 
-    # --- Таблица дворян для выбора ---
+    # --- Таблица дворян ---
     scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
-    # Используем GridLayout для табличного формата
     table_layout = GridLayout(cols=4, spacing=dp(1) if not is_android else dp(0.5), size_hint_y=None)
     table_layout.bind(minimum_height=table_layout.setter('height'))
 
-    # --- Заголовки таблицы ---
-    header_names = ["Имя", "Лояльность", "Взгляды", ""] # Пустые заголовки для кнопок
+    header_names = ["Имя", "Лояльность", "Взгляды", ""]
     for header_text in header_names:
         header_label = Label(
             text=f"[b]{header_text}[/b]",
@@ -494,40 +509,38 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
             valign='middle',
             size_hint_y=None,
             height=dp(30) if not is_android else dp(25),
-            color=(0.8, 0.9, 1, 1) # Светло-голубой
+            color=(0.8, 0.9, 1, 1)
         )
         header_label.bind(size=header_label.setter('text_size'))
         table_layout.add_widget(header_label)
 
-    # --- Создаем строки для каждого активного дворянина ---
+    # --- Строки дворян ---
     for noble_data in nobles_data:
         display_name = get_noble_display_name_with_sympathies(noble_data)
-
         name_label = Label(
-            text=display_name,  # ✅ Новое имя с симпатиями
+            text=display_name,
             halign='left',
             valign='middle',
             font_size=font_noble_name,
             size_hint_y=None,
-            height=noble_item_height,
-            text_size=(None, None)
+            height=noble_item_height
         )
         name_label.bind(size=name_label.setter('text_size'))
 
         # Лояльность
-        if noble_data.get('show_loyalty', False) and noble_data.get('calculated_loyalty') is not None:
+        if noble_data['show_loyalty'] and noble_data['calculated_loyalty'] is not None:
             loyalty = noble_data['calculated_loyalty']
-            # Цветовая индикация лояльности (для подсказки)
             if loyalty < 30:
-                loyalty_color = (1, 0, 0, 1)  # Красный
+                loyalty_color = (1, 0, 0, 1)
             elif loyalty < 60:
-                loyalty_color = (1, 1, 0, 1)  # Жёлтый
+                loyalty_color = (1, 1, 0, 1)
             else:
-                loyalty_color = (0, 1, 0, 1)  # Зелёный
+                loyalty_color = (0, 1, 0, 1)
             loyalty_text = f"{loyalty}%"
         else:
-            loyalty_color = (0.7, 0.7, 0.7, 1)  # Серый цвет для неопределенной лояльности
+            loyalty_color = (0.7, 0.7, 0.7, 1)
             loyalty_text = "?"
+
         loyalty_label = Label(
             text=loyalty_text,
             halign='center',
@@ -535,80 +548,73 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
             font_size=font_noble_loyalty,
             size_hint_y=None,
             height=noble_item_height,
-            color=loyalty_color,
-            text_size=(None, None)
+            color=loyalty_color
         )
         loyalty_label.bind(size=loyalty_label.setter('text_size'))
 
-        # --- НОВЫЙ КОД: Взгляды ---
-        # Извлекаем идеологию и отображаем её как "Взгляды"
-        noble_traits = get_noble_traits(noble_data['ideology'])
-
-        # Маппинг идеологий на отображаемый текст "взглядов" (без симпатий)
-        ideology_to_text = {
-            'Борьба': "Борьба",
-            'Смирение': "Смирение",
-            'Любит Эльфы': "Любит Эльфов",
-            'Любит Элины': "Любит Элинов",
-            'Любит Люди': "Любит Людей",
-            'Любит Вампиры': "Любит Вампиров",
-            'Любит Адепты': "Любит Адептов",
-        }
-
-        # Продажные дворяне отображаются как "Продажный"
-        if noble_traits['type'] == 'greed':
-            views_text = "Продажный"
+        # Взгляды
+        if noble_data['show_views']:
+            noble_traits = get_noble_traits(noble_data['ideology'])
+            ideology_to_text = {
+                'Борьба': "Борьба",
+                'Смирение': "Смирение",
+                'Любит Эльфы': "Любит Эльфов",
+                'Любит Элины': "Любит Элинов",
+                'Любит Люди': "Любит Людей",
+                'Любит Вампиры': "Любит Вампиров",
+                'Любит Адепты': "Любит Адептов",
+            }
+            if noble_traits['type'] == 'greed':
+                views_text = "Продажный"
+            else:
+                views_text = ideology_to_text.get(noble_traits['value'], noble_traits['value'])
         else:
-            # Используем маппинг для получения краткого описания взгляда
-            views_text = ideology_to_text.get(noble_traits['value'], noble_traits['value'])
+            views_text = "?"
 
         views_label = Label(
             text=views_text,
-            halign='center',  # Центрируем текст взгляда
+            halign='center',
             valign='middle',
-            font_size=font_noble_loyalty, # Используем тот же размер, что и для лояльности
+            font_size=font_noble_loyalty,
             size_hint_y=None,
             height=noble_item_height,
-            color=(0.9, 0.9, 0.9, 1), # Беловатый цвет
-            text_size=(None, None)
+            color=(0.9, 0.9, 0.9, 1)
         )
         views_label.bind(size=views_label.setter('text_size'))
-        # --- КОНЕЦ НОВОГО КОДА ---
 
-        # Добавляем ячейки в таблицу
-        table_layout.add_widget(name_label)
-        table_layout.add_widget(loyalty_label)
-        table_layout.add_widget(views_label) # Добавляем ячейку с "Взглядами" вместо пустой
-
-        # Кнопка выбора
+        # Кнопка устранения
         select_btn = Button(
             text="Устранить",
             size_hint_y=None,
             height=btn_height,
             font_size=btn_font_size,
-            background_color=(0.8, 0.2, 0.2, 1)  # Красный
+            background_color=(0.8, 0.2, 0.2, 1)
         )
+
         def make_select_handler(n_id, n_name, n_loyalty):
             def on_select(instance):
                 target_selection_popup.dismiss()
                 deduction_success = cash_player.deduct_resources(COST_SECRET_SERVICE)
                 if deduction_success:
-                    # Выполняем действие устранения конкретного дворянина
                     result = attempt_secret_service_action(conn, get_player_faction(conn), target_noble_id=n_id)
-                    show_secret_service_result_popup(result)  # Показываем красивый результат
-                    # --- Обновляем основной список ---
+                    show_secret_service_result_popup(result)
                     if callable(refresh_main_list_callback):
                         refresh_main_list_callback()
                 else:
-                    # Показываем ошибку списания средств
                     show_secret_service_result_popup({'success': False, 'message': "Ошибка списания средств."})
             return on_select
+
         select_btn.bind(on_release=make_select_handler(noble_data['id'], noble_data['name'], noble_data['loyalty']))
+
+        # Добавляем в таблицу
+        table_layout.add_widget(name_label)
+        table_layout.add_widget(loyalty_label)
+        table_layout.add_widget(views_label)
         table_layout.add_widget(select_btn)
 
     scroll_view.add_widget(table_layout)
 
-    # Кнопка отмены внизу с адаптивными размерами
+    # Кнопка отмены
     cancel_btn_layout = BoxLayout(size_hint_y=None, height=dp(50) if not is_android else dp(45))
     cancel_btn = Button(
         text="Отмена",
@@ -616,24 +622,22 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
         height=dp(45) if not is_android else dp(40),
         font_size=sp(14) if not is_android else sp(12)
     )
-    cancel_btn_layout.add_widget(Label())  # Пустой виджет для центрирования
+    cancel_btn_layout.add_widget(Label())
     cancel_btn_layout.add_widget(cancel_btn)
-    cancel_btn_layout.add_widget(Label())  # Пустой виджет для центрирования
+    cancel_btn_layout.add_widget(Label())
 
     content.add_widget(title_label)
     content.add_widget(scroll_view)
     content.add_widget(cancel_btn_layout)
 
-    # Адаптивные размеры попапа
-    popup_size_hint = (0.95, 0.85) if not is_android else (1, 1)
-    popup_pos_hint = {} if not is_android else {'center_x': 0.5, 'center_y': 0.5}
     target_selection_popup = Popup(
         title="Выбор цели",
         content=content,
-        size_hint=popup_size_hint,
-        pos_hint=popup_pos_hint,
+        size_hint=(0.95, 0.85) if not is_android else (1, 1),
+        pos_hint={} if not is_android else {'center_x': 0.5, 'center_y': 0.5},
         auto_dismiss=False
     )
+
     cancel_btn.bind(on_release=target_selection_popup.dismiss)
     target_selection_popup.open()
 
