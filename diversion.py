@@ -278,7 +278,7 @@ def show_diversion_window(conn, faction, class_faction):
         table_factions.add_widget(faction_label)
         table_factions.add_widget(desc_label)
         table_factions.add_widget(select_btn)
-        table_factions.add_widget(Label(text=""))  # Пустая ячейка для выравнивания
+        table_factions.add_widget(Label(text=""))
 
     scroll_view_factions.add_widget(table_factions)
 
