@@ -1054,7 +1054,6 @@ class GameScreen(Screen):
         для выбранной фракции при клике (касании) внутри season_container.
         """
         if instance.collide_point(touch.x, touch.y):
-            # Текущий индекс сезона в SeasonManager
             current_idx = self.current_idx
             current_season_name = self.SEASON_NAMES[current_idx]
 

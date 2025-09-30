@@ -355,7 +355,6 @@ def format_hero_stats(stats_dict):
     if not stats_dict:
         return "Нет данных"
 
-    # Пример форматирования, адаптируйте под свои нужды
     lines = []
     if 'attack' in stats_dict:
         lines.append(f"Атака: {stats_dict['attack']}")

@@ -163,7 +163,7 @@ def workshop(faction, db_conn):
     left_col.add_widget(icon_title)
 
     # Загрузка изображений из папки
-    artifact_images_path = "files/pict/artifacts/custom"
+    artifact_images_path = r"files/pict/artifacts/custom"
     if os.path.exists(artifact_images_path):
         image_files = [f for f in os.listdir(artifact_images_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
     else:
@@ -628,7 +628,7 @@ def workshop(faction, db_conn):
         image_path = os.path.join(artifact_images_path, selected_image[0])
 
         # Обновление отображения артефакта
-        artifact_image.source = image_path
+        artifact_image.source = image_path  # Используем нормализованный путь
         artifact_name_label.text = f"{artifact_name}"
         artifact_cost_label.text = f"Стоимость: {format_number(int(total_cost))} крон"
 
@@ -663,11 +663,27 @@ def workshop(faction, db_conn):
                 # Используем переданное соединение db_conn
                 cursor = db_conn.cursor()
 
-                # Вставка в таблицу artifacts
+                # --- НОВАЯ ЛОГИКА: Получение следующего ID ---
+                # Выполняем запрос на получение максимального ID
+                cursor.execute("SELECT MAX(id) FROM artifacts")
+                result = cursor.fetchone()
+                current_max_id = result[0]  # Может быть None, если таблица пуста
+
+                # Определяем новый ID
+                if current_max_id is None:
+                    new_artifact_id = 1  # Если таблица пуста, начинаем с 1
+                else:
+                    new_artifact_id = current_max_id + 1  # Иначе следующий за максимальным
+
+                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+
+                # Вставка в таблицу artifacts с указанием нового ID
+                # Обратите внимание на добавление ? в начало VALUES
                 cursor.execute('''
-                    INSERT INTO artifacts (attack, defense, season_name, image_url, name, cost, artifact_type)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO artifacts (id, attack, defense, season_name, image_url, name, cost, artifact_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
+                    new_artifact_id,  # Передаем новый ID как первый параметр
                     artifact_data['attack'],
                     artifact_data['defense'],
                     artifact_data['season_name'],
@@ -683,7 +699,7 @@ def workshop(faction, db_conn):
                 current_artifact_data[0] = None
                 add_to_shop_btn.disabled = True
 
-                show_message("Успех", f"Артефакт '{artifact_data['name']}' добавлен в лавку!")
+                show_message("Успех", f"Артефакт '{artifact_data['name']}' (ID: {new_artifact_id}) добавлен в лавку!")
             except Exception as e:
                 show_message("Ошибка", f"Не удалось добавить артефакт в базу данных: {str(e)}")
 

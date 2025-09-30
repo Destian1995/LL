@@ -905,6 +905,190 @@ class AIController:
             import traceback
             traceback.print_exc()
 
+    def generate_and_buy_artifacts_for_ai_hero(self):
+        """
+        Генерирует и покупает случайные артефакты для героя ИИ после 50 хода,
+        если есть деньги и свободные слоты.
+        """
+        if self.turn <= 50:
+            print(f"[INFO] ИИ '{self.faction}': Пока не достигнуто 50 ходов для генерации артефактов.")
+            return
+
+        # Находим всех героев 3-го класса, которые могут носить артефакты
+        ai_heroes = self.get_ai_heroes_3_class()
+        if not ai_heroes:
+            print(f"[INFO] ИИ '{self.faction}': Нет героев 3 класса для экипировки.")
+            return
+
+        print(f"[INFO] ИИ '{self.faction}': Проверка возможности генерации артефактов для героев: {ai_heroes}")
+
+        # Проверяем наличие свободных слотов у героев
+        hero_with_slot = self.find_hero_with_free_slot(ai_heroes)
+        if not hero_with_slot:
+            print(f"[INFO] ИИ '{self.faction}': Нет героев с пустыми слотами для артефактов.")
+            return
+
+        # Проверяем, достаточно ли денег для покупки артефакта (минимальная стоимость)
+        min_cost = 2_000_000_000  # 2 млрд.
+        if self.resources.get('Кроны', 0) < min_cost:
+            print(
+                f"[INFO] ИИ '{self.faction}': Недостаточно крон для генерации артефакта (требуется минимум {format_number(min_cost)}).")
+            return
+
+        # --- Генерация артефакта ---
+        import random
+
+        # Случайный выбор параметров
+        param_choice = random.choice(["attack", "defense", "both"])
+
+        if param_choice == "attack":
+            attack = random.randint(8000, 14000)
+            defense = 0
+        elif param_choice == "defense":
+            attack = 0
+            defense = random.randint(8000, 14000)
+        else:  # both
+            attack = random.randint(4000, 13000)
+            defense = random.randint(4000, 13000)
+
+        # Случайный выбор слота (0: Оружие, 1: Голова, 2: Сапоги, 3: Туловище, 4: Аксессуар)
+        artifact_type = random.choice([0, 1, 2, 3, 4])
+        artifact_type_to_slot = {0: '0', 1: '1', 2: '2', 3: '3', 4: '4'}
+        slot_type = artifact_type_to_slot[artifact_type]
+
+        # Случайное название
+        prefixes = ["ИИ-Артефакт", "Квантовый", "Нейросеть", "Сингулярный", "Кибер"]
+        suffixes = ["Силы", "Защиты", "Быстроты", "Власти", "Хаоса", "Порядка", "Кода"]
+        name = f"{random.choice(prefixes)} {random.choice(suffixes)}"
+
+        # Случайная стоимость
+        cost = random.randint(2_000_000_000, 10_000_000_000)  # 2-10 млрд.
+
+        # Сезон (может быть пустым или случайным)
+        seasons_list = [[], ["Весна"], ["Лето"], ["Осень"], ["Зима"], ["Весна", "Лето"], ["Лето", "Осень"],
+                        ["Осень", "Зима"], ["Зима", "Весна"], ["Весна", "Осень"], ["Лето", "Зима"],
+                        ["Весна", "Лето", "Осень"], ["Весна", "Лето", "Зима"], ["Весна", "Осень", "Зима"],
+                        ["Лето", "Осень", "Зима"], ["Все"]]
+        season_name = ', '.join(random.choice(seasons_list))
+
+        # Случайное изображение (предположим, что у ИИ есть доступ к папке с изображениями артефактов)
+        # В реальности, вы можете генерировать изображения или использовать стандартные
+        artifact_images_path = "files/pict/artifacts/custom"  # Или другая директория для ИИ
+        import os
+        if os.path.exists(artifact_images_path):
+            image_files = [f for f in os.listdir(artifact_images_path) if
+                           f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+            if image_files:
+                image_url = os.path.join(artifact_images_path, random.choice(image_files))
+            else:
+                print(f"[WARNING] Не найдены изображения в {artifact_images_path}, используем заглушку.")
+                image_url = "files/pict/artifacts/custom/default_artifact.png"  # Заглушка
+        else:
+            print(f"[WARNING] Папка с изображениями артефактов {artifact_images_path} не найдена, используем заглушку.")
+            image_url = "files/pict/artifacts/custom/default_artifact.png"  # Заглушка
+
+        # --- Проверка, подходит ли артефакт по слоту и стоимости ---
+        # Проверяем, свободен ли слот у выбранного героя
+        current_equipment = self.get_current_equipment_for_hero(hero_with_slot)
+        if current_equipment.get(slot_type) is not None:
+            print(f"[INFO] ИИ '{self.faction}': Слот {slot_type} у героя {hero_with_slot} уже занят.")
+            return  # Попробовать другой слот или героя, если нужно, но для простоты возвращаемся
+
+        # Проверяем, хватает ли денег на сгенерированный артефакт
+        if self.resources.get('Кроны', 0) < cost:
+            print(
+                f"[INFO] ИИ '{self.faction}': Недостаточно крон для покупки сгенерированного артефакта (стоимость {format_number(cost)}).")
+            return
+
+        # --- Покупка (вставка в БД и списание денег) ---
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Вставка сгенерированного артефакта в таблицу artifacts
+            cursor.execute('''
+                INSERT INTO artifacts (attack, defense, season_name, image_url, name, cost, artifact_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (attack, defense, season_name, image_url, name, cost, artifact_type))
+
+            artifact_id = cursor.lastrowid  # Получаем ID созданного артефакта
+
+            # Списываем деньги
+            self.resources['Кроны'] -= cost
+
+            # Экипируем артефакт герою
+            cursor.execute('''
+                UPDATE ai_hero_equipment
+                SET artifact_id = ?
+                WHERE faction_name = ? AND hero_name = ? AND slot_type = ?
+            ''', (artifact_id, self.faction, hero_with_slot, slot_type))
+
+            self.db_connection.commit()
+            print(
+                f"[SUCCESS] ИИ '{self.faction}' сгенерировал и экипировал артефакт '{name}' (ID {artifact_id}, Атк: {attack}, Защ: {defense}, Стоимость: {format_number(cost)}) герою '{hero_with_slot}' в слот {slot_type}.")
+
+        except Exception as e:
+            print(f"[ERROR] ИИ '{self.faction}': Ошибка при генерации/покупке артефакта: {e}")
+            try:
+                self.db_connection.rollback()
+            except:
+                pass
+
+    def get_ai_heroes_3_class(self):
+        """
+        Получает список всех героев 3 класса текущей фракции из БД.
+        """
+        try:
+            cursor = self.db_connection.cursor()
+            # Предполагаем, что герои 3 класса хранятся в таблице garrisons
+            # и их можно идентифицировать по unit_class в таблице units
+            cursor.execute("""
+                SELECT DISTINCT g.unit_name
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                WHERE u.faction = ? AND u.unit_class = '3'
+            """, (self.faction,))
+            heroes = [row[0] for row in cursor.fetchall()]
+            return heroes
+        except sqlite3.Error as e:
+            print(f"[ERROR] ИИ '{self.faction}': Ошибка при получении героев 3 класса: {e}")
+            return []
+
+    def find_hero_with_free_slot(self, heroes_list):
+        """
+        Находит первого героя из списка, у которого есть свободный слот.
+        """
+        for hero_name in heroes_list:
+            current_equipment = self.get_current_equipment_for_hero(hero_name)
+            # Проверяем, есть ли хотя бы один слот без артефакта (None)
+            if any(v is None for v in current_equipment.values()):
+                print(f"[INFO] ИИ '{self.faction}': Найден герой {hero_name} с пустыми слотами.")
+                return hero_name
+        return None
+
+    def get_current_equipment_for_hero(self, hero_name):
+        """
+        Загружает текущую экипировку героя из ai_hero_equipment.
+        """
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute('''
+                SELECT slot_type, artifact_id
+                FROM ai_hero_equipment
+                WHERE faction_name = ? AND hero_name = ?
+            ''', (self.faction, hero_name))
+            equipped_rows = cursor.fetchall()
+            # Создаем словарь: slot_type -> artifact_id (None если пуст)
+            current_equipment = {str(row[0]): row[1] for row in equipped_rows}
+            # Убедимся, что все 5 слотов (0-4) представлены
+            for i in range(5):
+                slot_key = str(i)
+                if slot_key not in current_equipment:
+                    current_equipment[slot_key] = None
+            return current_equipment
+        except sqlite3.Error as e:
+            print(f"[ERROR] ИИ '{self.faction}': Ошибка при получении экипировки для {hero_name}: {e}")
+            return {}
+
     def get_city_count_for_faction(self):
         """
         Возвращает количество городов, принадлежащих текущей фракции.
@@ -2650,8 +2834,9 @@ class AIController:
                 # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
                 if self.resources['Кроны'] > 0:
                     self.hire_army()
-
-            # 9. Сохраняем все изменения в базу данных
+                # 9. (Новый пункт) Генерация и покупка артефактов ИИ (после 50 хода)
+                self.generate_and_buy_artifacts_for_ai_hero()
+            # 10. Сохраняем все изменения в базу данных
             self.save_all_data()
             # Увеличиваем счетчик ходов
             self.turn += 1
