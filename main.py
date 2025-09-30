@@ -490,7 +490,8 @@ def restore_from_backup(conn):
         ("diplomacies_default", "diplomacies"),
         ("relations_default", "relations"),
         ("resources_default", "resources"),
-        ("units_default", "units")
+        ("units_default", "units"),
+        ("artifacts_default", "artifacts")
     ]
 
     try:
@@ -536,6 +537,7 @@ def clear_tables(conn):
         "nobles",
         "noble_events",
         "coup_attempts",
+        "artifacts",
     ]
 
     cursor = conn.cursor()

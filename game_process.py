@@ -1302,7 +1302,7 @@ class GameScreen(Screen):
     def switch_to_economy(self, instance):
         """Переключение на экономическую вкладку."""
         self.clear_game_area()
-        economic.start_economy_mode(self.game_state_manager.faction, self.game_area)
+        economic.start_economy_mode(self.game_state_manager.faction, self.game_area, self.conn)
 
     def switch_to_army(self, instance):
         """Переключение на армейскую вкладку."""

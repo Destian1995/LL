@@ -269,7 +269,7 @@ class SeasonManager:
         for hero_name, artifact_id in to_check_apply:
             # Получаем данные артефакта
             cur.execute("""
-                SELECT attack, defense, health, season_name
+                SELECT attack, defense, season_name
                 FROM artifacts
                 WHERE id = ?
             """, (artifact_id,))
@@ -278,7 +278,7 @@ class SeasonManager:
             if not artifact:
                 continue
 
-            (a_atk, a_def, a_hp, a_season_name) = artifact
+            (a_atk, a_def, a_season_name) = artifact
 
             # Проверяем сезон
             season_ok = True
@@ -291,8 +291,7 @@ class SeasonManager:
                 # Применяем бонусы
                 bonuses = {
                     'attack': a_atk,
-                    'defense': a_def,
-                    'durability': a_hp  # health из артефакта -> durability юнита
+                    'defense': a_def
                 }
                 self._apply_artifact_effect(hero_name, artifact_id, bonuses, conn)
             else:
@@ -337,7 +336,7 @@ class SeasonManager:
 
         # Получаем БАЗОВЫЕ значения из units_default
         cur.execute("""
-            SELECT attack, defense, durability
+            SELECT attack, defense
             FROM units_default WHERE unit_name = ?
         """, (hero_name,))
         base = cur.fetchone()
@@ -346,7 +345,7 @@ class SeasonManager:
             print(f"[ARTIFACT] Hero {hero_name} not found in units_default")
             return
 
-        (b_atk, b_def, b_dur) = base
+        (b_atk, b_def) = base
 
 
         effects_to_apply = []
@@ -362,8 +361,6 @@ class SeasonManager:
                 base_val = b_atk
             elif unit_stat == 'defense':
                 base_val = b_def
-            elif unit_stat == 'durability':
-                base_val = b_dur
 
             if base_val is not None:
                 change = self._calculate_stat_change(base_val, bonus_value)

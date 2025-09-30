@@ -137,38 +137,25 @@ def load_artifacts_from_db(faction):
     artifacts = []
     try:
         cursor = faction.conn.cursor()
-        # Добавлено поле cost в SELECT
+        # Выбираем только нужные столбцы
         cursor.execute('''
-            SELECT id, name, attack, defense, health, army_consumption,
-                   crystal_bonus, coins_bonus, workers_bonus,
-                   season_name, season_bonus_multiplier, image_url, cost, artifact_type
+            SELECT id, attack, defense, season_name, image_url, name, cost, artifact_type
             FROM artifacts
         ''')
         rows = cursor.fetchall()
         for row in rows:
             artifact = {
                 "id": row[0],
-                "name": row[1],
-                "attack": row[2] if row[2] is not None else 0,
-                "defense": row[3] if row[3] is not None else 0,
-                "health": row[4] if row[4] is not None else 0,
-                "army_consumption": row[5] if row[5] is not None else 0,
-                "crystal_bonus": row[6] if row[6] is not None else 0,
-                "coins_bonus": row[7] if row[7] is not None else 0,
-                "workers_bonus": row[8] if row[8] is not None else 0,
-                "season_name": row[9] if row[9] is not None else "", # Может быть пустой строкой
-                "season_bonus_multiplier": row[10] if row[10] is not None else 1.0,
-                "image_url": row[11] if row[11] is not None else "files/pict/artifacts/default.png",
-                "cost": row[12] if row[12] is not None else 0,
-                "artifact_type": row[13] if row[13] is not None else -1
+                "attack": row[1] if row[1] is not None else 0,
+                "defense": row[2] if row[2] is not None else 0,
+                "season_name": row[3] if row[3] is not None else "",  # Может быть пустой строкой
+                "image_url": row[4] if row[4] is not None else "files/pict/artifacts/default.png",
+                "name": row[5] if row[5] is not None else "",
+                "cost": row[6] if row[6] is not None else 0,
+                "artifact_type": row[7] if row[7] is not None else -1
             }
-            #print(f'Загруженный артефакт:{artifact}')
-            stats = [
-                artifact['attack'], artifact['defense'], artifact['health'],
-                artifact['army_consumption'], artifact['crystal_bonus'],
-                artifact['coins_bonus'], artifact['workers_bonus']
-            ]
-            if any(stat != 0 for stat in stats):
+            # Проверяем, есть ли какие-то значимые статы (attack или defense > 0)
+            if artifact['attack'] != 0 or artifact['defense'] != 0:
                 artifacts.append(artifact)
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке артефактов: {e}")
@@ -201,7 +188,6 @@ def load_hero_equipment_from_db(faction):
             }
     except sqlite3.Error as e:
         print(f"Ошибка при загрузке экипировки героя: {e}")
-    print(f"[DEBUG] load_hero_equipment_from_db: Загружена экипировка для {faction.faction}: {equipment}")
     return equipment
 
 def save_hero_equipment_to_db(faction, slot_type, artifact_id, pos_x=None, pos_y=None):
@@ -221,7 +207,6 @@ def save_hero_equipment_to_db(faction, slot_type, artifact_id, pos_x=None, pos_y
             WHERE faction_name = ? AND slot_type = ?
         ''', (artifact_id, image_url, pos_x, pos_y, faction.faction, slot_type)) # Добавлены pos_x, pos_y
         faction.conn.commit()
-        print(f"[DEBUG] save_hero_equipment_to_db: Экипировка обновлена для {faction.faction}, слот {slot_type}, артефакт {artifact_id}, позиция ({pos_x}, {pos_y})")
     except sqlite3.Error as e:
         print(f"[ERROR] save_hero_equipment_to_db: Ошибка при обновлении экипировки героя: {e}")
         try:
@@ -552,7 +537,6 @@ def open_artifacts_popup(faction):
             # Получаем количество крон из faction
             current_money = faction.resources.get('Кроны', 0)
             money_info_label.text = f"Кроны: {format_number(current_money)}"
-            print('[DEBUG] Обновление отображения крон:', money_info_label.text)
         except Exception as e:
             print(f"[ERROR] Ошибка при обновлении отображения крон: {e}")
             money_info_label.text = "Кроны: ошибка"
@@ -621,7 +605,6 @@ def open_artifacts_popup(faction):
                         pass
                     current_fraction_instance = faction
 
-                    print(f"[DEBUG] Покупка артефакта: {art_data['name']} (ID: {art_data['id']}, Тип: {art_data['artifact_type']})")
 
                     try:
                         check_cursor = current_fraction_instance.conn.cursor()
@@ -653,24 +636,22 @@ def open_artifacts_popup(faction):
                         show_popup_message("Ошибка", "Невозможно экипировать этот артефакт.")
                         return
 
-                    print(f"[DEBUG] Целевой слот: {slot_type}")
 
                     artifact_entry = hero_equipment.get(slot_type)
                     current_artifact_id_in_slot = None
                     if isinstance(artifact_entry, dict):
                         current_artifact_id_in_slot = artifact_entry.get('id')
-                    print(f"[DEBUG] Текущий артефакт в слоте {slot_type}: {current_artifact_id_in_slot}")
 
                     def deduct_coins_local(fraction_obj, amount):
                         try:
                             current_money = getattr(fraction_obj, 'money', 0)
-                            print(f"[DEBUG] [deduct_coins_local] Текущие монеты: {current_money}, Списание: {amount}")
+
                             if current_money >= amount:
                                 new_amount = current_money - amount
                                 fraction_obj.update_resource_now('Кроны', new_amount)
                                 # Обновляем отображение крон
                                 update_money_display()
-                                print(f"[DEBUG] [deduct_coins_local] Новые монеты: {new_amount}")
+
                                 return True
                             else:
                                 print(f"[INFO] [deduct_coins_local] Недостаточно крон. Нужно: {amount}, Есть: {current_money}")
@@ -684,12 +665,12 @@ def open_artifacts_popup(faction):
                     def add_coins_local(fraction_obj, amount):
                         try:
                             current_money = getattr(fraction_obj, 'money', 0)
-                            print(f"[DEBUG] [add_coins_local] Текущие кроны: {current_money}, Начисление: {amount}")
+
                             new_amount = current_money + amount
                             fraction_obj.update_resource_now('Кроны', new_amount)
                             # Обновляем отображение крон
                             update_money_display()
-                            print(f"[DEBUG] [add_coins_local] Новые кроны: {new_amount}")
+
                             return True
                         except Exception as e:
                             print(f"[ERROR] [add_coins_local] Ошибка при начислении: {e}")
@@ -699,10 +680,10 @@ def open_artifacts_popup(faction):
 
                     try:
                         artifact_cost = art_data['cost']
-                        print(f"[DEBUG] Цена нового артефакта: {artifact_cost}")
+
 
                         if current_artifact_id_in_slot is None:
-                            print("[DEBUG] Слот пуст. Покупаем новый артефакт.")
+
                             if deduct_coins_local(current_fraction_instance, artifact_cost):
                                 hero_equipment[slot_type] = {
                                     "id": art_data['id'],
@@ -720,7 +701,7 @@ def open_artifacts_popup(faction):
                                 show_popup_message("Ошибка", "Недостаточно Крон!")
 
                         else:
-                            print(f"[DEBUG] Слот {slot_type} занят. Запрашиваем подтверждение замены.")
+
 
                             old_artifact_data = None
                             try:
@@ -733,7 +714,7 @@ def open_artifacts_popup(faction):
                                         "name": old_artifact_row['name'],
                                         "cost": old_artifact_row['cost']
                                     }
-                                    print(f"[DEBUG] Данные старого артефакта: {old_artifact_data}")
+
                             except sqlite3.Error as e:
                                 print(f"[ERROR] Ошибка при получении данных старого артефакта: {e}")
                                 show_popup_message("Ошибка", "Ошибка при проверке старого артефакта.")
@@ -747,7 +728,7 @@ def open_artifacts_popup(faction):
 
                             sell_price = int(old_artifact_cost * 0.65)
                             net_cost = artifact_cost - sell_price
-                            print(f"[DEBUG] Цена старого артефакта: {old_artifact_cost}, Цена продажи: {sell_price}, Чистая стоимость: {net_cost}")
+
 
                             def confirm_replace(instance):
                                 confirm_popup.dismiss()
@@ -761,7 +742,7 @@ def open_artifacts_popup(faction):
                                     # Получаем сдачу
                                     refund_amount = abs(net_cost)
                                     add_coins_local(current_fraction_instance, refund_amount)
-                                    print(f"[DEBUG] Получено {refund_amount} монет за разницу в стоимости.")
+
 
                                     # Сохраняем новый артефакт
                                 save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None,
@@ -838,29 +819,6 @@ def open_artifacts_popup(faction):
                 len(artifacts_list_layout.children) - 1) * (dp(3) if is_android else dp(5)) if artifacts_list_layout.children else dp(1)
 
     # Фильтры
-    season_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None,
-                                     height=dp(25) if is_android else dp(30))
-    season_filter_layout.add_widget(Label(text="Сезон:", size_hint_x=None,
-                                          width=dp(50) if is_android else dp(60), halign='left',
-                                          font_size=font_size_small if is_android else '15sp'))
-    season_spinner = Spinner(
-        text='Все',
-        values=('Все', 'Есть влияние', 'Нет влияния'),
-        size_hint=(1, None),
-        height=dp(25) if is_android else dp(30),
-        font_size=font_size_small if is_android else '15sp'
-    )
-    style_rounded_spinner(season_spinner, bg_color=(0.3, 0.5, 0.7, 1),
-                          text_color=(1, 1, 1, 1), radius=dp(4) if is_android else dp(6))
-
-    def on_season_spinner_select(spinner, text):
-        mapping = {'Все': 'all', 'Есть влияние': 'has_influence', 'Нет влияния': 'no_influence'}
-        filter_states['season_influence'] = mapping.get(text, 'all')
-        update_artifact_list()
-
-    season_spinner.bind(text=on_season_spinner_select)
-    season_filter_layout.add_widget(season_spinner)
-    filters_container.add_widget(season_filter_layout)
 
     type_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None,
                                    height=dp(25) if is_android else dp(30))
@@ -1003,7 +961,7 @@ def open_artifacts_popup(faction):
                 slot_name_labels[slot_type] = name_label
 
             def initialize_equipment_visual(dt):
-                print("[DEBUG] initialize_equipment_visual: Вызываем update_all_equipment_slots")
+
                 update_all_equipment_slots()
 
             Clock.schedule_once(initialize_equipment_visual, 0.2)
@@ -1060,11 +1018,11 @@ def open_artifacts_popup(faction):
 
     def position_slots(dt):
         if not hero_image_widget:
-            print("[DEBUG] position_slots: Герой отсутствует, позиционирование пропущено.")
+
             return
 
         if not right_panel or not hasattr(right_panel, 'width') or right_panel.width == 0:
-            print("[DEBUG] position_slots: Размеры панели не готовы, повтор через 0.1с.")
+
             Clock.schedule_once(position_slots, 0.1)
             return
 
@@ -1093,7 +1051,7 @@ def open_artifacts_popup(faction):
             '4': (center_x + half_hero_w + offset, center_y + half_hero_h + offset),
         }
 
-        print("[DEBUG] position_slots: Установка позиций слотов...")
+
         for slot_type, pos in slot_positions.items():
             if slot_type in slot_name_labels:
                 name_label = slot_name_labels[slot_type]
@@ -1103,7 +1061,7 @@ def open_artifacts_popup(faction):
             if slot_type in equipment_slots:
                 widget = equipment_slots[slot_type]
                 widget.pos = pos
-                print(f"[DEBUG] position_slots: Слот {slot_type} позиционирован в {pos}")
+
 
                 artifact_entry = hero_equipment.get(slot_type)
                 if isinstance(artifact_entry, dict) and artifact_entry.get('id'):
@@ -1111,9 +1069,9 @@ def open_artifacts_popup(faction):
                     hero_equipment[slot_type]['pos_x'] = pos_x
                     hero_equipment[slot_type]['pos_y'] = pos_y
                     save_hero_equipment_to_db(faction, slot_type, artifact_entry['id'], pos_x, pos_y)
-                    print(f"[DEBUG] position_slots: Позиции для слота {slot_type} с артефактом {artifact_entry['id']} сохранены в БД: ({pos_x}, {pos_y})")
 
-        print("[DEBUG] position_slots: Завершено.")
+
+
 
     def update_equipment_slot_visual(slot_type, artifact_data):
         slot_widget = equipment_slots.get(slot_type)
@@ -1147,7 +1105,7 @@ def open_artifacts_popup(faction):
                 name_label.text = artifact_name[:15] + "..." if len(artifact_name) > 15 and is_android else artifact_name
                 name_label.color = (1, 1, 1, 1)
 
-            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} обновлен. Артефакт: {artifact_name}")
+
         else:
             slot_widget.background_normal = ''
             slot_widget.background_down = ''
@@ -1157,10 +1115,10 @@ def open_artifacts_popup(faction):
             if name_label:
                 name_label.text = ""
 
-            print(f"[DEBUG] update_equipment_slot_visual: Слот {slot_type} очищен")
+
 
     def update_all_equipment_slots():
-        print(f"[DEBUG] update_all_equipment_slots: Начало обновления. hero_equipment={ {k: v.get('id') for k, v in hero_equipment.items()} }")
+
         updated_slots = []
         for slot_type_key in ['0', '1', '2', '3', '4']:
             artifact_entry = hero_equipment.get(slot_type_key)
@@ -1177,7 +1135,7 @@ def open_artifacts_popup(faction):
                     updated_slots.append(slot_type_key)
             else:
                 update_equipment_slot_visual(slot_type_key, None)
-        print(f"[DEBUG] update_all_equipment_slots: Обновление завершено. Обновлены слоты: {updated_slots}")
+
 
     def update_hero_stats_display():
         if hero_stats_widget:
@@ -1185,7 +1143,6 @@ def open_artifacts_popup(faction):
                 hero_stats_data = load_hero_stats_from_db(faction)
                 formatted_stats = format_hero_stats(hero_stats_data)
                 hero_stats_widget.text = formatted_stats
-                print(f"[DEBUG] update_hero_stats_display: Характеристики обновлены: {formatted_stats}")
             except Exception as e:
                 print(f"Ошибка обновления характеристик героя: {e}")
                 import traceback
@@ -1216,7 +1173,6 @@ def open_artifacts_popup(faction):
     Clock.schedule_once(lambda dt: update_hero_stats_display(), 0)
 
     if hero_image_widget:
-        print("[DEBUG] artifacts_popup: Привязка on_open для position_slots")
         artifacts_popup.bind(on_open=lambda *args: Clock.schedule_once(position_slots, 0.1))
 
     update_money_display()
