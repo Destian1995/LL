@@ -538,6 +538,7 @@ def clear_tables(conn):
         "noble_events",
         "coup_attempts",
         "artifacts",
+        "artifact_effects_log",
     ]
 
     cursor = conn.cursor()
