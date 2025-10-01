@@ -827,7 +827,8 @@ class GameScreen(Screen):
         # Проверяем переворот перед обработкой хода
         if self.check_coup_and_trigger_defeat(self.conn):
             return  # Игра закончена из-за переворота
-
+        # Обновляем сезонные бонусы артефактов
+        self.season_manager.apply_artifact_bonuses(self.conn)
         # Обновляем ресурсы игрока и получаем прирост
         profit_details = self.faction.update_resources()  # Теперь возвращает словарь
         bonus_details = self.faction.apply_player_bonuses()  # Получаем бонусы
