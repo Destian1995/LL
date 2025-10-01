@@ -103,12 +103,29 @@ def format_number(number):
     else:
         return f"{number}"
 
+
 def workshop(faction, db_conn):
+    # === Адаптивные размеры для мобильных устройств ===
+    # Определяем, является ли устройство мобильным
+    is_mobile = Window.width <= 480  # порог для мобильных устройств
+
+    # Адаптивные размеры
+    popup_width = 0.95 if is_mobile else 0.8
+    popup_height = 0.95 if is_mobile else 0.9
+    title_font_size = sp(18) if is_mobile else sp(20)
+    normal_font_size = sp(14) if is_mobile else sp(16)
+    small_font_size = sp(12) if is_mobile else sp(14)
+
+    # Высоты элементов
+    btn_height = dp(40) if is_mobile else dp(50)
+    input_height = dp(35) if is_mobile else dp(40)
+    label_height = dp(25) if is_mobile else dp(30)
+
     # === Создание всплывающего окна ===
     workshop_popup = Popup(
         title="Мастерская артефактов",
-        size_hint=(0.95, 0.95),
-        title_size=sp(20),
+        size_hint=(popup_width, popup_height),
+        title_size=title_font_size,
         title_align='center',
         title_color=(1, 1, 1, 1),
         background_color=(0.1, 0.1, 0.1, 0.95),
@@ -116,46 +133,65 @@ def workshop(faction, db_conn):
         auto_dismiss=False
     )
 
-    main_layout = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
+    # Основной макет с ScrollView для мобильных устройств
+    if is_mobile:
+        main_scroll = ScrollView(do_scroll_x=False)
+        main_layout = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(12), size_hint_y=None)
+        main_layout.bind(minimum_height=main_layout.setter('height'))
+    else:
+        main_layout = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
 
-    # === Информация о средствах ===
-    info_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(40), spacing=dp(10))
+    # === Информация о средствах - адаптивный макет ===
+    if is_mobile:
+        info_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(60), spacing=dp(5))
+    else:
+        info_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(40), spacing=dp(10))
 
     money_label = Label(
-        text=f"Баланс крон: {format_number(faction.money)}",
-        font_size=sp(16),
+        text=f"Баланс: {format_number(faction.money)}",
+        font_size=small_font_size,
         color=(0.9, 0.9, 0.9, 1),
         halign='left',
-        valign='middle'
+        valign='middle',
+        size_hint_y=None,
+        height=label_height
     )
     money_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
     info_layout.add_widget(money_label)
 
     cost_label = Label(
-        text="Стоимость создания: 35 млн",
-        font_size=sp(16),
+        text="Создание: 35 млн",
+        font_size=small_font_size,
         color=(0.9, 0.9, 0.9, 1),
-        halign='right',
-        valign='middle'
+        halign='right' if not is_mobile else 'left',
+        valign='middle',
+        size_hint_y=None,
+        height=label_height
     )
     cost_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
     info_layout.add_widget(cost_label)
 
     main_layout.add_widget(info_layout)
 
-    # === Основная сетка ===
-    content_grid = GridLayout(cols=2, spacing=dp(12), size_hint_y=1)
+    # === Основная сетка - адаптивная для мобильных ===
+    if is_mobile:
+        # Для мобильных - вертикальная компоновка
+        content_layout = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None)
+        content_layout.bind(minimum_height=content_layout.setter('height'))
+    else:
+        # Для десктопа - горизонтальная сетка
+        content_layout = GridLayout(cols=2, spacing=dp(12), size_hint_y=1)
 
     # === Левая колонка - выбор иконки и параметров ===
-    left_col = BoxLayout(orientation='vertical', spacing=dp(10))
+    left_col = BoxLayout(orientation='vertical', spacing=dp(8))
 
     # Выбор иконки
     icon_title = Label(
         text="Выберите иконку артефакта:",
-        font_size=sp(16),
+        font_size=normal_font_size,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
-        height=dp(30),
+        height=label_height,
         halign='center',
         valign='middle'
     )
@@ -170,14 +206,25 @@ def workshop(faction, db_conn):
         image_files = []
 
     # === Скроллируемый контейнер для сетки изображений ===
-    scroll_container = ScrollView(size_hint_y=0.5, do_scroll_x=False)
-    image_grid = GridLayout(cols=3, spacing=dp(10), size_hint_y=None, height=dp(200))
+    scroll_container = ScrollView(
+        size_hint_y=0.4 if is_mobile else 0.5,
+        do_scroll_x=False,
+        bar_width=dp(6) if is_mobile else dp(8)
+    )
+
+    # Адаптивное количество колонок для изображений
+    image_cols = 2 if is_mobile else 3
+    image_grid = GridLayout(
+        cols=image_cols,
+        spacing=dp(6) if is_mobile else dp(10),
+        size_hint_y=None
+    )
     image_grid.bind(minimum_height=image_grid.setter('height'))
 
-    selected_image = [None]  # Хранит выбранное изображение
+    selected_image = [None]
 
     class ImageButton(BoxLayout):
-        selected_button = None  # статическая ссылка на текущую выбранную кнопку
+        selected_button = None
 
         def __init__(self, image_path, file_name, **kwargs):
             super().__init__(**kwargs)
@@ -185,48 +232,43 @@ def workshop(faction, db_conn):
             self.file_name = file_name
             self.orientation = 'vertical'
             self.size_hint_y = None
-            self.height = dp(80)
-            self.padding = [dp(5)]
+            self.height = dp(70) if is_mobile else dp(80)  # Уменьшенная высота для мобильных
+            self.padding = [dp(3)] if is_mobile else [dp(5)]
             self.selected = False
 
-            # сам виджет с картинкой
+            # Изображение
             img_widget = Image(
                 source=image_path,
                 size_hint_y=None,
-                height=dp(60),
+                height=dp(50) if is_mobile else dp(60),  # Уменьшенное изображение
                 allow_stretch=True,
                 keep_ratio=True
             )
             self.add_widget(img_widget)
 
-            # фон
+            # Фон
             with self.canvas.before:
                 self.bg_color = Color(0.3, 0.3, 0.3, 1)
-                self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(8)])
+                self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(6)])
             self.bind(pos=self.update_graphics, size=self.update_graphics)
 
         def on_touch_down(self, touch):
             if self.collide_point(*touch.pos):
-                # снять выделение с предыдущей кнопки
                 if ImageButton.selected_button and ImageButton.selected_button != self:
                     ImageButton.selected_button.set_selected(False)
 
-                # выделить текущую
                 self.set_selected(True)
                 ImageButton.selected_button = self
-
-                # вызвать логику выбора иконки
                 select_image(self.file_name)
                 return True
             return super().on_touch_down(touch)
 
         def set_selected(self, value: bool):
-            """Подсветка выбранной кнопки"""
             self.selected = value
             if value:
-                self.bg_color.rgba = (0.8, 0.6, 0.2, 1)  # золотистая подсветка
+                self.bg_color.rgba = (0.8, 0.6, 0.2, 1)
             else:
-                self.bg_color.rgba = (0.3, 0.3, 0.3, 1)  # обычный фон
+                self.bg_color.rgba = (0.3, 0.3, 0.3, 1)
 
         def update_graphics(self, *args):
             self.rect.pos = self.pos
@@ -234,22 +276,9 @@ def workshop(faction, db_conn):
 
     def select_image(image_file):
         selected_image[0] = image_file
-        # Сброс подсветки
         for child in image_grid.children:
             if isinstance(child, ImageButton):
-                with child.canvas.before:
-                    Color(0.3, 0.3, 0.3, 1)
-                    child.rect.pos = child.pos
-                    child.rect.size = child.size
-
-        # Подсветка текущего
-        for child in image_grid.children:
-            if isinstance(child, ImageButton):
-                if child.file_name == image_file:
-                    with child.canvas.before:
-                        Color(0.2, 0.6, 0.8, 1)
-                        child.rect.pos = child.pos
-                        child.rect.size = child.size
+                child.set_selected(child.file_name == image_file)
 
     for img_file in image_files:
         img_path = os.path.join(artifact_images_path, img_file)
@@ -262,10 +291,10 @@ def workshop(faction, db_conn):
     # Выбор слота
     slot_label = Label(
         text="Выберите слот:",
-        font_size=sp(14),
+        font_size=small_font_size,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
-        height=dp(30),
+        height=label_height,
         halign='left',
         valign='middle'
     )
@@ -276,17 +305,18 @@ def workshop(faction, db_conn):
         text='Выберите слот',
         values=['Руки', 'Голова', 'Ноги', 'Туловище', 'Аксессуар'],
         size_hint_y=None,
-        height=dp(40)
+        height=input_height,
+        font_size=small_font_size
     )
     left_col.add_widget(slot_spinner)
 
     # Название
     name_label = Label(
         text="Название артефакта:",
-        font_size=sp(14),
+        font_size=small_font_size,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
-        height=dp(30),
+        height=label_height,
         halign='left',
         valign='middle'
     )
@@ -295,11 +325,11 @@ def workshop(faction, db_conn):
 
     name_input = TextInput(
         hint_text="Введите название или оставьте пустым для случайного",
-        font_size=sp(14),
+        font_size=small_font_size,
         multiline=False,
         size_hint_y=None,
-        height=dp(40),
-        padding=[dp(10), dp(8)],
+        height=input_height,
+        padding=[dp(8), dp(6)] if is_mobile else [dp(10), dp(8)],
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
         cursor_color=(1, 1, 1, 1)
@@ -310,25 +340,28 @@ def workshop(faction, db_conn):
     random_name_btn = Button(
         text="Случайное название",
         size_hint_y=None,
-        height=dp(40),
+        height=btn_height,
         background_normal='',
         background_color=(0.2, 0.6, 0.6, 1),
-        font_size=sp(14)
+        font_size=small_font_size
     )
     left_col.add_widget(random_name_btn)
 
-    content_grid.add_widget(left_col)
+    if is_mobile:
+        content_layout.add_widget(left_col)
+    else:
+        content_layout.add_widget(left_col)
 
     # === Правая колонка - параметры артефакта ===
-    right_col = BoxLayout(orientation='vertical', spacing=dp(10))
+    right_col = BoxLayout(orientation='vertical', spacing=dp(8))
 
     # Параметры
     params_label = Label(
         text="Параметры артефакта:",
-        font_size=sp(16),
+        font_size=normal_font_size,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
-        height=dp(30),
+        height=label_height,
         halign='center',
         valign='middle'
     )
@@ -336,25 +369,35 @@ def workshop(faction, db_conn):
     right_col.add_widget(params_label)
 
     # Сетка для параметров
-    params_grid = GridLayout(cols=2, spacing=dp(5), size_hint_y=None)
+    params_grid = GridLayout(
+        cols=2,
+        spacing=dp(4) if is_mobile else dp(5),
+        size_hint_y=None,
+        padding=[dp(5)] if is_mobile else [0]
+    )
     params_grid.bind(minimum_height=params_grid.setter('height'))
 
     # Параметры
     attack_bonus = [0]
     defense_bonus = [0]
-    seasons_bonus = [[]]  # список сезонов
+    seasons_bonus = [[]]
 
     # Атака
-    attack_label = Label(text="Атака (%):", font_size=sp(14), size_hint_y=None, height=dp(30))
+    attack_label = Label(
+        text="Атака (%):",
+        font_size=small_font_size,
+        size_hint_y=None,
+        height=label_height
+    )
     params_grid.add_widget(attack_label)
     attack_input = TextInput(
         text='0',
-        font_size=sp(14),
+        font_size=small_font_size,
         multiline=False,
         size_hint_y=None,
-        height=dp(30),
+        height=input_height,
         input_filter='int',
-        padding=[dp(10), dp(8)],
+        padding=[dp(8), dp(6)] if is_mobile else [dp(10), dp(8)],
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
         cursor_color=(1, 1, 1, 1)
@@ -368,16 +411,21 @@ def workshop(faction, db_conn):
     params_grid.add_widget(attack_input)
 
     # Защита
-    defense_label = Label(text="Защита (%):", font_size=sp(14), size_hint_y=None, height=dp(30))
+    defense_label = Label(
+        text="Защита (%):",
+        font_size=small_font_size,
+        size_hint_y=None,
+        height=label_height
+    )
     params_grid.add_widget(defense_label)
     defense_input = TextInput(
         text='0',
-        font_size=sp(14),
+        font_size=small_font_size,
         multiline=False,
         size_hint_y=None,
-        height=dp(30),
+        height=input_height,
         input_filter='int',
-        padding=[dp(10), dp(8)],
+        padding=[dp(8), dp(6)] if is_mobile else [dp(10), dp(8)],
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
         cursor_color=(1, 1, 1, 1)
@@ -391,16 +439,28 @@ def workshop(faction, db_conn):
     params_grid.add_widget(defense_input)
 
     # Сезоны
-    season_label = Label(text="Сезоны:", font_size=sp(14), size_hint_y=None, height=dp(30))
+    season_label = Label(
+        text="Сезоны:",
+        font_size=small_font_size,
+        size_hint_y=None,
+        height=label_height
+    )
     params_grid.add_widget(season_label)
+
+    # Упрощенные значения сезонов для мобильных
+    if is_mobile:
+        season_values = ['Нет', 'Весна', 'Лето', 'Осень', 'Зима', 'Все']
+    else:
+        season_values = ['Нет', 'Весна', 'Лето', 'Осень', 'Зима', 'Весна, Лето', 'Весна, Осень', 'Весна, Зима',
+                         'Лето, Осень', 'Лето, Зима', 'Осень, Зима', 'Весна, Лето, Осень',
+                         'Весна, Лето, Зима', 'Весна, Осень, Зима', 'Лето, Осень, Зима', 'Все']
 
     season_spinner = Spinner(
         text='Нет',
-        values=['Нет', 'Весна', 'Лето', 'Осень', 'Зима', 'Весна, Лето', 'Весна, Осень', 'Весна, Зима',
-                'Лето, Осень', 'Лето, Зима', 'Осень, Зима', 'Весна, Лето, Осень',
-                'Весна, Лето, Зима', 'Весна, Осень, Зима', 'Лето, Осень, Зима', 'Все'],
+        values=season_values,
         size_hint_y=None,
-        height=dp(30)
+        height=input_height,
+        font_size=small_font_size
     )
     def update_seasons(value):
         if value == 'Нет':
@@ -418,51 +478,67 @@ def workshop(faction, db_conn):
     create_btn = Button(
         text="Создать чертеж артефакта",
         size_hint_y=None,
-        height=dp(50),
+        height=btn_height,
         background_normal='',
         background_color=(0.6, 0.2, 0.6, 1),
-        font_size=sp(16),
+        font_size=normal_font_size,
         bold=True
     )
     right_col.add_widget(create_btn)
 
-    content_grid.add_widget(right_col)
+    if is_mobile:
+        content_layout.add_widget(right_col)
+    else:
+        content_layout.add_widget(right_col)
 
-    main_layout.add_widget(content_grid)
+    main_layout.add_widget(content_layout)
 
     # === Блок созданного артефакта ===
-    artifact_box = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None, height=dp(200))
+    artifact_box_height = dp(150) if is_mobile else dp(200)
+    artifact_box = BoxLayout(
+        orientation='vertical',
+        spacing=dp(8),
+        size_hint_y=None,
+        height=artifact_box_height
+    )
 
     artifact_title = Label(
         text="Артефакт:",
-        font_size=sp(16),
+        font_size=normal_font_size,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
-        height=dp(30),
+        height=label_height,
         halign='center',
         valign='middle'
     )
     artifact_title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
     artifact_box.add_widget(artifact_title)
 
-    # Пустое место для изображения и информации
-    artifact_display = BoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(120))
+    # Отображение артефакта
+    artifact_display_height = dp(80) if is_mobile else dp(120)
+    artifact_display = BoxLayout(
+        orientation='horizontal',
+        spacing=dp(8),
+        size_hint_y=None,
+        height=artifact_display_height
+    )
 
     # Изображение артефакта
+    artifact_image_width = dp(60) if is_mobile else dp(100)
     artifact_image = Image(
         source="",
         size_hint_x=None,
-        width=dp(100),
+        width=artifact_image_width,
         allow_stretch=True,
         keep_ratio=True
     )
     artifact_display.add_widget(artifact_image)
 
     # Информация об артефакте
-    artifact_info = BoxLayout(orientation='vertical', spacing=dp(5))
+    artifact_info = BoxLayout(orientation='vertical', spacing=dp(3))
     artifact_name_label = Label(
         text="",
-        font_size=sp(14),
+        font_size=small_font_size,
         color=(1, 1, 1, 1),
         halign='left',
         valign='middle'
@@ -472,7 +548,7 @@ def workshop(faction, db_conn):
 
     artifact_cost_label = Label(
         text="",
-        font_size=sp(14),
+        font_size=small_font_size,
         color=(1, 1, 1, 1),
         halign='left',
         valign='middle'
@@ -487,10 +563,10 @@ def workshop(faction, db_conn):
     add_to_shop_btn = Button(
         text="Добавить чертеж в лавку",
         size_hint_y=None,
-        height=dp(40),
+        height=btn_height,
         background_normal='',
         background_color=(0.2, 0.6, 0.2, 1),
-        font_size=sp(14),
+        font_size=small_font_size,
         disabled=True
     )
     artifact_box.add_widget(add_to_shop_btn)
@@ -498,11 +574,12 @@ def workshop(faction, db_conn):
     main_layout.add_widget(artifact_box)
 
     # === Кнопки управления ===
+    btn_box_height = dp(40) if is_mobile else dp(50)
     btn_box = BoxLayout(
         orientation='horizontal',
-        spacing=dp(12),
+        spacing=dp(8) if is_mobile else dp(12),
         size_hint=(1, None),
-        height=dp(50)
+        height=btn_box_height
     )
 
     close_btn = Button(
@@ -510,7 +587,7 @@ def workshop(faction, db_conn):
         size_hint=(0.5, 1),
         background_normal='',
         background_color=(0.7, 0.2, 0.2, 1),
-        font_size=sp(16),
+        font_size=normal_font_size,
         bold=True,
         color=(1, 1, 1, 1)
     )
@@ -519,10 +596,16 @@ def workshop(faction, db_conn):
     btn_box.add_widget(close_btn)
     main_layout.add_widget(btn_box)
 
-    workshop_popup.content = main_layout
+    # Добавляем ScrollView для мобильных устройств
+    if is_mobile:
+        main_scroll.add_widget(main_layout)
+        workshop_popup.content = main_scroll
+    else:
+        workshop_popup.content = main_layout
+
     workshop_popup.open()
 
-    # === Внутренние функции ===
+    # === Внутренние функции (остаются без изменений) ===
     def generate_random_name():
         prefixes = ["Артефакт", "Амулет", "Сердце", "Душа", "Звезда"]
         suffixes = ["Силы", "Защиты", "Мудрости", "Света", "Тьмы", "Скорости", "Ловкости", "Выносливости", "Удачи", "Судьбы"]
@@ -531,68 +614,59 @@ def workshop(faction, db_conn):
         return f"{prefix} {suffix}"
 
     def calculate_cost():
-        # Базовая стоимость
-        attack_cost = abs(attack_bonus[0]) * random.uniform(0.4, 1.0) * 1000000  # 0.4-1 млн за 1% атаки
-        defense_cost = abs(defense_bonus[0]) * random.uniform(0.6, 1.1) * 1000000  # 0.6-1.1 млн за 1% защиты
+        # ... (остается без изменений)
+        attack_cost = abs(attack_bonus[0]) * random.uniform(0.4, 1.0) * 1000000
+        defense_cost = abs(defense_bonus[0]) * random.uniform(0.6, 1.1) * 1000000
 
         base_cost = attack_cost + defense_cost
 
-        # Сезонные бонусы
         season_discount = 0
         if len(seasons_bonus[0]) == 1:
-            season_discount = 0.65  # -65%
+            season_discount = 0.65
         elif len(seasons_bonus[0]) == 2:
             if 'Весна' in seasons_bonus[0] and 'Лето' in seasons_bonus[0]:
-                season_discount = 0.25  # -25% за 2 сезона подряд
+                season_discount = 0.25
             elif 'Лето' in seasons_bonus[0] and 'Осень' in seasons_bonus[0]:
                 season_discount = 0.25
             elif 'Осень' in seasons_bonus[0] and 'Зима' in seasons_bonus[0]:
                 season_discount = 0.25
             else:
-                season_discount = 0.45  # -45% за 2 раздельных сезона
+                season_discount = 0.45
         elif len(seasons_bonus[0]) == 3:
-            season_discount = 0.10  # -10%
+            season_discount = 0.10
         elif len(seasons_bonus[0]) == 4:
-            season_discount = 0.10  # -10% для всех сезонов
+            season_discount = 0.10
         elif len(seasons_bonus[0]) == 0:
-            # Нет сезонов, +12% к стоимости
             base_cost *= 1.12
 
-        # Негативный эффект - если есть отрицательные значения атаки или защиты
         negative_modifier = 1.0
         if attack_bonus[0] < 0 or defense_bonus[0] < 0:
-            # Уменьшаем стоимость на 30% за каждый отрицательный параметр
             negative_count = sum(1 for x in [attack_bonus[0], defense_bonus[0]] if x < 0)
             negative_modifier = 1 - (negative_count * 0.3)
 
         total_cost = base_cost * (1 - season_discount) * negative_modifier
 
-        # Ограничение минимальной и максимальной стоимости
-        min_cost = 500000  # 0.5 млн
+        min_cost = 500000
         total_cost = max(min_cost, total_cost)
 
         return total_cost
 
-    # Переменная для хранения информации о созданном артефакте
     current_artifact_data = [None]
 
     def create_artifact():
-        # Проверка средств
-        if faction.money < 35000000:  # 35 млн крон
+        # ... (остается без изменений)
+        if faction.money < 35000000:
             show_message("Ошибка", "Недостаточно средств для создания артефакта (требуется 35 млн крон)")
             return
 
-        # Проверка выбора изображения
         if selected_image[0] is None:
             show_message("Ошибка", "Пожалуйста, выберите изображение для артефакта")
             return
 
-        # Проверка выбора слота
         if slot_spinner.text == 'Выберите слот':
             show_message("Ошибка", "Пожалуйста, выберите слот для артефакта")
             return
 
-        # Проверка значений атаки и защиты
         try:
             attack_value = int(attack_input.text) if attack_input.text else 0
             defense_value = int(defense_input.text) if defense_input.text else 0
@@ -600,42 +674,30 @@ def workshop(faction, db_conn):
             show_message("Ошибка", "Значения атаки и защиты должны быть числами")
             return
 
-        # Обновляем значения
         attack_bonus[0] = attack_value
         defense_bonus[0] = defense_value
 
-        # === РАСЧЕТ СТОИМОСТИ С УЧЕТОМ РАНДОМА ===
         total_cost = calculate_cost()
 
-        # === ПРОВЕРКА МАКСИМАЛЬНОЙ СТОИМОСТИ ===
-        if total_cost > 20000000000:  # 20 млрд
+        if total_cost > 20000000000:
             show_message("Ошибка",
                          "Стоимость производства артефакта превышает 20 млрд. крон. \nПожалуйста, уменьшите параметры артефакта.")
             return
 
-        # === СПИСАНИЕ СРЕДСТВ ТОЛЬКО ЕСЛИ ВСЕ В ПОРЯДКЕ ===
-        faction.money -= 35000000  # Стоимость создания
+        faction.money -= 35000000
+        money_label.text = f"Баланс: {format_number(faction.money)}"
 
-        # Обновляем отображение баланса
-        money_label.text = f"Баланс крон: {format_number(faction.money)}"
-
-        # Генерация названия
         artifact_name = name_input.text
         if not artifact_name:
             artifact_name = generate_random_name()
 
-        # Путь к изображению
         image_path = os.path.join(artifact_images_path, selected_image[0])
-
-        # Обновление отображения артефакта
-        artifact_image.source = image_path  # Используем нормализованный путь
+        artifact_image.source = image_path
         artifact_name_label.text = f"{artifact_name}"
         artifact_cost_label.text = f"Стоимость: {format_number(int(total_cost))} крон"
 
-        # Активация кнопки добавления в лавку
         add_to_shop_btn.disabled = False
 
-        # Сохраняем данные артефакта для добавления в лавку
         artifact_type_map = {
             'Руки': 0,
             'Голова': 1,
@@ -654,60 +716,49 @@ def workshop(faction, db_conn):
             'artifact_type': artifact_type_map[slot_spinner.text]
         }
 
-        def add_to_shop(instance):
-            artifact_data = current_artifact_data[0]
-            if artifact_data is None:
-                return
+    def add_to_shop(instance):
+        artifact_data = current_artifact_data[0]
+        if artifact_data is None:
+            return
 
-            try:
-                # Используем переданное соединение db_conn
-                cursor = db_conn.cursor()
+        try:
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT MAX(id) FROM artifacts")
+            result = cursor.fetchone()
+            current_max_id = result[0]
 
-                # --- НОВАЯ ЛОГИКА: Получение следующего ID ---
-                # Выполняем запрос на получение максимального ID
-                cursor.execute("SELECT MAX(id) FROM artifacts")
-                result = cursor.fetchone()
-                current_max_id = result[0]  # Может быть None, если таблица пуста
+            if current_max_id is None:
+                new_artifact_id = 1
+            else:
+                new_artifact_id = current_max_id + 1
 
-                # Определяем новый ID
-                if current_max_id is None:
-                    new_artifact_id = 1  # Если таблица пуста, начинаем с 1
-                else:
-                    new_artifact_id = current_max_id + 1  # Иначе следующий за максимальным
+            cursor.execute('''
+                INSERT INTO artifacts (id, attack, defense, season_name, image_url, name, cost, artifact_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                new_artifact_id,
+                artifact_data['attack'],
+                artifact_data['defense'],
+                artifact_data['season_name'],
+                artifact_data['image_url'],
+                artifact_data['name'],
+                artifact_data['cost'],
+                artifact_data['artifact_type']
+            ))
 
-                # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+            db_conn.commit()
+            current_artifact_data[0] = None
+            add_to_shop_btn.disabled = True
 
-                # Вставка в таблицу artifacts с указанием нового ID
-                # Обратите внимание на добавление ? в начало VALUES
-                cursor.execute('''
-                    INSERT INTO artifacts (id, attack, defense, season_name, image_url, name, cost, artifact_type)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    new_artifact_id,  # Передаем новый ID как первый параметр
-                    artifact_data['attack'],
-                    artifact_data['defense'],
-                    artifact_data['season_name'],
-                    artifact_data['image_url'],
-                    artifact_data['name'],
-                    artifact_data['cost'],
-                    artifact_data['artifact_type']
-                ))
-
-                db_conn.commit()
-
-                # Сбрасываем данные артефакта
-                current_artifact_data[0] = None
-                add_to_shop_btn.disabled = True
-
-                show_message("Успех", f"Артефакт '{artifact_data['name']}' (ID: {new_artifact_id}) добавлен в лавку!")
-            except Exception as e:
-                show_message("Ошибка", f"Не удалось добавить артефакт в базу данных: {str(e)}")
-
-        # Перепривязываем событие (убираем старое, добавляем новое)
-        add_to_shop_btn.bind(on_release=lambda btn: add_to_shop(btn))
+            show_message("Успех", f"Артефакт '{artifact_data['name']}' (ID: {new_artifact_id}) добавлен в лавку!")
+        except Exception as e:
+            show_message("Ошибка", f"Не удалось добавить артефакт в базу данных: {str(e)}")
 
     def generate_random_name_handler(instance):
         name_input.text = generate_random_name()
 
+    # Привязка событий
     create_btn.bind(on_release=lambda x: create_artifact())
     random_name_btn.bind(on_release=generate_random_name_handler)
+    add_to_shop_btn.bind(on_release=add_to_shop)
+    
