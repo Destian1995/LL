@@ -5,15 +5,7 @@ from db_lerdon_connect import db_path
 
 class SeasonManager:
     """
-    Менеджер сезонов, теперь с учётом фракций и таблицей effects_seasons.
-
-    При первом вызове update(new_idx) просто накладывается эффект для сезона new_idx.
-    При смене с last_idx на new_idx:
-      1. Откатываем всё, что накладывалось для last_idx (_revert_season).
-      2. Накладываем эффект для new_idx (_apply_season).
-      3. Сохраняем last_idx = new_idx.
-
-    Если new_idx == last_idx, ничего не делаем.
+    Менеджер сезонов.
     """
 
     # Для удобства: названия сезонов (индексы 0–3)
@@ -110,153 +102,113 @@ class SeasonManager:
 
         print(f"[SEASON] Всего артефактов в кэше: {len(self._artifact_cache)}")
 
-    def initialize_season_effects(self, conn):
-        """
-        Инициализирует таблицу effects_seasons при старте игры.
-        Рассчитывает бонусы для каждого юнита по каждому сезону.
-        """
-        cur = conn.cursor()
-
-        # Очищаем таблицу
-        cur.execute("DELETE FROM effects_seasons")
-
-        # Получаем все юниты и их базовые характеристики
-        cur.execute("""
-            SELECT unit_name, faction, attack, defense, cost_money, cost_time
-            FROM units_default
-        """)
-
-        units = cur.fetchall()
-
-        for unit in units:
-            unit_name, faction, base_attack, base_defense, base_cost_money, base_cost_time = unit
-
-            # Для каждого сезона рассчитываем бонусы
-            for season_idx in range(4):  # 0-3 сезоны
-                faction_effects = self.FACTION_EFFECTS[season_idx]
-
-                if faction in faction_effects:
-                    effects = faction_effects[faction]
-                    stat_f = effects['stat']
-                    cost_f = effects['cost']
-
-                    # Рассчитываем бонусы (новое значение - базовое значение)
-                    attack_bonus = int(round(base_attack * stat_f)) - base_attack
-                    defense_bonus = int(round(base_defense * stat_f)) - base_defense
-                    cost_money_bonus = int(round(base_cost_money * cost_f)) - base_cost_money
-                    cost_time_bonus = int(round(base_cost_time * cost_f)) - base_cost_time
-
-                    # Вставляем в таблицу
-                    cur.execute("""
-                        INSERT INTO effects_seasons 
-                        (unit_name, season, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (unit_name, season_idx, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus))
-
-        conn.commit()
-        print("[SEASON] Таблица effects_seasons инициализирована")
-
     def update(self, new_idx: int, conn):
         """
         Вызывается при смене сезона на new_idx (0–3).
-        Если last_idx != new_idx, то:
-          1) Если last_idx не None, откатываем _revert_season(last_idx).
-          2) Накладываем _apply_season(new_idx).
-          3) Сохраняем last_idx = new_idx.
-        Если new_idx == last_idx, ничего не делаем.
+        Обновляет last_idx и пересчитывает все эффекты.
         """
-        # Проверяем, инициализирована ли таблица effects_seasons
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM effects_seasons")
-        count = cur.fetchone()[0]
-
-        if count == 0:
-            self.initialize_season_effects(conn)
-
-        if self.last_idx is None:
-            # Первый раз — просто накладываем
-            self._apply_season(new_idx, conn)
-            self.last_idx = new_idx
-        elif new_idx != self.last_idx:
-            # Сначала откатить предыдущий сезон
-            self._revert_season(self.last_idx, conn)
-            # Потом применить новый
-            self._apply_season(new_idx, conn)
-            self.last_idx = new_idx
-        # Если new_idx == last_idx, остаёмся как есть
-
-        # Обновляем кэш артефактов перед применением бонусов
+        self.last_idx = new_idx
+        # Обновляем кэш артефактов перед пересчётом
         self._load_artifact_cache(conn, "both")
-        self.apply_artifact_bonuses(conn)
+        # Пересчитываем все характеристики
+        self._recalculate_all_units(conn, new_idx)
 
-    def _apply_season(self, idx: int, conn):
+    def _recalculate_all_units(self, conn, season_idx):
         """
-        Накладывает все эффекты сезона idx на таблицу units,
-        беря бонусы из таблицы effects_seasons.
+        Пересчитывает все характеристики в таблице units на основе:
+        1. Базовых значений из units_default.
+        2. Бонусов от артефактов (из artifact_effects_log).
+        3. Сезонного коэффициента (из FACTION_EFFECTS).
         """
+        if season_idx is None:
+            print("[SEASON] Season index is None, cannot recalculate units.")
+            return
+
         cur = conn.cursor()
 
-        # Получаем бонусы для данного сезона
+        # Получаем все юниты из units_default
+        cur.execute("SELECT unit_name, faction, attack, defense, durability, cost_money, cost_time FROM units_default")
+        default_units = {row[0]: {'faction': row[1], 'attack': row[2], 'defense': row[3], 'durability': row[4], 'cost_money': row[5], 'cost_time': row[6]} for row in cur.fetchall()}
+
+        # Получаем накопленные бонусы артефактов из лога
         cur.execute("""
-            SELECT unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus
-            FROM effects_seasons
-            WHERE season = ?
-        """, (idx,))
+            SELECT hero_name, stat_name, SUM(value_change) as total_change
+            FROM artifact_effects_log
+            GROUP BY hero_name, stat_name
+        """)
+        artifact_effects = {}
+        for row in cur.fetchall():
+            hero_name, stat_name, total_change = row
+            if hero_name not in artifact_effects:
+                artifact_effects[hero_name] = {}
+            artifact_effects[hero_name][stat_name] = total_change
 
-        effects = cur.fetchall()
+        # Получаем сезонный коэффициент для статов (attack, defense)
+        current_season_effects = self.FACTION_EFFECTS[season_idx]
 
-        for effect in effects:
-            unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus = effect
+        # Пересчитываем характеристики
+        for unit_name, base_data in default_units.items():
+            base_atk = base_data['attack']
+            base_def = base_data['defense']
+            base_hp = base_data['durability']
+            base_cost_money = base_data['cost_money']
+            base_cost_time = base_data['cost_time']
+            faction = base_data['faction']
 
-            # Применяем бонусы
+            # 1. Применяем бонусы от артефактов к базовым значениям
+            artifact_bonus_atk = artifact_effects.get(unit_name, {}).get('attack', 0)
+            artifact_bonus_def = artifact_effects.get(unit_name, {}).get('defense', 0)
+            artifact_bonus_hp = artifact_effects.get(unit_name, {}).get('durability', 0)
+            artifact_bonus_cost_money = artifact_effects.get(unit_name, {}).get('cost_money', 0)
+            artifact_bonus_cost_time = artifact_effects.get(unit_name, {}).get('cost_time', 0)
+
+            # Итог после артефактов (формула: база + (база * процент_артефакта / 100))
+            # Но процент артефакта уже хранится как бонус, его нужно преобразовать обратно в коэффициент
+            # Пусть A - процент артефакта. Тогда bonus = base * (A / 100).
+            # Итог = base + bonus = base + base * (A / 100) = base * (1 + A / 100).
+            # Нам нужен коэффициент от артефактов: artifact_coeff = 1 + A / 100.
+            # Тогда итог после артефактов: base * artifact_coeff.
+            # Однако, в _calculate_stat_change_from_default мы делаем: base * (A / 100) = bonus.
+            # Итог после артефактов: base + bonus.
+            # Теперь применяем сезонный коэффициент к этому итогу.
+            artifact_coeff_atk = 1.0 + (artifact_bonus_atk / 100.0) if base_atk != 0 else 1.0
+            artifact_coeff_def = 1.0 + (artifact_bonus_def / 100.0) if base_def != 0 else 1.0
+            artifact_coeff_hp = 1.0 + (artifact_bonus_hp / 100.0) if base_hp != 0 else 1.0
+
+            temp_atk = int(round(base_atk * artifact_coeff_atk)) if base_atk != 0 else base_atk + artifact_bonus_atk
+            temp_def = int(round(base_def * artifact_coeff_def)) if base_def != 0 else base_def + artifact_bonus_def
+            temp_hp = int(round(base_hp * artifact_coeff_hp)) if base_hp != 0 else base_hp + artifact_bonus_hp
+
+            # 2. Применяем сезонный коэффициент к результату после артефактов
+            # Получаем коэффициент для фракции
+            faction_season_effects = current_season_effects.get(faction, {'stat': 1.0, 'cost': 1.0})
+            season_stat_coeff = faction_season_effects['stat']
+            season_cost_coeff = faction_season_effects['cost']
+
+            final_atk = int(round(temp_atk * season_stat_coeff))
+            final_def = int(round(temp_def * season_stat_coeff))
+            final_hp = int(round(temp_hp * season_stat_coeff))
+            final_cost_money = int(round((base_cost_money + artifact_bonus_cost_money) * season_cost_coeff))
+            final_cost_time = int(round((base_cost_time + artifact_bonus_cost_time) * season_cost_coeff))
+
+            # Обновляем таблицу units
             cur.execute("""
                 UPDATE units
                 SET
-                    attack = attack + ?,
-                    defense = defense + ?,
-                    cost_money = cost_money + ?,
-                    cost_time = cost_time + ?
+                    attack = ?,
+                    defense = ?,
+                    durability = ?,
+                    cost_money = ?,
+                    cost_time = ?
                 WHERE unit_name = ?
-            """, (attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus, unit_name))
+            """, (final_atk, final_def, final_hp, final_cost_money, final_cost_time, unit_name))
 
         conn.commit()
-
-    def _revert_season(self, idx: int, conn):
-        """
-        Откатывает эффекты сезона idx, вычитая бонусы из таблицы effects_seasons.
-        """
-        cur = conn.cursor()
-
-        # Получаем бонусы для данного сезона
-        cur.execute("""
-            SELECT unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus
-            FROM effects_seasons
-            WHERE season = ?
-        """, (idx,))
-
-        effects = cur.fetchall()
-
-        for effect in effects:
-            unit_name, attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus = effect
-
-            # Откатываем бонусы (вычитаем)
-            cur.execute("""
-                UPDATE units
-                SET
-                    attack = attack - ?,
-                    defense = defense - ?,
-                    cost_money = cost_money - ?,
-                    cost_time = cost_time - ?
-                WHERE unit_name = ?
-            """, (attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus, unit_name))
-
-        conn.commit()
+        print(f"[SEASON] Пересчитаны характеристики в units для сезона {self.SEASON_NAMES[season_idx]}")
 
     def apply_artifact_bonuses(self, conn):
         """
-        Применяет бонусы от артефактов, если они экипированы и сезон совпадает.
-        Управляет эффектами через artifact_effects_log.
-        Обрабатывает артефакты из hero_equipment (игрок) и ai_hero_equipment (ИИ).
+        Обновляет лог артефактов и пересчитывает характеристики.
         """
         if self.last_idx is None:
             print("[ARTIFACT] Season not set, skipping artifact application.")
@@ -286,7 +238,7 @@ class SeasonManager:
         # Объединяем списки
         all_equipped_artifacts = player_equipped_artifacts + ai_equipped_artifacts
 
-        # 2. Получаем список уже примененных эффектов
+        # 2. Получаем список уже примененных эффов
         cur.execute("""
             SELECT hero_name, artifact_id FROM artifact_effects_log
             GROUP BY hero_name, artifact_id
@@ -361,67 +313,62 @@ class SeasonManager:
                 if (hero_name, artifact_id) in should_be_active:
                     to_check_apply.add((hero_name, artifact_id))
 
-    def _calculate_stat_change(self, base_value, bonus_percent):
-        """Рассчитывает абсолютное изменение характеристики."""
+        # После всех изменений в artifact_effects_log, пересчитываем ВСЕ характеристики
+        self._recalculate_all_units(conn, self.last_idx)
+
+    def _calculate_stat_change_from_default(self, unit_name, stat_name, bonus_percent, conn):
+        """
+        Рассчитывает абсолютное изменение характеристики на основе БАЗОВОГО значения из units_default.
+        Это НЕ итоговое изменение, а просто (база * процент / 100).
+        """
+        cur = conn.cursor()
+        # Получаем БАЗОВОЕ значение из units_default
+        cur.execute(f"SELECT {stat_name} FROM units_default WHERE unit_name = ?", (unit_name,))
+        base_row = cur.fetchone()
+
+        if not base_row or base_row[0] is None:
+            print(f"[ARTIFACT] Базовое значение {stat_name} для {unit_name} не найдено в units_default.")
+            return 0
+
+        base_value = base_row[0]
         if bonus_percent == 0 or bonus_percent is None:
             return 0
-        change = int(round(base_value * (bonus_percent / 100)))
+
+        # change = int(round(base_value * (bonus_percent / 100))) # Это было бы итоговое изменение
+        change = base_value * (bonus_percent / 100) # Оставим как float для более точного хранения в логе
         return change
 
     def _apply_artifact_effect(self, hero_name: str, artifact_id: int, bonuses: dict, conn):
         """
-        Рассчитывает и применяет эффект артефакта к герою.
-        Записывает эффект в artifact_effects_log.
+        Рассчитывает и записывает эффект артефакта в artifact_effects_log.
+        ВАЖНО: Рассчитывает бонус на основе БАЗОВОГО значения, но записывает в лог.
+        Итоговое значение в units пересчитывается отдельно.
         """
         cur = conn.cursor()
 
-        # Получаем БАЗОВЫЕ значения из units_default
-        cur.execute("""
-            SELECT attack, defense
-            FROM units_default WHERE unit_name = ?
-        """, (hero_name,))
-        base = cur.fetchone()
-
-        if not base:
-            print(f"[ARTIFACT] Hero {hero_name} not found in units_default")
-            return
-
-        (b_atk, b_def) = base
-
-
         effects_to_apply = []
 
-        # Рассчитываем изменения для каждой характеристики
+        # Рассчитываем изменения для каждой характеристики на основе БАЗОВОГО значения
         for artifact_stat, unit_stat in self.ARTIFACT_STAT_MAPPING.items():
             bonus_value = bonuses.get(artifact_stat)
             if bonus_value is None or bonus_value == 0:
                 continue
 
-            base_val = None
-            if unit_stat == 'attack':
-                base_val = b_atk
-            elif unit_stat == 'defense':
-                base_val = b_def
+            # Рассчитываем изменение на основе БАЗОВОГО значения (это будет процент в виде числа)
+            # Мы храним именно процент (как он есть в артефакте), а не абсолютное изменение
+            # Это позволяет корректно пересчитать итог при смене базового значения или сезона.
+            # Для пересчёта нам нужен сам процент, а не его результат на базе.
+            change = bonus_value # Сохраняем сам процент
 
-            if base_val is not None:
-                change = self._calculate_stat_change(base_val, bonus_value)
-                if change != 0:  # Только если есть изменение
-                    effects_to_apply.append((unit_stat, change))
+            if change != 0:  # Только если есть изменение
+                effects_to_apply.append((unit_stat, change))
 
         if not effects_to_apply:
             print(f"[ARTIFACT] No applicable effects for {hero_name} from artifact {artifact_id}")
             return
 
-        # Применяем изменения к units и записываем в лог
+        # Записываем эффект в лог (INSERT OR REPLACE заменяет старые значения для этой пары hero_name, artifact_id)
         for stat_name, change in effects_to_apply:
-            # Обновляем характеристику в units
-            cur.execute(f"""
-                UPDATE units
-                SET {stat_name} = {stat_name} + ?
-                WHERE unit_name = ?
-            """, (change, hero_name))
-
-            # Записываем эффект в лог
             cur.execute("""
                 INSERT OR REPLACE INTO artifact_effects_log 
                 (hero_name, artifact_id, stat_name, value_change)
@@ -429,45 +376,22 @@ class SeasonManager:
             """, (hero_name, artifact_id, stat_name, change))
 
         conn.commit()
-
+        print(f"[ARTIFACT] Записан эффект артефакта {artifact_id} для {hero_name}: {effects_to_apply}")
 
     def _revert_artifact_effect(self, hero_name: str, artifact_id: int, conn):
         """
-        Отменяет эффект артефакта для героя.
-        Вычитает изменения из units и удаляет запись из artifact_effects_log.
+        Удаляет запись об эффекте артефакта из artifact_effects_log.
         """
         cur = conn.cursor()
 
-        # Получаем все эффекты этого артефакта на этого героя
-        cur.execute("""
-            SELECT stat_name, value_change
-            FROM artifact_effects_log
-            WHERE hero_name = ? AND artifact_id = ?
-        """, (hero_name, artifact_id))
-
-        effects = cur.fetchall()
-
-        if not effects:
-            print(f"[ARTIFACT] No effects found to revert for artifact {artifact_id} on hero {hero_name}")
-            return
-
-        # Отменяем каждый эффект
-        for stat_name, value_change in effects:
-            # Вычитаем изменение из характеристики в units
-            cur.execute(f"""
-                UPDATE units
-                SET {stat_name} = {stat_name} - ?
-                WHERE unit_name = ?
-            """, (value_change, hero_name))
-
-
-        # Удаляем записи об эффектах из лога
+        # Удаляем записи об эффектах из лога для этого артефакта
         cur.execute("""
             DELETE FROM artifact_effects_log
             WHERE hero_name = ? AND artifact_id = ?
         """, (hero_name, artifact_id))
 
         conn.commit()
+        print(f"[ARTIFACT] Удалён эффект артефакта {artifact_id} для {hero_name}")
 
     def reset_absent_third_class_units(self, conn):
         """
@@ -519,33 +443,12 @@ class SeasonManager:
                         WHERE unit_name = ?
                     """, (unit_name,))
 
-                    # Если сезон установлен, применяем сезонные эффекты
+                    # Применяем бонусы текущего сезона и артефактов
                     if self.last_idx is not None:
-                        # Получаем бонусы для текущего сезона
-                        cursor.execute("""
-                            SELECT attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus
-                            FROM effects_seasons
-                            WHERE unit_name = ? AND season = ?
-                        """, (unit_name, self.last_idx))
-
-                        season_effect = cursor.fetchone()
-
-                        if season_effect:
-                            attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus = season_effect
-
-                            # Применяем бонусы
-                            cursor.execute("""
-                                UPDATE units
-                                SET
-                                    attack = attack + ?,
-                                    defense = defense + ?,
-                                    cost_money = cost_money + ?,
-                                    cost_time = cost_time + ?
-                                WHERE unit_name = ?
-                            """, (attack_bonus, defense_bonus, cost_money_bonus, cost_time_bonus, unit_name))
-
-                            print(
-                                f"[SUCCESS] Сезонные бонусы применены к юниту '{unit_name}' для сезона {self.SEASON_NAMES[self.last_idx]}.")
+                        # Пересчитываем характеристики для этого юнита
+                        self._recalculate_all_units(conn, self.last_idx)
+                        print(
+                            f"[SUCCESS] Сезонные и артефактные бонусы применены к юниту '{unit_name}' для сезона {self.SEASON_NAMES[self.last_idx]}.")
 
                     reset_count += 1
                     print(f"[SUCCESS] Характеристики юнита '{unit_name}' сброшены и пересчитаны.")
