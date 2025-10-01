@@ -341,7 +341,7 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
         },
         'Мятеж': {
             'desc': 'Захват города без гарнизона.',
-            'cost': 50_000_000
+            'cost': 70_000_000
         },
         'Заказ': {
             'desc': 'Убийство вражеского героя (30% шанс успеха). Стоимость: 25 млн.',
@@ -417,7 +417,7 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
     )
 
     desc_label = Label(
-        text="Выберите сумму (от 50 млн до 1 млрд):",
+        text="Выберите сумму (от 70 млн до 650 млн):",
         font_size=font_info,
         color=TEXT_COLOR,
         halign='center',
@@ -428,12 +428,12 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
 
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
-    max_affordable = min(1_000_000_000, current_money)
+    max_affordable = min(650_000_000, current_money)
 
     slider = Slider(
-        min=50_000_000,
+        min=70_000_000,
         max=max_affordable,
-        value=50_000_000,
+        value=70_000_000,
         step=1_000_000
     )
     slider_label = Label(
@@ -447,11 +447,11 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
     slider.bind(value=lambda instance, value: slider_label.setter('text')(slider_label, f"Выбрано: {format_number(value)}"))
 
     def calculate_rebels(cost):
-        base_cost = 50_000_000
+        base_cost = 70_000_000
         extra_money = max(0, cost - base_cost)
-        extra_percentage = (extra_money // 10_000_000) * 0.35
+        extra_percentage = (extra_money // 10_000_000) * 0.37
         total_percentage = 1.0 + extra_percentage
-        return int(2000 * total_percentage)
+        return int(2750 * total_percentage)
 
     rebels_label = Label(
         text=f"Количество мятежников: {calculate_rebels(slider.value)}",
@@ -683,7 +683,7 @@ def execute_diversion_operation(conn, player_faction, op_name, op_info, target_f
             return
         original_faction = original_faction[0]
 
-        rebel_hero_name = "Предводитель"
+        rebel_hero_name = "Кейдж"
         rebel_peasant_name = "Мятежники"
 
         cursor.execute("SELECT unit_name, image_path FROM units WHERE unit_name IN (?, ?)", (rebel_hero_name, rebel_peasant_name))

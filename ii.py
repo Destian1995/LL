@@ -1052,28 +1052,36 @@ class AIController:
 
             # Вставка сгенерированного артефакта в таблицу artifacts_ai с указанным ID
             cursor.execute('''
-                INSERT INTO artifacts_ai (id, attack, defense, season_name, image_url, name, cost, artifact_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (new_artifact_id, attack, defense, season_name, image_url, name, cost, artifact_type))
+                   INSERT INTO artifacts_ai (id, attack, defense, season_name, image_url, name, cost, artifact_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ''', (new_artifact_id, attack, defense, season_name, image_url, name, cost, artifact_type))
 
             # Списываем деньги
             self.resources['Кроны'] -= cost
 
             # Экипируем артефакт герою
             cursor.execute('''
-                UPDATE ai_hero_equipment
-                SET artifact_id = ?
-                WHERE faction_name = ? AND hero_name = ? AND slot_type = ?
-            ''', (new_artifact_id, self.faction, hero_with_slot, slot_type))
-            # Применяем бонусы артефактов через переданный экземпляр SeasonManager
-            if self.season_manager:
-                self.season_manager.apply_artifact_bonuses(self.faction.conn)
+                   UPDATE ai_hero_equipment
+                   SET artifact_id = ?
+                   WHERE faction_name = ? AND hero_name = ? AND slot_type = ?
+               ''', (new_artifact_id, self.faction, hero_with_slot, slot_type))
+
+            # ОБЯЗАТЕЛЬНО делаем commit перед применением бонусов!
             self.db_connection.commit()
+
+            # Применяем бонусы артефактов через переданный экземпляр SeasonManager
+            # ИСПРАВЛЕНО: используем self.db_connection соединение ИИ с базой
+            if self.season_manager:
+                self.season_manager.apply_artifact_bonuses(self.db_connection)
+                print(f"[INFO] Бонусы артефактов применены для ИИ '{self.faction}' через SeasonManager.")
+
             print(
                 f"[SUCCESS] ИИ '{self.faction}' сгенерировал и экипировал артефакт '{name}' (ID {new_artifact_id}, Атк: {attack}, Защ: {defense}, Стоимость: {format_number(cost)}) герою '{hero_with_slot}' в слот {slot_type}.")
 
         except Exception as e:
             print(f"[ERROR] ИИ '{self.faction}': Ошибка при генерации/покупке артефакта: {e}")
+            import traceback
+            traceback.print_exc()  # Для отладки
             try:
                 self.db_connection.rollback()
             except:
