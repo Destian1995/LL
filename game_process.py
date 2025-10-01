@@ -530,14 +530,13 @@ class GameScreen(Screen):
         # Инициализация политических данных
         self.initialize_political_data()
         self.prev_diplomacy_state = {}
+        # Инициализируем таблицу season
+        self.season_manager = SeasonManager()
+        self.initialize_season_table(self.conn)
         # Инициализация AI-контроллеров
         self.ai_controllers = {}
         # Инициализация EventManager
         self.event_manager = EventManager(self.selected_faction, self, self.game_state_manager.faction, self.conn)
-
-        # Инициализируем таблицу season
-        self.season_manager = SeasonManager()
-        self.initialize_season_table(self.conn)
 
         # Получаем текущий сезон из БД или устанавливаем случайный
         current_season_data = self.get_current_season_from_db(self.conn)
@@ -568,17 +567,11 @@ class GameScreen(Screen):
         # Запускаем обновление рейтинга армии каждые 1 секунду
         Clock.schedule_interval(self.update_army_rating, 1)
 
-        Clock.schedule_interval(self.update_artifact_bonuses, 1)
-
     def init_ai_controllers(self):
         """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
         for faction in FACTIONS:
             if faction != self.selected_faction:
-                self.ai_controllers[faction] = AIController(faction, self.conn)
-
-    def update_artifact_bonuses(self, dt):
-        """Обертка для вызова apply_artifact_bonuses с правильными параметрами"""
-        self.season_manager.apply_artifact_bonuses(self.conn)
+                self.ai_controllers[faction] = AIController(faction, self.conn, self.season_manager)
 
     def save_selected_faction_to_db(self):
         conn = self.conn
@@ -1301,7 +1294,7 @@ class GameScreen(Screen):
     def switch_to_economy(self, instance):
         """Переключение на экономическую вкладку."""
         self.clear_game_area()
-        economic.start_economy_mode(self.game_state_manager.faction, self.game_area, self.conn)
+        economic.start_economy_mode(self.game_state_manager.faction, self.game_area, self.conn, self.season_manager)
 
     def switch_to_army(self, instance):
         """Переключение на армейскую вкладку."""

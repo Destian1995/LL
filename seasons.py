@@ -68,6 +68,47 @@ class SeasonManager:
         # last_idx = индекс сезона, бафф которого уже наложен.
         # None означает, что до этого ни один сезон не применялся.
         self.last_idx = None
+        # Кэш артефактов - словарь {artifact_id: (attack, defense, season_name)}
+        self._artifact_cache = {}
+
+    def _load_artifact_cache(self, conn, faction_type="both"):
+        """
+        Загружает или обновляет кэш артефактов из БД.
+        faction_type: "player", "ai", "both"
+        """
+        cur = conn.cursor()
+        self._artifact_cache = {}
+
+        # Определяем, какие таблицы использовать
+        artifact_tables = []
+        if faction_type in ["player", "both"]:
+            artifact_tables.append("artifacts")
+        if faction_type in ["ai", "both"]:
+            artifact_tables.append("artifacts_ai")
+
+        for table_name in artifact_tables:
+            try:
+                # Проверяем, существует ли таблица
+                cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+                if cur.fetchone():
+                    cur.execute(f"""
+                        SELECT id, attack, defense, season_name
+                        FROM {table_name}
+                    """)
+                    artifacts = cur.fetchall()
+
+                    for artifact_row in artifacts:
+                        artifact_id, attack, defense, season_name = artifact_row
+                        self._artifact_cache[artifact_id] = (attack, defense, season_name)
+
+                    print(f"[SEASON] Загружено {len(artifacts)} артефактов из таблицы {table_name}")
+                else:
+                    print(f"[WARNING] Таблица {table_name} не найдена, пропускаем.")
+
+            except sqlite3.Error as e:
+                print(f"[ERROR] Ошибка при загрузке артефактов из {table_name}: {e}")
+
+        print(f"[SEASON] Всего артефактов в кэше: {len(self._artifact_cache)}")
 
     def initialize_season_effects(self, conn):
         """
@@ -143,6 +184,9 @@ class SeasonManager:
             self._apply_season(new_idx, conn)
             self.last_idx = new_idx
         # Если new_idx == last_idx, остаёмся как есть
+
+        # Обновляем кэш артефактов перед применением бонусов
+        self._load_artifact_cache(conn, "both")
         self.apply_artifact_bonuses(conn)
 
     def _apply_season(self, idx: int, conn):
@@ -218,6 +262,9 @@ class SeasonManager:
             print("[ARTIFACT] Season not set, skipping artifact application.")
             return
 
+        # Обновляем кэш артефактов перед применением бонусов
+        self._load_artifact_cache(conn, "both")
+
         cur = conn.cursor()
         current_season = self.SEASON_NAMES[self.last_idx]
 
@@ -267,22 +314,16 @@ class SeasonManager:
 
         # 5. Проверяем и применяем новые/измененные эффекты
         for hero_name, artifact_id in to_check_apply:
-            # Получаем данные артефакта
-            cur.execute("""
-                SELECT attack, defense, season_name
-                FROM artifacts
-                WHERE id = ?
-            """, (artifact_id,))
-            artifact = cur.fetchone()
-
-            if not artifact:
+            # Получаем данные артефакта из кэша
+            if artifact_id not in self._artifact_cache:
+                print(f"[WARNING] Артефакт ID {artifact_id} не найден в кэше, пропускаем.")
                 continue
 
-            (a_atk, a_def, a_season_name) = artifact
+            a_atk, a_def, a_season_name = self._artifact_cache[artifact_id]
 
             # Проверяем сезон
             season_ok = True
-            if a_season_name is not None:
+            if a_season_name is not None and a_season_name.strip() != "":
                 allowed_seasons = [s.strip() for s in a_season_name.split(',')]
                 if current_season not in allowed_seasons:
                     season_ok = False
@@ -295,7 +336,7 @@ class SeasonManager:
                 }
                 self._apply_artifact_effect(hero_name, artifact_id, bonuses, conn)
             else:
-                pass  # Уже обработано в to_revert
+                print(f"[INFO] Артефакт {artifact_id} не подходит по сезону '{current_season}', пропускаем.")
 
         # 6. Проверяем существующие эффекты на соответствие сезону
         # (на случай, если сезон сменился, а артефакт остался тот же)
@@ -303,13 +344,13 @@ class SeasonManager:
         cur.execute("""
             SELECT DISTINCT ael.hero_name, ael.artifact_id, a.season_name
             FROM artifact_effects_log ael
-            JOIN artifacts a ON ael.artifact_id = a.id
+            JOIN (SELECT id, season_name FROM artifacts UNION ALL SELECT id, season_name FROM artifacts_ai) a ON ael.artifact_id = a.id
         """)
         active_artifact_details = cur.fetchall()
 
         for hero_name, artifact_id, a_season_name in active_artifact_details:
             season_ok = True
-            if a_season_name is not None:
+            if a_season_name is not None and a_season_name.strip() != "":
                 allowed_seasons = [s.strip() for s in a_season_name.split(',')]
                 if current_season not in allowed_seasons:
                     season_ok = False

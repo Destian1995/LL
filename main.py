@@ -491,7 +491,8 @@ def restore_from_backup(conn):
         ("relations_default", "relations"),
         ("resources_default", "resources"),
         ("units_default", "units"),
-        ("artifacts_default", "artifacts")
+        ("artifacts_default", "artifacts"),
+        ("artifacts_ai_default", "artifacts_ai")
     ]
 
     try:
@@ -538,6 +539,7 @@ def clear_tables(conn):
         "noble_events",
         "coup_attempts",
         "artifacts",
+        "artifacts_ai",
         "artifact_effects_log",
     ]
 

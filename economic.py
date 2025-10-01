@@ -365,6 +365,7 @@ class Faction:
         """
 
         rows = self.load_data("cities", ["name", "coordinates"], "faction = ?", (self.faction,))
+        print(f"[DEBUG ROWS CITY!]:{rows}")
         cities = []
         self.city_count = 0
 
@@ -2378,7 +2379,7 @@ def open_development_popup(faction):
 
 
 #--------------------------
-def start_economy_mode(faction, game_area, db_conn):
+def start_economy_mode(faction, game_area, db_conn, season_manager):
     """Инициализация экономического режима для выбранной фракции"""
 
     from kivy.metrics import dp, sp
@@ -2427,7 +2428,7 @@ def start_economy_mode(faction, game_area, db_conn):
     trade_btn = create_styled_button("Рынок", lambda x: open_trade_popup(faction))
     tax_btn = create_styled_button("Налоги", lambda x: open_tax_popup(faction))
     economy_layout.add_widget(create_styled_button("Мастерская", lambda x: workshop(faction, db_conn)))
-    economy_layout.add_widget(create_styled_button("Артефакты", lambda x: open_artifacts_popup(faction)))
+    economy_layout.add_widget(create_styled_button("Артефакты", lambda x: open_artifacts_popup(faction, season_manager)))
     economy_layout.add_widget(dev_btn)
     economy_layout.add_widget(trade_btn)
     economy_layout.add_widget(tax_btn)

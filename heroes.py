@@ -1,6 +1,7 @@
 from kivy.graphics import PopMatrix, PushMatrix
 
 from db_lerdon_connect import *
+from seasons import SeasonManager
 
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
@@ -190,25 +191,53 @@ def load_hero_equipment_from_db(faction):
         print(f"Ошибка при загрузке экипировки героя: {e}")
     return equipment
 
-def save_hero_equipment_to_db(faction, slot_type, artifact_id, pos_x=None, pos_y=None):
+def save_hero_equipment_to_db(faction, slot_type, artifact_id, season_manager, pos_x=None, pos_y=None):
     """
     Обновляет экипировку героя в БД, устанавливая artifact_id, image_url и координаты для заданного слота.
     """
     try:
         cursor = faction.conn.cursor()
+
         # Получаем image_url для артефакта
         cursor.execute("SELECT image_url FROM artifacts WHERE id = ?", (artifact_id,))
         row = cursor.fetchone()
         image_url = row[0] if row and row[0] else "files/pict/artifacts/default.png"
+
+        print(f"[DEBUG] Подготовка к обновлению экипировки: faction={faction.faction}, slot_type={slot_type}, artifact_id={artifact_id}")
+
         # Обновляем запись, включая координаты
         cursor.execute('''
             UPDATE hero_equipment 
             SET artifact_id = ?, image_url = ?, pos_x = ?, pos_y = ?
             WHERE faction_name = ? AND slot_type = ?
-        ''', (artifact_id, image_url, pos_x, pos_y, faction.faction, slot_type)) # Добавлены pos_x, pos_y
+        ''', (artifact_id, image_url, pos_x, pos_y, faction.faction, slot_type))
+
+        rows_affected = cursor.rowcount
+        print(f"[DEBUG] Затронуто строк: {rows_affected}")
+
         faction.conn.commit()
+
+        # Проверяем, что запись действительно обновлена
+        verify_cursor = faction.conn.cursor()
+        verify_cursor.execute("SELECT artifact_id, image_url FROM hero_equipment WHERE faction_name = ? AND slot_type = ?",
+                              (faction.faction, slot_type))
+        result = verify_cursor.fetchone()
+        if result:
+            print(f"[DEBUG] Проверка после обновления: artifact_id={result[0]}, image_url={result[1]}")
+        else:
+            print(f"[ERROR] Запись не найдена после обновления!")
+
+        # Применяем бонусы артефактов через переданный экземпляр SeasonManager
+        if season_manager:
+            season_manager.apply_artifact_bonuses(faction.conn)
+            print(f"[SUCCESS] Экипировка героя обновлена: {slot_type}, artifact_id: {artifact_id}")
+        else:
+            print(f"[WARNING] SeasonManager не передан, бонусы не применены")
+
     except sqlite3.Error as e:
         print(f"[ERROR] save_hero_equipment_to_db: Ошибка при обновлении экипировки героя: {e}")
+        import traceback
+        traceback.print_exc()
         try:
             faction.conn.rollback()
         except:
@@ -460,14 +489,14 @@ def style_rounded_spinner(spinner, bg_color=(0.4, 0.4, 0.4, 1), text_color=(1, 1
 # --- Основная функция сборки и построения интерфейса артефактов---
 
 
-def open_artifacts_popup(faction):
+def open_artifacts_popup(faction, season_manager):
     """
     Открывает Popup с артефактами и экипировкой героя.
+    :param season_manager:
     :param faction: Экземпляр класса Faction
     """
     from kivy.metrics import dp
     from kivy.utils import platform
-
     # Проверяем, запущено ли приложение на Android
     is_android = platform == 'android'
 
@@ -691,7 +720,7 @@ def open_artifacts_popup(faction):
                                     "pos_y": None
                                 }
                                 update_equipment_slot_visual(slot_type, hero_equipment[slot_type])
-                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None, None)
+                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], season_manager, None, None)
                                 print(f"[SUCCESS] Артефакт {art_data['name']} куплен и экипирован в слот {slot_type}.")
                                 show_popup_message("Успех", f"Артефакт {art_data['name']} куплен!")
                                 update_hero_stats_display()
@@ -744,7 +773,7 @@ def open_artifacts_popup(faction):
 
 
                                     # Сохраняем новый артефакт
-                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], None,
+                                save_hero_equipment_to_db(current_fraction_instance, slot_type, art_data['id'], season_manager, None,
                                                           None)
                                 hero_equipment[slot_type] = {
                                     "id": art_data['id'],
@@ -1067,7 +1096,7 @@ def open_artifacts_popup(faction):
                     pos_x, pos_y = pos
                     hero_equipment[slot_type]['pos_x'] = pos_x
                     hero_equipment[slot_type]['pos_y'] = pos_y
-                    save_hero_equipment_to_db(faction, slot_type, artifact_entry['id'], pos_x, pos_y)
+                    save_hero_equipment_to_db(faction, slot_type, artifact_entry['id'], season_manager, pos_x, pos_y)
 
 
 

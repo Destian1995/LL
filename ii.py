@@ -2,10 +2,51 @@
 from fight import fight
 from db_lerdon_connect import *
 
+def format_number(number):
+    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
+    if not isinstance(number, (int, float)):
+        return str(number)
+    if number == 0:
+        return "0"
+
+    absolute = abs(number)
+    sign = -1 if number < 0 else 1
+
+    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:  # 1e36
+        return f"{sign * absolute / 1e36:.1f} андец."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:  # 1e33
+        return f"{sign * absolute / 1e33:.1f} децил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:  # 1e30
+        return f"{sign * absolute / 1e30:.1f} нонил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e27
+        return f"{sign * absolute / 1e27:.1f} октил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000:  # 1e24
+        return f"{sign * absolute / 1e24:.1f} септил."
+    elif absolute >= 1_000_000_000_000_000_000_000:  # 1e21
+        return f"{sign * absolute / 1e21:.1f} секст."
+    elif absolute >= 1_000_000_000_000_000_000:  # 1e18
+        return f"{sign * absolute / 1e18:.1f} квинт."
+    elif absolute >= 1_000_000_000_000_000:  # 1e15
+        return f"{sign * absolute / 1e15:.1f} квадр."
+    elif absolute >= 1_000_000_000_000:  # 1e12
+        return f"{sign * absolute / 1e12:.1f} трлн."
+    elif absolute >= 1_000_000_000:  # 1e9
+        return f"{sign * absolute / 1e9:.1f} млрд."
+    elif absolute >= 1_000_000:  # 1e6
+        return f"{sign * absolute / 1e6:.1f} млн."
+    elif absolute >= 1_000:  # 1e3
+        return f"{sign * absolute / 1e3:.1f} тыс."
+    else:
+        return f"{number}"
 
 class AIController:
-    def __init__(self, faction, conn=None):
+    def __init__(self, faction, conn=None, season_manager=None):
+        """
+
+        :type season_manager: экземпляр SeasonManager из game_process.py
+        """
         self.faction = faction
+        self.season_manager = season_manager
         self.turn = 0
         self.db_connection = conn
         self.cursor = self.db_connection.cursor()
@@ -812,7 +853,7 @@ class AIController:
         try:
             # 1. Загружаем список всех доступных артефактов из БД
             cursor = self.db_connection.cursor()
-            cursor.execute("SELECT id, cost, artifact_type FROM artifacts")
+            cursor.execute("SELECT id, cost, artifact_type FROM artifacts_ai")
             all_artifacts = cursor.fetchall()
 
             if not all_artifacts:
@@ -957,7 +998,7 @@ class AIController:
         slot_type = artifact_type_to_slot[artifact_type]
 
         # Случайное название
-        prefixes = ["ИИ-Артефакт", "Квантовый", "Нейросеть", "Сингулярный", "Кибер"]
+        prefixes = ["Артефакт", "Квантовый", "Атомной", "Сингулярной", "Молекулярной"]
         suffixes = ["Силы", "Защиты", "Быстроты", "Власти", "Хаоса", "Порядка", "Кода"]
         name = f"{random.choice(prefixes)} {random.choice(suffixes)}"
 
@@ -1004,13 +1045,16 @@ class AIController:
         try:
             cursor = self.db_connection.cursor()
 
-            # Вставка сгенерированного артефакта в таблицу artifacts
-            cursor.execute('''
-                INSERT INTO artifacts (attack, defense, season_name, image_url, name, cost, artifact_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (attack, defense, season_name, image_url, name, cost, artifact_type))
+            # Генерация ID на основе максимального ID в таблице artifacts_ai
+            cursor.execute("SELECT MAX(id) FROM artifacts_ai")
+            max_id_result = cursor.fetchone()
+            new_artifact_id = (max_id_result[0] or 0) + 1
 
-            artifact_id = cursor.lastrowid  # Получаем ID созданного артефакта
+            # Вставка сгенерированного артефакта в таблицу artifacts_ai с указанным ID
+            cursor.execute('''
+                INSERT INTO artifacts_ai (id, attack, defense, season_name, image_url, name, cost, artifact_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (new_artifact_id, attack, defense, season_name, image_url, name, cost, artifact_type))
 
             # Списываем деньги
             self.resources['Кроны'] -= cost
@@ -1020,11 +1064,13 @@ class AIController:
                 UPDATE ai_hero_equipment
                 SET artifact_id = ?
                 WHERE faction_name = ? AND hero_name = ? AND slot_type = ?
-            ''', (artifact_id, self.faction, hero_with_slot, slot_type))
-
+            ''', (new_artifact_id, self.faction, hero_with_slot, slot_type))
+            # Применяем бонусы артефактов через переданный экземпляр SeasonManager
+            if self.season_manager:
+                self.season_manager.apply_artifact_bonuses(self.faction.conn)
             self.db_connection.commit()
             print(
-                f"[SUCCESS] ИИ '{self.faction}' сгенерировал и экипировал артефакт '{name}' (ID {artifact_id}, Атк: {attack}, Защ: {defense}, Стоимость: {format_number(cost)}) герою '{hero_with_slot}' в слот {slot_type}.")
+                f"[SUCCESS] ИИ '{self.faction}' сгенерировал и экипировал артефакт '{name}' (ID {new_artifact_id}, Атк: {attack}, Защ: {defense}, Стоимость: {format_number(cost)}) герою '{hero_with_slot}' в слот {slot_type}.")
 
         except Exception as e:
             print(f"[ERROR] ИИ '{self.faction}': Ошибка при генерации/покупке артефакта: {e}")
