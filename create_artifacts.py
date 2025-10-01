@@ -208,20 +208,34 @@ def workshop(faction, db_conn):
     selected_image = [None]
     current_index = [0]  # индекс текущей иконки
 
-    # Кнопки навигации
+    # Кнопки навигации — делаем их компактными
     nav_layout = BoxLayout(size_hint_y=None, height=dp(30), spacing=dp(5))
-    prev_btn = Button(text="<", size_hint_x=0.3, font_size=small_font_size, background_color=(0.3, 0.3, 0.3, 1))
-    next_btn = Button(text=">", size_hint_x=0.3, font_size=small_font_size, background_color=(0.3, 0.3, 0.3, 1))
+    prev_btn = Button(
+        text="<",
+        size_hint_x=0.3,
+        font_size=small_font_size,
+        background_color=(0.3, 0.3, 0.3, 1),
+        size_hint_y=None,
+        height=dp(25)  # ← Уменьшаем высоту
+    )
+    next_btn = Button(
+        text=">",
+        size_hint_x=0.3,
+        font_size=small_font_size,
+        background_color=(0.3, 0.3, 0.3, 1),
+        size_hint_y=None,
+        height=dp(25)  # ← Уменьшаем высоту
+    )
     nav_layout.add_widget(prev_btn)
     nav_layout.add_widget(next_btn)
     left_part.add_widget(nav_layout)
 
-    # Отображение текущей иконки
+    # Отображение текущей иконки — фиксированная ширина, адаптивная высота
     current_icon_display = Image(
         source="" if not image_files else os.path.join(artifact_images_path, image_files[0]),
         size_hint_y=None,
         height=dp(60) if is_mobile else dp(80),
-        width=dp(60) if is_mobile else dp(80),  # ← ФИКСИРОВАННАЯ ШИРИНА
+        width=dp(60) if is_mobile else dp(80),
         allow_stretch=True,
         keep_ratio=True
     )
@@ -251,7 +265,7 @@ def workshop(faction, db_conn):
     content_layout.add_widget(left_part)
 
     # === Правая часть: характеристики и управление ===
-    right_part = BoxLayout(orientation='vertical', spacing=dp(8))
+    right_part = BoxLayout(orientation='vertical', spacing=dp(5))  # ← Уменьшаем отступы
 
     # Название
     name_label = Label(
@@ -272,31 +286,49 @@ def workshop(faction, db_conn):
         multiline=False,
         size_hint_y=None,
         height=input_height,
-        padding=[dp(8), dp(6)] if is_mobile else [dp(10), dp(8)],
+        padding=[dp(5), dp(4)] if is_mobile else [dp(8), dp(6)],  # ← Уменьшаем отступы
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
-        cursor_color=(1, 1, 1, 1)
+        cursor_color=(1, 1, 1, 1),
+        size_hint_x=1  # ← Занимает всю ширину
     )
     right_part.add_widget(name_input)
 
-    # Кнопка случайного названия
+    # Кнопка случайного названия — компактная
     random_name_btn = Button(
         text="Случайное",
         size_hint_y=None,
-        height=btn_height,
+        height=btn_height * 0.8,  # ← Уменьшаем на 20%
         background_normal='',
         background_color=(0.2, 0.6, 0.6, 1),
-        font_size=small_font_size
+        font_size=small_font_size,
+        size_hint_x=1  # ← Занимает всю ширину
     )
     right_part.add_widget(random_name_btn)
 
-    # Атака и защита в строке
-    stats_layout = BoxLayout(orientation='horizontal', spacing=dp(5), size_hint_y=None, height=input_height)
-    attack_label = Label(text="Атака (%):", font_size=small_font_size, size_hint_x=0.5, halign='right', valign='middle')
+    # Атака и защита в строке — компактные
+    stats_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=input_height * 0.9)
+    attack_label = Label(
+        text="Атака (%):",
+        font_size=small_font_size,
+        size_hint_x=0.4,
+        halign='right',
+        valign='middle',
+        size_hint_y=None,
+        height=input_height * 0.9
+    )
     attack_input = TextInput(
-        text='0', font_size=small_font_size, multiline=False, input_filter='int',
-        size_hint_x=0.5, padding=[dp(5), dp(4)], background_color=(0.2, 0.2, 0.2, 1),
-        foreground_color=(1, 1, 1, 1), cursor_color=(1, 1, 1, 1)
+        text='0',
+        font_size=small_font_size,
+        multiline=False,
+        input_filter='int',
+        size_hint_x=0.6,
+        padding=[dp(4), dp(3)],
+        background_color=(0.2, 0.2, 0.2, 1),
+        foreground_color=(1, 1, 1, 1),
+        cursor_color=(1, 1, 1, 1),
+        size_hint_y=None,
+        height=input_height * 0.9
     )
     stats_layout.add_widget(attack_label)
     stats_layout.add_widget(attack_input)
@@ -310,14 +342,29 @@ def workshop(faction, db_conn):
 
     attack_input.bind(text=update_attack)
 
-    defense_label = Label(text="Защита (%):", font_size=small_font_size, size_hint_x=0.5, halign='right',
-                          valign='middle')
-    defense_input = TextInput(
-        text='0', font_size=small_font_size, multiline=False, input_filter='int',
-        size_hint_x=0.5, padding=[dp(5), dp(4)], background_color=(0.2, 0.2, 0.2, 1),
-        foreground_color=(1, 1, 1, 1), cursor_color=(1, 1, 1, 1)
+    defense_label = Label(
+        text="Защита (%):",
+        font_size=small_font_size,
+        size_hint_x=0.4,
+        halign='right',
+        valign='middle',
+        size_hint_y=None,
+        height=input_height * 0.9
     )
-    stats_layout = BoxLayout(orientation='horizontal', spacing=dp(5), size_hint_y=None, height=input_height)
+    defense_input = TextInput(
+        text='0',
+        font_size=small_font_size,
+        multiline=False,
+        input_filter='int',
+        size_hint_x=0.6,
+        padding=[dp(4), dp(3)],
+        background_color=(0.2, 0.2, 0.2, 1),
+        foreground_color=(1, 1, 1, 1),
+        cursor_color=(1, 1, 1, 1),
+        size_hint_y=None,
+        height=input_height * 0.9
+    )
+    stats_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=input_height * 0.9)
     stats_layout.add_widget(defense_label)
     stats_layout.add_widget(defense_input)
     right_part.add_widget(stats_layout)
@@ -330,7 +377,7 @@ def workshop(faction, db_conn):
 
     defense_input.bind(text=update_defense)
 
-    # Сезон
+    # Сезон — компактный
     season_label = Label(
         text="Сезон артефакта:",
         font_size=small_font_size,
@@ -347,8 +394,9 @@ def workshop(faction, db_conn):
         text='Нет',
         values=['Нет', 'Весна', 'Лето', 'Осень', 'Зима', 'Все'],
         size_hint_y=None,
-        height=input_height,
-        font_size=small_font_size
+        height=input_height * 0.9,
+        font_size=small_font_size,
+        size_hint_x=1
     )
 
     def update_seasons(value):
@@ -362,7 +410,7 @@ def workshop(faction, db_conn):
     season_spinner.bind(text=lambda spinner, value: update_seasons(value))
     right_part.add_widget(season_spinner)
 
-    # Слот
+    # Слот — компактный
     slot_label = Label(
         text="Слот артефакта:",
         font_size=small_font_size,
@@ -379,20 +427,22 @@ def workshop(faction, db_conn):
         text='Выберите слот',
         values=['Руки', 'Голова', 'Ноги', 'Туловище', 'Аксессуар'],
         size_hint_y=None,
-        height=input_height,
-        font_size=small_font_size
+        height=input_height * 0.9,
+        font_size=small_font_size,
+        size_hint_x=1
     )
     right_part.add_widget(slot_spinner)
 
-    # Кнопка создания
+    # Кнопка создания — компактная
     create_btn = Button(
         text="Создать артефакт",
         size_hint_y=None,
-        height=btn_height,
+        height=btn_height * 0.8,  # ← Уменьшаем
         background_normal='',
         background_color=(0.6, 0.2, 0.6, 1),
         font_size=normal_font_size,
-        bold=True
+        bold=True,
+        size_hint_x=1  # ← Занимает всю ширину
     )
     right_part.add_widget(create_btn)
 
@@ -494,7 +544,8 @@ def workshop(faction, db_conn):
 
     # === Внутренние функции (остаются без изменений) ===
     def generate_random_name():
-        prefixes = ["Артефакт", "Амулет", "Сердце", "Душа", "Звезда", "Секира", "Меч", "Клинок", "Винтовка", "Мушкет", "Броня", "Панцирь"]
+        prefixes = ["Артефакт", "Амулет", "Сердце", "Душа", "Звезда", "Секира", "Меч", "Клинок", "Винтовка", "Мушкет",
+                    "Броня", "Панцирь"]
         suffixes = ["Силы", "Защиты", "Мудрости", "Света", "Тьмы", "Скорости", "Ловкости", "Выносливости", "Удачи",
                     "Судьбы"]
         prefix = random.choice(prefixes)
