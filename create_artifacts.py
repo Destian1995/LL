@@ -115,9 +115,9 @@ def workshop(faction, db_conn):
 
     padding_main = dp(8) if is_android else dp(12)
     spacing_main = dp(4) if is_android else dp(6)
-    btn_height = dp(25) if is_android else dp(30)
-    input_height = dp(20) if is_android else dp(25)
-    label_height = dp(18) if is_android else dp(22)
+    btn_height = dp(30) if is_android else dp(35)
+    input_height = dp(25) if is_android else dp(30)
+    label_height = dp(20) if is_android else dp(25)
 
     # === Создание всплывающего окна ===
     workshop_popup = Popup(
@@ -125,8 +125,8 @@ def workshop(faction, db_conn):
         size_hint=(0.98, 0.95),
         title_size=font_title,
         title_align='center',
-        title_color=(1, 1, 1, 1),
-        background_color=(0.1, 0.1, 0.1, 0.95),
+        title_color=(0.9, 0.9, 0.9, 1),
+        background_color=(0.08, 0.08, 0.08, 0.98),  # Темнее
         separator_color=(0.3, 0.3, 0.3, 1),
         auto_dismiss=False
     )
@@ -138,7 +138,7 @@ def workshop(faction, db_conn):
         'attack': 0,
         'defense': 0,
         'season': 'Нет',
-        'slot': 'Выберите слот'
+        'slot': 'Руки'  # По умолчанию
     }
 
     # === Список изображений ===
@@ -187,7 +187,7 @@ def workshop(faction, db_conn):
         cost_label = Label(
             text="Создание: 35 млн",
             font_size=font_small,
-            color=(0.9, 0.9, 0.9, 1),
+            color=(0.7, 0.7, 0.7, 1),  # Светлее
             halign='right',
             valign='middle',
             size_hint_y=None,
@@ -201,7 +201,7 @@ def workshop(faction, db_conn):
         title = Label(
             text="Выберите иконку и название",
             font_size=font_normal,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),  # Ярче
             size_hint_y=None,
             height=label_height,
             halign='center',
@@ -211,22 +211,24 @@ def workshop(faction, db_conn):
         layout.add_widget(title)
 
         # Кнопки навигации
-        nav_layout = BoxLayout(size_hint_y=None, height=dp(20), spacing=dp(2))
+        nav_layout = BoxLayout(size_hint_y=None, height=dp(25), spacing=dp(3))
         prev_btn = Button(
             text="<",
             size_hint_x=0.3,
             font_size=font_small,
-            background_color=(0.3, 0.3, 0.3, 1),
+            background_color=(0.2, 0.2, 0.2, 1),
+            background_normal='',
             size_hint_y=None,
-            height=dp(20)
+            height=dp(25)
         )
         next_btn = Button(
             text=">",
             size_hint_x=0.3,
             font_size=font_small,
-            background_color=(0.3, 0.3, 0.3, 1),
+            background_color=(0.2, 0.2, 0.2, 1),
+            background_normal='',
             size_hint_y=None,
-            height=dp(20)
+            height=dp(25)
         )
         nav_layout.add_widget(prev_btn)
         nav_layout.add_widget(next_btn)
@@ -236,8 +238,8 @@ def workshop(faction, db_conn):
         current_icon_display = Image(
             source="" if not image_files else os.path.join(artifact_images_path, image_files[0]),
             size_hint_y=None,
-            height=dp(40) if is_android else dp(50),
-            width=dp(40) if is_android else dp(50),
+            height=dp(50) if is_android else dp(60),
+            width=dp(50) if is_android else dp(60),
             allow_stretch=True,
             keep_ratio=True
         )
@@ -269,7 +271,7 @@ def workshop(faction, db_conn):
         name_label = Label(
             text="Название артефакта:",
             font_size=font_small,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='left',
@@ -284,10 +286,10 @@ def workshop(faction, db_conn):
             multiline=False,
             size_hint_y=None,
             height=input_height,
-            padding=[dp(3), dp(2)],
-            background_color=(0.2, 0.2, 0.2, 1),
-            foreground_color=(1, 1, 1, 1),
-            cursor_color=(1, 1, 1, 1),
+            padding=[dp(5), dp(3)],
+            background_color=(0.15, 0.15, 0.15, 1),
+            foreground_color=(0.9, 0.9, 0.9, 1),
+            cursor_color=(0.9, 0.9, 0.9, 1),
             size_hint_x=1
         )
         layout.add_widget(name_input)
@@ -296,9 +298,9 @@ def workshop(faction, db_conn):
         random_name_btn = Button(
             text="Случайное",
             size_hint_y=None,
-            height=btn_height * 0.7,
+            height=btn_height * 0.8,
             background_normal='',
-            background_color=(0.2, 0.6, 0.6, 1),
+            background_color=(0.2, 0.5, 0.5, 1),
             font_size=font_small,
             size_hint_x=1
         )
@@ -349,7 +351,7 @@ def workshop(faction, db_conn):
         title = Label(
             text="Выберите характеристики",
             font_size=font_normal,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='center',
@@ -362,7 +364,7 @@ def workshop(faction, db_conn):
         attack_label = Label(
             text="Атака (%):",
             font_size=font_small,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='left',
@@ -378,10 +380,10 @@ def workshop(faction, db_conn):
             input_filter='int',
             size_hint_y=None,
             height=input_height,
-            padding=[dp(2), dp(1)],
-            background_color=(0.2, 0.2, 0.2, 1),
-            foreground_color=(1, 1, 1, 1),
-            cursor_color=(1, 1, 1, 1)
+            padding=[dp(5), dp(3)],
+            background_color=(0.15, 0.15, 0.15, 1),
+            foreground_color=(0.9, 0.9, 0.9, 1),
+            cursor_color=(0.9, 0.9, 0.9, 1)
         )
         layout.add_widget(attack_input)
 
@@ -389,7 +391,7 @@ def workshop(faction, db_conn):
         defense_label = Label(
             text="Защита (%):",
             font_size=font_small,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='left',
@@ -405,18 +407,18 @@ def workshop(faction, db_conn):
             input_filter='int',
             size_hint_y=None,
             height=input_height,
-            padding=[dp(2), dp(1)],
-            background_color=(0.2, 0.2, 0.2, 1),
-            foreground_color=(1, 1, 1, 1),
-            cursor_color=(1, 1, 1, 1)
+            padding=[dp(5), dp(3)],
+            background_color=(0.15, 0.15, 0.15, 1),
+            foreground_color=(0.9, 0.9, 0.9, 1),
+            cursor_color=(0.9, 0.9, 0.9, 1)
         )
         layout.add_widget(defense_input)
 
-        # Сезон
+        # Сезон — теперь кнопки с комбинациями
         season_label = Label(
             text="Сезон артефакта:",
             font_size=font_small,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='left',
@@ -425,14 +427,64 @@ def workshop(faction, db_conn):
         season_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         layout.add_widget(season_label)
 
-        season_spinner = Spinner(
-            text=current_data['season'],
-            values=['Нет', 'Весна', 'Лето', 'Осень', 'Зима', 'Все'],
+        # Кнопки для выбора сезона
+        season_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=dp(25))
+        prev_season_btn = Button(
+            text="<",
+            size_hint_x=0.2,
+            font_size=font_small,
+            background_color=(0.2, 0.2, 0.2, 1),
+            background_normal='',
             size_hint_y=None,
-            height=input_height * 0.8,
-            font_size=font_small
+            height=dp(25)
         )
-        layout.add_widget(season_spinner)
+        current_season_label = Label(
+            text=current_data['season'],
+            font_size=font_small,
+            color=(0.9, 0.9, 0.9, 1),
+            halign='center',
+            valign='middle',
+            size_hint_x=0.6
+        )
+        current_season_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        next_season_btn = Button(
+            text=">",
+            size_hint_x=0.2,
+            font_size=font_small,
+            background_color=(0.2, 0.2, 0.2, 1),
+            background_normal='',
+            size_hint_y=None,
+            height=dp(25)
+        )
+        season_layout.add_widget(prev_season_btn)
+        season_layout.add_widget(current_season_label)
+        season_layout.add_widget(next_season_btn)
+        layout.add_widget(season_layout)
+
+        # Список комбинаций сезонов
+        seasons = [
+            'Нет', 'Весна', 'Лето', 'Осень', 'Зима',
+            'Весна, Лето', 'Весна, Осень', 'Весна, Зима',
+            'Лето, Осень', 'Лето, Зима', 'Осень, Зима',
+            'Весна, Лето, Осень', 'Весна, Лето, Зима',
+            'Весна, Осень, Зима', 'Лето, Осень, Зима',
+            'Все'
+        ]
+        season_index = [seasons.index(current_data['season']) if current_data['season'] in seasons else 0]
+
+        def update_season_label():
+            current_season_label.text = seasons[season_index[0]]
+
+        def on_prev_season(instance):
+            season_index[0] = (season_index[0] - 1) % len(seasons)
+            update_season_label()
+
+        def on_next_season(instance):
+            season_index[0] = (season_index[0] + 1) % len(seasons)
+            update_season_label()
+
+        prev_season_btn.bind(on_release=on_prev_season)
+        next_season_btn.bind(on_release=on_next_season)
 
         # Кнопки навигации
         btn_box = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint=(1, None), height=btn_height)
@@ -467,7 +519,7 @@ def workshop(faction, db_conn):
             except ValueError:
                 show_message("Ошибка", "Атака и защита должны быть числами")
                 return
-            current_data['season'] = season_spinner.text
+            current_data['season'] = seasons[season_index[0]]
             switch_to_screen(screen3)
 
         back_btn.bind(on_release=on_back)
@@ -479,7 +531,7 @@ def workshop(faction, db_conn):
         title = Label(
             text="Выберите слот и создайте артефакт",
             font_size=font_normal,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='center',
@@ -488,11 +540,11 @@ def workshop(faction, db_conn):
         title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         layout.add_widget(title)
 
-        # Слот
+        # Слот — теперь кнопки
         slot_label = Label(
             text="Слот артефакта:",
             font_size=font_small,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='left',
@@ -501,20 +553,63 @@ def workshop(faction, db_conn):
         slot_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         layout.add_widget(slot_label)
 
-        slot_spinner = Spinner(
-            text=current_data['slot'],
-            values=['Руки', 'Голова', 'Ноги', 'Туловище', 'Аксессуар'],
+        # Кнопки для выбора слота
+        slot_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=dp(25))
+        prev_slot_btn = Button(
+            text="<",
+            size_hint_x=0.2,
+            font_size=font_small,
+            background_color=(0.2, 0.2, 0.2, 1),
+            background_normal='',
             size_hint_y=None,
-            height=input_height * 0.8,
-            font_size=font_small
+            height=dp(25)
         )
-        layout.add_widget(slot_spinner)
+        current_slot_label = Label(
+            text=current_data['slot'],
+            font_size=font_small,
+            color=(0.9, 0.9, 0.9, 1),
+            halign='center',
+            valign='middle',
+            size_hint_x=0.6
+        )
+        current_slot_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        next_slot_btn = Button(
+            text=">",
+            size_hint_x=0.2,
+            font_size=font_small,
+            background_color=(0.2, 0.2, 0.2, 1),
+            background_normal='',
+            size_hint_y=None,
+            height=dp(25)
+        )
+        slot_layout.add_widget(prev_slot_btn)
+        slot_layout.add_widget(current_slot_label)
+        slot_layout.add_widget(next_slot_btn)
+        layout.add_widget(slot_layout)
+
+        # Список слотов
+        slots = ['Руки', 'Голова', 'Ноги', 'Туловище', 'Аксессуар']
+        slot_index = [slots.index(current_data['slot']) if current_data['slot'] in slots else 0]
+
+        def update_slot_label():
+            current_slot_label.text = slots[slot_index[0]]
+
+        def on_prev_slot(instance):
+            slot_index[0] = (slot_index[0] - 1) % len(slots)
+            update_slot_label()
+
+        def on_next_slot(instance):
+            slot_index[0] = (slot_index[0] + 1) % len(slots)
+            update_slot_label()
+
+        prev_slot_btn.bind(on_release=on_prev_slot)
+        next_slot_btn.bind(on_release=on_next_slot)
 
         # === Отображение итогового артефакта ===
         artifact_title = Label(
             text="Итоговый артефакт:",
             font_size=font_normal,
-            color=(0.8, 0.8, 0.8, 1),
+            color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
             halign='center',
@@ -523,14 +618,14 @@ def workshop(faction, db_conn):
         artifact_title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         layout.add_widget(artifact_title)
 
-        artifact_display = BoxLayout(orientation='horizontal', spacing=dp(5), size_hint_y=None, height=dp(40))
+        artifact_display = BoxLayout(orientation='horizontal', spacing=dp(5), size_hint_y=None, height=dp(45))
 
         # Подгружаем иконку правильно — с полным путем
         full_icon_path = os.path.join(artifact_images_path, current_data['icon']) if current_data['icon'] else ''
         artifact_image = Image(
             source=full_icon_path,
             size_hint_x=None,
-            width=dp(30),
+            width=dp(35),
             allow_stretch=True,
             keep_ratio=True
         )
@@ -540,11 +635,11 @@ def workshop(faction, db_conn):
         artifact_name_label = Label(
             text=current_data['name'] if current_data['name'] else "Название не задано",
             font_size=font_small,
-            color=(1, 1, 1, 1),
+            color=(0.9, 0.9, 0.9, 1),
             halign='left',
             valign='middle',
             size_hint_y=None,
-            height=dp(15)
+            height=dp(18)
         )
         artifact_name_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         artifact_info.add_widget(artifact_name_label)
@@ -552,37 +647,42 @@ def workshop(faction, db_conn):
         # Расчет стоимости
         attack_bonus = current_data['attack']
         defense_bonus = current_data['defense']
-        seasons_bonus = []
+
+        # Преобразуем строку сезонов в список
         if current_data['season'] == 'Нет':
             seasons_bonus = []
         elif current_data['season'] == 'Все':
             seasons_bonus = ['Весна', 'Лето', 'Осень', 'Зима']
         else:
-            seasons_bonus = [current_data['season']]
+            seasons_bonus = [s.strip() for s in current_data['season'].split(',')]
 
         # Логика расчета стоимости
         attack_cost = abs(attack_bonus) * random.uniform(0.4, 1.0) * 1000000
         defense_cost = abs(defense_bonus) * random.uniform(0.6, 1.1) * 1000000
         base_cost = attack_cost + defense_cost
 
+        # === Расчет скидки по сезонам ===
         season_discount = 0
-        if len(seasons_bonus) == 1:
-            season_discount = 0.65
+        if len(seasons_bonus) == 0:
+            base_cost *= 1.12  # Нет влияния сезонов + 12%
+        elif len(seasons_bonus) == 1:
+            season_discount = 0.75  # 1 сезон = -75%
         elif len(seasons_bonus) == 2:
-            if 'Весна' in seasons_bonus and 'Лето' in seasons_bonus:
-                season_discount = 0.25
-            elif 'Лето' in seasons_bonus and 'Осень' in seasons_bonus:
-                season_discount = 0.25
-            elif 'Осень' in seasons_bonus and 'Зима' in seasons_bonus:
-                season_discount = 0.25
+            # Проверим, идут ли сезоны подряд
+            consecutive_pairs = [
+                ['Весна', 'Лето'],
+                ['Лето', 'Осень'],
+                ['Осень', 'Зима'],
+                ['Зима', 'Весна']
+            ]
+            if sorted(seasons_bonus) in [sorted(p) for p in consecutive_pairs]:
+                season_discount = 0.25  # 2 сезона подряд = -25%
             else:
-                season_discount = 0.45
+                season_discount = 0.45  # 2 сезона раздельно = -45%
         elif len(seasons_bonus) == 3:
-            season_discount = 0.10
+            season_discount = 0.10  # 3 сезона = -10%
         elif len(seasons_bonus) == 4:
-            season_discount = 0.10
-        elif len(seasons_bonus) == 0:
-            base_cost *= 1.12
+            season_discount = 0.10  # Все 4 сезона = -10%
 
         negative_modifier = 1.0
         if attack_bonus < 0 or defense_bonus < 0:
@@ -596,11 +696,11 @@ def workshop(faction, db_conn):
         artifact_cost_label = Label(
             text=f"Стоимость: {format_number(int(total_cost))} крон",
             font_size=font_small,
-            color=(1, 1, 1, 1),
+            color=(0.9, 0.9, 0.9, 1),
             halign='left',
             valign='middle',
             size_hint_y=None,
-            height=dp(15)
+            height=dp(18)
         )
         artifact_cost_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         artifact_info.add_widget(artifact_cost_label)
@@ -612,7 +712,7 @@ def workshop(faction, db_conn):
         create_btn = Button(
             text="Создать артефакт",
             size_hint_y=None,
-            height=btn_height * 0.7,
+            height=btn_height * 0.9,
             background_normal='',
             background_color=(0.6, 0.2, 0.6, 1),
             font_size=font_normal,
@@ -645,17 +745,14 @@ def workshop(faction, db_conn):
 
         # Привязка событий
         def on_back(instance):
+            current_data['slot'] = slots[slot_index[0]]  # Сохраняем слот перед возвратом
             switch_to_screen(screen2)
 
         def on_close(instance):
             workshop_popup.dismiss()
 
         def on_create(instance):
-            current_data['slot'] = slot_spinner.text
-            if current_data['slot'] == 'Выберите слот':
-                show_message("Ошибка", "Пожалуйста, выберите слот")
-                return
-
+            current_data['slot'] = slots[slot_index[0]]  # Обновляем слот перед созданием
             if total_cost > 20000000000:
                 show_message("Ошибка",
                              "Стоимость производства артефакта превышает 20 млрд. крон. \nПожалуйста, уменьшите параметры артефакта.")
