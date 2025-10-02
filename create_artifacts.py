@@ -529,7 +529,7 @@ def workshop(faction, db_conn):
     def screen3(layout):
         # Заголовок
         title = Label(
-            text="Выберите слот и создайте артефакт",
+            text="Выберите слот и создайте чертеж артефакта",
             font_size=font_normal,
             color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
@@ -710,7 +710,7 @@ def workshop(faction, db_conn):
 
         # Кнопка создания
         create_btn = Button(
-            text="Создать артефакт",
+            text="Создать чертеж артефакта",
             size_hint_y=None,
             height=btn_height * 0.9,
             background_normal='',
