@@ -2101,6 +2101,7 @@ def open_development_popup(faction):
     from kivy.graphics import Color, RoundedRectangle
     from kivy.metrics import dp, sp
     from kivy.animation import Animation
+    from kivy.core.window import Window
 
     # === Создание всплывающего окна ===
     dev_popup = Popup(
@@ -2108,8 +2109,8 @@ def open_development_popup(faction):
         size_hint=(0.9, 0.85),
         title_size=sp(20),
         title_align='center',
-        title_color=(1, 1, 1, 1),
-        background_color=(0.1, 0.1, 0.1, 0.95),
+        title_color=(0.9, 0.9, 0.9, 1),
+        background_color=(0.08, 0.08, 0.08, 0.98),  # Темнее
         separator_color=(0.3, 0.3, 0.3, 1),
         auto_dismiss=False
     )
@@ -2141,13 +2142,12 @@ def open_development_popup(faction):
     build_tab.background_normal = ''
     build_tab.background_down = ''
     build_tab.background_color = (0.3, 0.3, 0.3, 1)
-    build_tab.color = (1, 1, 1, 1)
+    build_tab.color = (0.9, 0.9, 0.9, 1)
     build_tab.font_size = sp(16)
 
     # Контент для вкладки "Строительство" - сразу открываем настройки
     build_content = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
 
-    # Создаем и добавляем содержимое из open_auto_build_popup
     # Шапка
     header = BoxLayout(size_hint=(1, 0.15), spacing=20)
     left_label = Label(text="[b]Больницы[/b]", markup=True, color=(1, 0.4, 0.4, 1), font_size='20sp')
@@ -2158,9 +2158,9 @@ def open_development_popup(faction):
 
     # Панель управления
     controls = BoxLayout(orientation='horizontal', size_hint=(1, 0.2), spacing=15)
-    left_btn = Button(text="<<", font_size='18sp', background_normal='', background_color=(0.5, 0.1, 0.1, 1))
+    left_btn = Button(text="<<", font_size='18sp', background_normal='', background_color=(0.3, 0.1, 0.1, 1))
     slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(24, 24))
-    right_btn = Button(text=">>", font_size='18sp', background_normal='', background_color=(0.1, 0.5, 0.1, 1))
+    right_btn = Button(text=">>", font_size='18sp', background_normal='', background_color=(0.1, 0.3, 0.1, 1))
     controls.add_widget(left_btn)
     controls.add_widget(slider)
     controls.add_widget(right_btn)
@@ -2197,7 +2197,7 @@ def open_development_popup(faction):
         return btn
 
     save_btn = styled_button("Сохранить", (0.2, 0.6, 0.2, 1))
-    cancel_btn = styled_button("Отмена", (0.6, 0.2, 0.2, 1))
+    cancel_btn = styled_button("Закрыть", (0.6, 0.2, 0.2, 1))  # Переименовали
     buttons_layout.add_widget(save_btn)
     buttons_layout.add_widget(cancel_btn)
     build_content.add_widget(buttons_layout)
@@ -2232,6 +2232,7 @@ def open_development_popup(faction):
         faction.auto_build_enabled = True
         faction.save_auto_build_settings()
         show_message("Сохранено", "Как прикажете!")
+        dev_popup.dismiss()  # Закрываем после сохранения
 
     save_btn.bind(on_release=save_settings)
     cancel_btn.bind(on_release=lambda x: dev_popup.dismiss())
@@ -2246,7 +2247,7 @@ def open_development_popup(faction):
     stat_tab.background_normal = ''
     stat_tab.background_down = ''
     stat_tab.background_color = (0.3, 0.3, 0.3, 1)
-    stat_tab.color = (1, 1, 1, 1)
+    stat_tab.color = (0.9, 0.9, 0.9, 1)
     stat_tab.font_size = sp(16)
 
     # Контент для вкладки "Статистика"
@@ -2310,7 +2311,7 @@ def open_development_popup(faction):
         lbl = Label(
             text=label_text,
             font_size=adaptive_font,
-            color=(1, 1, 1, 1),
+            color=(0.9, 0.9, 0.9, 1),  # Ярче
             bold=True,
             size_hint_y=None,
             height=dp(24),
@@ -2324,7 +2325,7 @@ def open_development_popup(faction):
             val_color = (0, 1, 0, 1) if value >= 0 else (1, 0, 0, 1)
             val_text = str(value)
         else:
-            val_color = (1, 1, 1, 1)
+            val_color = (0.9, 0.9, 0.9, 1)  # Ярче
             val_text = str(value)
 
         val = Label(
@@ -2349,30 +2350,13 @@ def open_development_popup(faction):
     tab_panel.add_widget(build_tab)
     tab_panel.add_widget(stat_tab)
 
-    # === Основной макет с кнопками ===
+    # === Основной макет — без кнопки "Закрыть" внизу ===
     main_layout = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
     main_layout.add_widget(tab_panel)
 
-    btn_box = BoxLayout(
-        orientation='horizontal',
-        spacing=dp(12),
-        size_hint=(1, None),
-        height=dp(50)
-    )
-
-    btn_close = Button(
-        text="Закрыть",
-        size_hint=(1, 1),
-        background_normal='',
-        background_color=(0.7, 0.2, 0.2, 1),
-        font_size=adaptive_font,
-        bold=True,
-        color=(1, 1, 1, 1)
-    )
-    btn_close.bind(on_release=lambda x: dev_popup.dismiss())
-
-    btn_box.add_widget(btn_close)
-    main_layout.add_widget(btn_box)
+    # Убрали кнопку "Закрыть" внизу
+    # btn_box = BoxLayout(...)
+    # main_layout.add_widget(btn_box)
 
     dev_popup.content = main_layout
     dev_popup.open()
