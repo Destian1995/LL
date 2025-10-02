@@ -105,27 +105,25 @@ def format_number(number):
 
 
 def workshop(faction, db_conn):
-    # === Адаптивные размеры для мобильных устройств ===
-    # Определяем, является ли устройство мобильным
-    is_mobile = Window.width <= 480  # порог для мобильных устройств
+    # === Определение устройства ===
+    is_android = hasattr(Window, 'keyboard')
 
-    # Адаптивные размеры
-    popup_width = 0.95 if is_mobile else 0.8
-    popup_height = 0.95 if is_mobile else 0.9
-    title_font_size = sp(18) if is_mobile else sp(20)
-    normal_font_size = sp(14) if is_mobile else sp(16)
-    small_font_size = sp(12) if is_mobile else sp(14)
+    # === Адаптивные размеры ===
+    font_title = sp(18) if not is_android else sp(16)
+    font_normal = sp(14) if not is_android else sp(12)
+    font_small = sp(12) if not is_android else sp(10)
 
-    # Высоты элементов
-    btn_height = dp(40) if is_mobile else dp(50)
-    input_height = dp(35) if is_mobile else dp(40)
-    label_height = dp(25) if is_mobile else dp(30)
+    padding_main = dp(15) if is_android else dp(20)
+    spacing_main = dp(8) if is_android else dp(10)
+    btn_height = dp(35) if is_android else dp(45)
+    input_height = dp(30) if is_android else dp(35)
+    label_height = dp(25) if is_android else dp(30)
 
     # === Создание всплывающего окна ===
     workshop_popup = Popup(
         title="Мастерская артефактов",
-        size_hint=(popup_width, popup_height),
-        title_size=title_font_size,
+        size_hint=(0.95 if is_android else 0.8, 0.95 if is_android else 0.9),
+        title_size=font_title,
         title_align='center',
         title_color=(1, 1, 1, 1),
         background_color=(0.1, 0.1, 0.1, 0.95),
@@ -133,23 +131,14 @@ def workshop(faction, db_conn):
         auto_dismiss=False
     )
 
-    # Основной макет с ScrollView для мобильных устройств
-    if is_mobile:
-        main_scroll = ScrollView(do_scroll_x=False)
-        main_layout = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(12), size_hint_y=None)
-        main_layout.bind(minimum_height=main_layout.setter('height'))
-    else:
-        main_layout = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
+    # Основной макет
+    main_layout = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
-    # === Информация о средствах - адаптивный макет ===
-    if is_mobile:
-        info_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(60), spacing=dp(5))
-    else:
-        info_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(40), spacing=dp(10))
-
+    # === Информация о средствах ===
+    info_layout = BoxLayout(orientation='horizontal', spacing=dp(5), size_hint_y=None, height=label_height)
     money_label = Label(
         text=f"Баланс: {format_number(faction.money)}",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(0.9, 0.9, 0.9, 1),
         halign='left',
         valign='middle',
@@ -161,9 +150,9 @@ def workshop(faction, db_conn):
 
     cost_label = Label(
         text="Создание: 35 млн",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(0.9, 0.9, 0.9, 1),
-        halign='right' if not is_mobile else 'left',
+        halign='right',
         valign='middle',
         size_hint_y=None,
         height=label_height
@@ -173,21 +162,21 @@ def workshop(faction, db_conn):
 
     main_layout.add_widget(info_layout)
 
-    # === Основная сетка - ГОРИЗОНТАЛЬНАЯ: слева иконка, справа параметры ===
-    content_layout = BoxLayout(orientation='horizontal', spacing=dp(8), size_hint_y=None)
-    content_layout.bind(minimum_height=content_layout.setter('height'))
-
     # === Глобальные списки для хранения значений ===
     attack_bonus = [0]
     defense_bonus = [0]
     seasons_bonus = [[]]
 
-    # === Левая часть: слайдер с иконками (одна видимая) ===
-    left_part = BoxLayout(orientation='vertical', spacing=dp(5))
+    # === Основная сетка - горизонтальная: слева иконка, справа параметры ===
+    content_layout = BoxLayout(orientation='horizontal', spacing=dp(5), size_hint_y=None)
+    content_layout.bind(minimum_height=content_layout.setter('height'))
+
+    # === Левая часть: слайдер с иконками ===
+    left_part = BoxLayout(orientation='vertical', spacing=dp(5), size_hint_x=0.25)
 
     icon_title = Label(
         text="Иконка:",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
         height=label_height,
@@ -206,36 +195,36 @@ def workshop(faction, db_conn):
         image_files = []
 
     selected_image = [None]
-    current_index = [0]  # индекс текущей иконки
+    current_index = [0]
 
-    # Кнопки навигации — делаем их компактными
-    nav_layout = BoxLayout(size_hint_y=None, height=dp(30), spacing=dp(5))
+    # Кнопки навигации
+    nav_layout = BoxLayout(size_hint_y=None, height=dp(25), spacing=dp(3))
     prev_btn = Button(
         text="<",
         size_hint_x=0.3,
-        font_size=small_font_size,
+        font_size=font_small,
         background_color=(0.3, 0.3, 0.3, 1),
         size_hint_y=None,
-        height=dp(25)  # ← Уменьшаем высоту
+        height=dp(25)
     )
     next_btn = Button(
         text=">",
         size_hint_x=0.3,
-        font_size=small_font_size,
+        font_size=font_small,
         background_color=(0.3, 0.3, 0.3, 1),
         size_hint_y=None,
-        height=dp(25)  # ← Уменьшаем высоту
+        height=dp(25)
     )
     nav_layout.add_widget(prev_btn)
     nav_layout.add_widget(next_btn)
     left_part.add_widget(nav_layout)
 
-    # Отображение текущей иконки — фиксированная ширина, адаптивная высота
+    # Отображение текущей иконки
     current_icon_display = Image(
         source="" if not image_files else os.path.join(artifact_images_path, image_files[0]),
         size_hint_y=None,
-        height=dp(60) if is_mobile else dp(80),
-        width=dp(60) if is_mobile else dp(80),
+        height=dp(50) if is_android else dp(70),
+        width=dp(50) if is_android else dp(70),
         allow_stretch=True,
         keep_ratio=True
     )
@@ -265,12 +254,12 @@ def workshop(faction, db_conn):
     content_layout.add_widget(left_part)
 
     # === Правая часть: характеристики и управление ===
-    right_part = BoxLayout(orientation='vertical', spacing=dp(5))  # ← Уменьшаем отступы
+    right_part = BoxLayout(orientation='vertical', spacing=dp(5), size_hint_x=0.75)
 
     # Название
     name_label = Label(
         text="Название артефакта:",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
         height=label_height,
@@ -282,35 +271,35 @@ def workshop(faction, db_conn):
 
     name_input = TextInput(
         hint_text="Введите название или оставьте пустым",
-        font_size=small_font_size,
+        font_size=font_small,
         multiline=False,
         size_hint_y=None,
         height=input_height,
-        padding=[dp(5), dp(4)] if is_mobile else [dp(8), dp(6)],  # ← Уменьшаем отступы
+        padding=[dp(5), dp(3)] if is_android else [dp(8), dp(6)],
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
         cursor_color=(1, 1, 1, 1),
-        size_hint_x=1  # ← Занимает всю ширину
+        size_hint_x=1
     )
     right_part.add_widget(name_input)
 
-    # Кнопка случайного названия — компактная
+    # Кнопка случайного названия
     random_name_btn = Button(
         text="Случайное",
         size_hint_y=None,
-        height=btn_height * 0.8,  # ← Уменьшаем на 20%
+        height=btn_height * 0.8,
         background_normal='',
         background_color=(0.2, 0.6, 0.6, 1),
-        font_size=small_font_size,
-        size_hint_x=1  # ← Занимает всю ширину
+        font_size=font_small,
+        size_hint_x=1
     )
     right_part.add_widget(random_name_btn)
 
-    # Атака и защита в строке — компактные
+    # Атака и защита
     stats_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=input_height * 0.9)
     attack_label = Label(
         text="Атака (%):",
-        font_size=small_font_size,
+        font_size=font_small,
         size_hint_x=0.4,
         halign='right',
         valign='middle',
@@ -319,11 +308,11 @@ def workshop(faction, db_conn):
     )
     attack_input = TextInput(
         text='0',
-        font_size=small_font_size,
+        font_size=font_small,
         multiline=False,
         input_filter='int',
         size_hint_x=0.6,
-        padding=[dp(4), dp(3)],
+        padding=[dp(3), dp(2)],
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
         cursor_color=(1, 1, 1, 1),
@@ -344,7 +333,7 @@ def workshop(faction, db_conn):
 
     defense_label = Label(
         text="Защита (%):",
-        font_size=small_font_size,
+        font_size=font_small,
         size_hint_x=0.4,
         halign='right',
         valign='middle',
@@ -353,11 +342,11 @@ def workshop(faction, db_conn):
     )
     defense_input = TextInput(
         text='0',
-        font_size=small_font_size,
+        font_size=font_small,
         multiline=False,
         input_filter='int',
         size_hint_x=0.6,
-        padding=[dp(4), dp(3)],
+        padding=[dp(3), dp(2)],
         background_color=(0.2, 0.2, 0.2, 1),
         foreground_color=(1, 1, 1, 1),
         cursor_color=(1, 1, 1, 1),
@@ -377,10 +366,10 @@ def workshop(faction, db_conn):
 
     defense_input.bind(text=update_defense)
 
-    # Сезон — компактный
+    # Сезон
     season_label = Label(
         text="Сезон артефакта:",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
         height=label_height,
@@ -395,7 +384,7 @@ def workshop(faction, db_conn):
         values=['Нет', 'Весна', 'Лето', 'Осень', 'Зима', 'Все'],
         size_hint_y=None,
         height=input_height * 0.9,
-        font_size=small_font_size,
+        font_size=font_small,
         size_hint_x=1
     )
 
@@ -410,10 +399,10 @@ def workshop(faction, db_conn):
     season_spinner.bind(text=lambda spinner, value: update_seasons(value))
     right_part.add_widget(season_spinner)
 
-    # Слот — компактный
+    # Слот
     slot_label = Label(
         text="Слот артефакта:",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(0.8, 0.8, 0.8, 1),
         size_hint_y=None,
         height=label_height,
@@ -428,38 +417,37 @@ def workshop(faction, db_conn):
         values=['Руки', 'Голова', 'Ноги', 'Туловище', 'Аксессуар'],
         size_hint_y=None,
         height=input_height * 0.9,
-        font_size=small_font_size,
+        font_size=font_small,
         size_hint_x=1
     )
     right_part.add_widget(slot_spinner)
 
-    # Кнопка создания — компактная
+    # Кнопка создания
     create_btn = Button(
         text="Создать артефакт",
         size_hint_y=None,
-        height=btn_height * 0.8,  # ← Уменьшаем
+        height=btn_height * 0.8,
         background_normal='',
         background_color=(0.6, 0.2, 0.6, 1),
-        font_size=normal_font_size,
+        font_size=font_normal,
         bold=True,
-        size_hint_x=1  # ← Занимает всю ширину
+        size_hint_x=1
     )
     right_part.add_widget(create_btn)
 
     content_layout.add_widget(right_part)
-
     main_layout.add_widget(content_layout)
 
     # === Блок созданного артефакта — внизу справа ===
     artifact_box = BoxLayout(
         orientation='horizontal',
-        spacing=dp(8),
+        spacing=dp(5),
         size_hint_y=None,
-        height=dp(80) if is_mobile else dp(100),
-        padding=[dp(10)]
+        height=dp(60) if is_android else dp(80),
+        padding=[dp(5)]
     )
 
-    artifact_image_width = dp(50) if is_mobile else dp(70)
+    artifact_image_width = dp(40) if is_android else dp(60)
     artifact_image = Image(
         source="",
         size_hint_x=None,
@@ -472,7 +460,7 @@ def workshop(faction, db_conn):
     artifact_info = BoxLayout(orientation='vertical', spacing=dp(2))
     artifact_name_label = Label(
         text="",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(1, 1, 1, 1),
         halign='left',
         valign='middle',
@@ -484,7 +472,7 @@ def workshop(faction, db_conn):
 
     artifact_cost_label = Label(
         text="",
-        font_size=small_font_size,
+        font_size=font_small,
         color=(1, 1, 1, 1),
         halign='left',
         valign='middle',
@@ -500,10 +488,10 @@ def workshop(faction, db_conn):
     add_to_shop_btn = Button(
         text="Добавить в лавку",
         size_hint_y=None,
-        height=dp(30) if is_mobile else dp(40),
+        height=dp(25) if is_android else dp(35),
         background_normal='',
         background_color=(0.2, 0.6, 0.2, 1),
-        font_size=small_font_size,
+        font_size=font_small,
         disabled=True
     )
     artifact_box.add_widget(add_to_shop_btn)
@@ -511,12 +499,11 @@ def workshop(faction, db_conn):
     main_layout.add_widget(artifact_box)
 
     # === Кнопки управления ===
-    btn_box_height = dp(40) if is_mobile else dp(50)
     btn_box = BoxLayout(
         orientation='horizontal',
-        spacing=dp(8) if is_mobile else dp(12),
+        spacing=dp(5) if is_android else dp(10),
         size_hint=(1, None),
-        height=btn_box_height
+        height=btn_height
     )
 
     close_btn = Button(
@@ -524,7 +511,7 @@ def workshop(faction, db_conn):
         size_hint=(0.5, 1),
         background_normal='',
         background_color=(0.7, 0.2, 0.2, 1),
-        font_size=normal_font_size,
+        font_size=font_normal,
         bold=True,
         color=(1, 1, 1, 1)
     )
@@ -533,30 +520,20 @@ def workshop(faction, db_conn):
     btn_box.add_widget(close_btn)
     main_layout.add_widget(btn_box)
 
-    # Добавляем ScrollView для мобильных устройств
-    if is_mobile:
-        main_scroll.add_widget(main_layout)
-        workshop_popup.content = main_scroll
-    else:
-        workshop_popup.content = main_layout
-
+    workshop_popup.content = main_layout
     workshop_popup.open()
 
-    # === Внутренние функции (остаются без изменений) ===
+    # === Внутренние функции ===
     def generate_random_name():
-        prefixes = ["Артефакт", "Амулет", "Сердце", "Душа", "Звезда", "Секира", "Меч", "Клинок", "Винтовка", "Мушкет",
-                    "Броня", "Панцирь"]
-        suffixes = ["Силы", "Защиты", "Мудрости", "Света", "Тьмы", "Скорости", "Ловкости", "Выносливости", "Удачи",
-                    "Судьбы"]
+        prefixes = ["Артефакт", "Амулет", "Сердце", "Душа", "Звезда", "Секира", "Меч", "Клинок"]
+        suffixes = ["Силы", "Защиты", "Мудрости", "Света", "Тьмы", "Скорости", "Ловкости", "Выносливости"]
         prefix = random.choice(prefixes)
         suffix = random.choice(suffixes)
         return f"{prefix} {suffix}"
 
     def calculate_cost():
-        # ... (остается без изменений)
         attack_cost = abs(attack_bonus[0]) * random.uniform(0.4, 1.0) * 1000000
         defense_cost = abs(defense_bonus[0]) * random.uniform(0.6, 1.1) * 1000000
-
         base_cost = attack_cost + defense_cost
 
         season_discount = 0
@@ -584,16 +561,13 @@ def workshop(faction, db_conn):
             negative_modifier = 1 - (negative_count * 0.3)
 
         total_cost = base_cost * (1 - season_discount) * negative_modifier
-
         min_cost = 500000
         total_cost = max(min_cost, total_cost)
-
         return total_cost
 
     current_artifact_data = [None]
 
     def create_artifact():
-        # ... (остается без изменений)
         if faction.money < 35000000:
             show_message("Ошибка", "Недостаточно средств для создания артефакта (требуется 35 млн крон)")
             return
