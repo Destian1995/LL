@@ -1498,8 +1498,8 @@ class MenuWidget(FloatLayout):
         self.add_decoration()
 
         # ======== Анимации ========
-        Clock.schedule_once(self.animate_title, 0.5)
-        Clock.schedule_once(self.animate_buttons_in, 1.0)
+        Clock.schedule_once(self.animate_title, 0.2)
+        Clock.schedule_once(self.animate_buttons_in, 0.4)
         Clock.schedule_interval(self.animate_background, 5)
         Clock.schedule_interval(self.float_animation, 0.05)
 
