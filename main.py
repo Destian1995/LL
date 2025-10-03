@@ -149,25 +149,30 @@ class AuthorScreen(Screen):
         webbrowser.open(url)
 
 
+import time
+from threading import Thread
+
 class LoadingScreen(FloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
         super(LoadingScreen, self).__init__(**kwargs)
         self.conn = conn
         self.selected_map = selected_map
-        # === Фон через Canvas ===
-        with self.canvas.before:
-            self.bg_rect = Rectangle(
-                source='files/menu/loading_bg.jpg',
-                pos=self.pos,
-                size=self.size
-            )
-        self.bind(pos=self._update_bg, size=self._update_bg)
 
-        # === Прогресс-бар ===
+        # === Видео как фон ===
+        self.video = Video(
+            source='files/menu/promo.mp4',
+            state='play',
+            options={'eos': 'loop'},  # Зацикливание видео
+            allow_stretch=True,
+            keep_ratio=False
+        )
+        self.add_widget(self.video, index=0)  # Добавляем первым, чтобы быть фоном
+
+        # === Прогресс-бар (видео остается позади) ===
         self.progress_bar = ProgressBar(
             max=100,
             value=0,
-            size_hint=(1, None),
+            size_hint=(0.8, None),
             height=dp(30),
             pos_hint={'center_x': 0.5, 'center_y': 0.2}
         )
@@ -281,10 +286,9 @@ class LoadingScreen(FloatLayout):
         print("Шаг 2: Очистка кэша и временных данных...")
         # Выполняем очистку в отдельном потоке для плавности
         def cleanup_task():
-            clear_tables(self.conn)
+            # clear_tables(self.conn)  # раскомментируй, если функция определена
             Clock.schedule_once(self.run_next_step, 0)
 
-        from threading import Thread
         thread = Thread(target=cleanup_task)
         thread.daemon = True
         thread.start()
@@ -305,7 +309,6 @@ class LoadingScreen(FloatLayout):
             time.sleep(0.3)
             Clock.schedule_once(self.run_next_step, 0)
 
-        from threading import Thread
         thread = Thread(target=load_assets_task)
         thread.daemon = True
         thread.start()
@@ -317,19 +320,31 @@ class LoadingScreen(FloatLayout):
         Clock.schedule_once(lambda dt: None, 0.3)
         Clock.schedule_once(self.run_next_step, 0.3)
 
-    def _update_bg(self, *args):
-        # Делаем так, чтобы фон всегда тянулся на весь экран
-        self.bg_rect.pos = self.pos
-        self.bg_rect.size = self.size
-
     def switch_to_menu(self, dt):
-        # --- Сначала меняем фон ---
-        self.bg_rect.source = 'files/menu/main_fon.jpg'
-        self.bg_rect.texture = CoreImage('files/menu/main_fon.jpg').texture
-
-        # --- Убираем все дочерние виджеты (прогресс-бар, подпись и т.д.) ---
+        # Очищаем все виджеты (видео, прогресс-бар, подпись и т.д.)
         self.clear_widgets()
-        self.add_widget(MenuWidget(self.conn, self.selected_map))
+
+        # Создаем прямоугольник для фона
+        with self.canvas.before:
+            Color(1, 1, 1, 1)  # Белый цвет
+            self.bg_rect = Rectangle(
+                source='files/menu/main_fon.jpg',  # Путь к фоновому изображению
+                size=self.size,
+                pos=self.pos
+            )
+
+        # Привязываем обновление фона к изменению размера/позиции
+        self.bind(size=self._update_bg, pos=self._update_bg)
+
+        # Добавляем виджет меню
+        menu_widget = MenuWidget(self.conn, self.selected_map)
+        self.add_widget(menu_widget)
+
+    def _update_bg(self, *args):
+        """Обновляет размер и позицию фонового изображения"""
+        if hasattr(self, 'bg_rect'):
+            self.bg_rect.size = self.size
+            self.bg_rect.pos = self.pos
 
 
 RANK_TO_FILENAME = {
