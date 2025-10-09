@@ -794,7 +794,7 @@ class Faction:
                     self.money += crowns_bonus
                     bonuses["Кроны"] = crowns_bonus
             elif system == "Борьба":
-                raw_material_bonus = int(self.food_info * 4.00)
+                raw_material_bonus = int(self.food_info * 4.90)
                 if raw_material_bonus > 0:
                     self.raw_material += raw_material_bonus
                     bonuses["Кристаллы"] = raw_material_bonus

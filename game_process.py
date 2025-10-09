@@ -230,7 +230,7 @@ class ResourceBox(BoxLayout):
         if self.scheduled_animate_event:
             Clock.unschedule(self.scheduled_animate_event)
             self.scheduled_animate_event = None
-            
+
         self.clear_widgets()
         self._label_values.clear()
 
