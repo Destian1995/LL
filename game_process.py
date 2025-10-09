@@ -188,6 +188,8 @@ class ResourceBox(BoxLayout):
         super(ResourceBox, self).__init__(**kwargs)
         self.resource_manager = resource_manager
         self.overlay = overlay
+        # --- Словарь для хранения таймеров ---
+        self.scheduled_animate_event = None
         # верт. бокс
         self.orientation = 'vertical'
 
@@ -224,6 +226,11 @@ class ResourceBox(BoxLayout):
     def update_resources(self, delta=None):
         if delta is None:
             delta = {}
+        # --- Отменить предыдущую анимацию бонуса, если она была ---
+        if self.scheduled_animate_event:
+            Clock.unschedule(self.scheduled_animate_event)
+            self.scheduled_animate_event = None
+            
         self.clear_widgets()
         self._label_values.clear()
 
@@ -437,7 +444,7 @@ class ResourceBox(BoxLayout):
         def do_animate(dt):
             show_floating_bonus(label, bonus, self.overlay)
 
-        Clock.schedule_once(do_animate, 0)
+        self.scheduled_animate_event = Clock.schedule_once(do_animate, 0)
 
 
 # Класс для кнопки с изображением
@@ -516,6 +523,9 @@ class GameScreen(Screen):
         self.selected_faction = selected_faction
         self.cities = cities
         self.conn = conn
+
+        # --- Словарь для хранения таймеров ---
+        self.scheduled_events = {}
         # Инициализация GameStateManager
         self.game_state_manager = GameStateManager(self.conn)
         self.game_state_manager.initialize(selected_faction)
@@ -562,10 +572,9 @@ class GameScreen(Screen):
         self.season_manager.update(self.current_idx, self.conn)
         # Инициализация дворян
         self.initialize_nobles()
-        # Запускаем обновление ресурсов каждую 1 секунду
-        Clock.schedule_interval(self.update_cash, 1)
-        # Запускаем обновление рейтинга армии каждые 1 секунду
-        Clock.schedule_interval(self.update_army_rating, 1)
+        # --- Сохраняем объекты таймеров ---
+        self.scheduled_events['update_cash'] = Clock.schedule_interval(self.update_cash, 1)
+        self.scheduled_events['update_army_rating'] = Clock.schedule_interval(self.update_army_rating, 1)
 
     def init_ai_controllers(self):
         """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
@@ -804,12 +813,15 @@ class GameScreen(Screen):
 
         def on_end_turn(instance):
             instance.start_progress()
-            Clock.schedule_once(lambda dt: self.process_turn(None), 1.5)
+            self.scheduled_events['process_turn'] = Clock.schedule_once(lambda dt: self.process_turn(None), 1.5)
 
         self.end_turn_button.bind(on_press=on_end_turn)
         end_turn_container.add_widget(self.end_turn_button)
         self.root_overlay.add_widget(end_turn_container)
         self.save_interface_element("EndTurnButton", "bottom_right", self.end_turn_button)
+
+        # --- Привязка к изменению размера окна ---
+        Window.bind(on_resize=self.update_resource_box_position)
 
     def process_turn(self, instance=None):
         """
@@ -900,6 +912,34 @@ class GameScreen(Screen):
         if rebellion_exists and 'Мятежники' not in self.ai_controllers:
             print("Фракция 'Мятежники' обнаружена в городах. Создаём AIController.")
             self.ai_controllers['Мятежники'] = AIController('Мятежники', self.conn)
+
+    def cleanup(self):
+        """Очистка ресурсов: таймеры, привязки, анимации."""
+        print("Очистка GameScreen...")
+        # 1. Отменить все запланированные события
+        for event_name, event_obj in self.scheduled_events.items():
+            if event_obj: # Проверяем, что объект не None
+                Clock.unschedule(event_obj)
+                print(f"  Отменен таймер: {event_name}")
+        self.scheduled_events.clear() # Очищаем словарь
+
+        # 2. Отвязать привязки
+        # Примеры, могут потребоваться другие в зависимости от реализации виджетов
+        if self.resource_box:
+            self.resource_box.unbind(size=lambda *a: self.resource_box.update_resources()) # Убираем привязку из init_ui
+            # Добавьте другие привязки ResourceBox, если есть
+        # Привязка к season_container
+        if hasattr(self, 'season_container'):
+            self.season_container.unbind(on_touch_down=self.on_season_pressed)
+        # Привязка к Window
+        Window.unbind(on_resize=self.update_resource_box_position)
+
+        # 3. Очистить виджеты (если они содержат свои таймеры/анимации)
+        if self.resource_box:
+            self.resource_box.cleanup() # Вызываем cleanup у ResourceBox, если он реализован там
+
+        print("Очистка GameScreen завершена.")
+
 
     def initialize_nobles(self):
         """Генерация начальных дворян при старте игры."""
