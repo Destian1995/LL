@@ -1203,7 +1203,7 @@ class Faction:
             self.cursor.execute('''
                 SELECT DISTINCT r.faction2 
                 FROM relations r
-                JOIN diplomacies f ON r.faction2 = f.faction2 
+                LEFT JOIN diplomacies f ON r.faction2 = f.faction2 
                 WHERE r.faction1 = ?
                   AND f.relationship != 'уничтожена'  -- фильтруем уничтоженные [[2]]
                   AND r.faction2 != r.faction1   -- исключаем текущую фракцию
