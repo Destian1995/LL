@@ -1,7 +1,6 @@
 from game_process import GameScreen
 from ui import *
 from db_lerdon_connect import *
-
 from generate_map import generate_map_and_cities
 
 class AuthorScreen(Screen):
@@ -148,9 +147,6 @@ class AuthorScreen(Screen):
     def open_link(self, instance, url):
         webbrowser.open(url)
 
-
-import time
-from threading import Thread
 
 class LoadingScreen(FloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
@@ -574,6 +570,9 @@ class MapWidget(Widget):
         # Флаг для однократного запуска мигания
         self.has_blinked = False
 
+        # Хранение идентификатора запланированной задачи
+        self.update_cities_event = None
+
         # Настройки карты
         self.base_map_width = 1200
         self.base_map_height = 800
@@ -587,7 +586,23 @@ class MapWidget(Widget):
         self.initialize_map()
 
         # Обновление раз в секунду — как в старом варианте
-        Clock.schedule_interval(self.update_cities, 1.0)
+        # Сохраняем идентификатор задачи
+        self.update_cities_event = Clock.schedule_interval(self.update_cities, 1.0)
+
+    def on_parent(self, widget, parent):
+        """
+        Вызывается Kivy при изменении родительского элемента виджета.
+        Используется для отмены задач Clock при удалении виджета.
+        """
+        # Если виджет удаляется (parent становится None)
+        if parent is None:
+            from kivy.clock import Clock
+            # Отменяем задачу update_cities, если она была запланирована
+            if self.update_cities_event:
+                Clock.unschedule(self.update_cities_event)
+                print(f"[MapWidget] Задача update_cities отменена при удалении виджета.")
+            # Сброс ссылки на задачу
+            self.update_cities_event = None
 
     def initialize_map(self, schedule_blink=True):
         """Первоначальная отрисовка карты, дорог и иконок.
@@ -1351,16 +1366,7 @@ class KingdomSelectionWidget(FloatLayout):
                 child.disabled = disabled
 
 
-from kivy.animation import Animation
-from kivy.graphics import Color, RoundedRectangle, Line
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.image import Image
-from kivy.uix.floatlayout import FloatLayout
-from kivy.app import App
-from kivy.clock import Clock
-import random
-import math
+
 
 class RoundedButton(Button):
     def __init__(self, **kwargs):
@@ -1411,6 +1417,12 @@ class MenuWidget(FloatLayout):
         super(MenuWidget, self).__init__(**kwargs)
         self.conn = conn
         self.buttons_locked = True  # Инициализируем сразу
+
+        # Хранение идентификаторов запланированных задач
+        self.background_anim_event = None
+        self.float_anim_event = None
+        # Счетчик для анимации фона (чтобы не запускать лишние задачи)
+        self._anim_scheduled = False
 
         # ======== Фоновые изображения ========
         self.bg_image_1 = Image(
@@ -1463,7 +1475,6 @@ class MenuWidget(FloatLayout):
             {"text": "Автор", "y_pos": 0.24, "color": (0.8, 0.4, 0.8, 1), "action": self.open_author},
             {"text": "Выход", "y_pos": 0.07, "color": (0.9, 0.3, 0.3, 1), "action": self.exit_game}
         ]
-
         self.buttons = []
         for config in button_configs:
             btn = RoundedButton(
@@ -1488,8 +1499,29 @@ class MenuWidget(FloatLayout):
         # ======== Анимации ========
         Clock.schedule_once(self.animate_title, 0.2)
         Clock.schedule_once(self.animate_buttons_in, 0.4)
-        Clock.schedule_interval(self.animate_background, 5)
-        Clock.schedule_interval(self.float_animation, 0.05)
+        # Запланируем анимацию фона *только один раз* и сохраним событие
+        if not self._anim_scheduled:
+            self.background_anim_event = Clock.schedule_interval(self.animate_background, 5)
+            self._anim_scheduled = True
+        # Запланируем анимацию плавания кнопок и сохраним событие
+        self.float_anim_event = Clock.schedule_interval(self.float_animation, 0.05) # ~60 FPS для плавности
+
+    def on_parent(self, widget, parent):
+        """
+        Вызывается Kivy при изменении родительского элемента виджета.
+        Используется для отмены задач Clock при удалении виджета.
+        """
+        # Если виджет удаляется (parent становится None)
+        if parent is None:
+            # Отменяем задачи, связанные с этим виджетом
+            if self.background_anim_event:
+                Clock.unschedule(self.background_anim_event)
+                print(f"[MenuWidget] Задача animate_background отменена при удалении виджета.")
+            if self.float_anim_event:
+                Clock.unschedule(self.float_anim_event)
+                print(f"[MenuWidget] Задача float_animation отменена при удалении виджета.")
+            # Сброс флага, чтобы при следующем создании можно было снова запланировать
+            self._anim_scheduled = False
 
     def add_decoration(self):
         """Добавляем декоративные элементы"""
@@ -1514,25 +1546,24 @@ class MenuWidget(FloatLayout):
             {'x': 0.15, 'y': 0.65}, {'x': 0.85, 'y': 0.6},
             {'x': 0.2, 'y': 0.45}, {'x': 0.8, 'y': 0.4}
         ]
-
         for i, particle in enumerate(self.particles):
             if i < len(positions):
                 particle.pos_hint = positions[i]
                 anim = Animation(opacity=0.6, duration=2.0) + Animation(opacity=0.2, duration=2.0)
                 anim.repeat = True
+                # Важно: не сохраняем ссылку на эту анимацию, так как она привязана к Label
+                # и отменяется при его удалении. Но если бы мы сохраняли, нужно было бы отменять.
                 Clock.schedule_once(lambda dt, p=particle, a=anim: a.start(p), i * 0.3)
 
     def animate_buttons_in(self, dt):
         """Анимированное появление кнопок с эффектом волны"""
         # Сначала показываем декоративные элементы
         self.animate_particles()
-
         # Анимация кнопок с эффектом "волны"
         for i, btn in enumerate(self.buttons):
             # Начальная позиция - смещены вправо
             original_y = btn.pos_hint['y']
             btn.pos_hint = {'center_x': 1.5, 'y': original_y}
-
             # Анимация движения и появления
             anim = Animation(
                 pos_hint={'center_x': 0.5, 'y': original_y},
@@ -1542,12 +1573,10 @@ class MenuWidget(FloatLayout):
                 opacity=1,
                 duration=0.5
             )
-
             Clock.schedule_once(
                 lambda dt, widget=btn, animation=anim: animation.start(widget),
                 i * 0.12
             )
-
         # Разблокировка кнопок после анимации
         total_delay = len(self.buttons) * 0.12 + 0.8
         Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), total_delay)
@@ -1556,12 +1585,10 @@ class MenuWidget(FloatLayout):
         """Плавное плавающее движение кнопок"""
         if hasattr(self, 'buttons_locked') and self.buttons_locked:
             return
-
         current_time = Clock.get_time()
         for i, btn in enumerate(self.buttons):
             if not hasattr(btn, 'original_y'):
                 btn.original_y = btn.pos_hint['y']
-
             # Плавное движение вверх-вниз
             float_offset = math.sin(current_time * 2 + i * 0.5) * 0.003
             new_y = btn.original_y + float_offset
@@ -1571,7 +1598,6 @@ class MenuWidget(FloatLayout):
         """Анимация при нажатии на кнопку"""
         if getattr(self, 'buttons_locked', True):
             return
-
         # Анимация нажатия
         anim = Animation(
             size_hint=(0.48, 0.115),
@@ -1591,7 +1617,6 @@ class MenuWidget(FloatLayout):
             'files/menu/poly.jpg',
             'files/menu/adept.jpg'
         ])
-
         # Гарантируем, что источник изменится
         while new_source == self.next_image.source:
             new_source = random.choice([
@@ -1601,16 +1626,13 @@ class MenuWidget(FloatLayout):
                 'files/menu/poly.jpg',
                 'files/menu/adept.jpg'
             ])
-
         self.next_image.source = new_source
         fade_out = Animation(opacity=0, duration=2.0)
         fade_in = Animation(opacity=1, duration=2.0)
         fade_out.start(self.current_image)
         fade_in.start(self.next_image)
-
         # Меняем указатели для следующей анимации
         self.current_image, self.next_image = self.next_image, self.current_image
-
     # === Обёртки для обработчиков кнопок с анимацией ===
     def open_dossier(self, instance):
         self.button_action_wrapper(self._open_dossier, instance)

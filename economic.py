@@ -1260,13 +1260,13 @@ class Faction:
                 print(message)
                 return False, message
 
-            # Проверка нового условия: все отношения > 95%
+            # Проверка все отношения > 95%
             if self.check_all_relations_high():
                 message = "Мир во всем мире"
                 print(message)
                 return False, message
 
-            # Проверка нового условия: остались ли другие фракции
+            # Проверка остались ли другие фракции
             if not self.check_remaining_factions():
                 message = "Все фракции были уничтожены"
                 print(message)
