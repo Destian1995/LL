@@ -1161,32 +1161,34 @@ class Faction:
 
     def check_all_relations_high(self):
         """
-        Проверяет, превышают ли все отношения текущей фракции с НЕУНИЧТОЖЕННЫМИ фракциями 95%.
-        :return: True, если все активные отношения > 95%, иначе False.
+        Проверяет, превышают ли все отношения текущей фракции с НЕУНИЧТОЖЕННЫМИ фракциями 93%.
+        Мятежники исключаются из проверки.
+        :return: True, если все активные отношения > 93% или если других фракций нет, иначе False.
         """
         try:
-            # Добавляем JOIN с таблицей diplomacies для фильтрации уничтоженных фракций
+            # Используем LEFT JOIN, чтобы включить фракции без статуса
             self.cursor.execute('''
-                SELECT r.faction2, r.relationship
+                SELECT r.faction2, r.relationship, d.relationship AS diplomacy_status
                 FROM relations r
-                JOIN diplomacies d ON r.faction2 = d.faction2
+                LEFT JOIN diplomacies d ON r.faction2 = d.faction2
                 WHERE r.faction1 = ?
-                  AND d.relationship != 'уничтожена'  -- исключаем уничтоженные фракции
+                  AND (d.relationship IS NULL OR d.relationship != 'уничтожена')  -- неуничтоженные или без статуса
                   AND r.faction2 != r.faction1        -- исключаем саму себя
+                  AND r.faction2 != 'Мятежники'       -- исключаем Мятежников
             ''', (self.faction,))
             rows = self.cursor.fetchall()
 
             if not rows:
-                print("Нет активных фракций для проверки отношений.")
-                return False
+                print("Нет активных фракций для проверки отношений. Условие выполнено.")
+                return True  # Если других фракций нет, условие выполнено
 
             # Проверяем каждое отношение
-            for faction2, relationship in rows:
-                if int(relationship) <= 95:
-                    print(f"Отношение с {faction2} <= 95% ({relationship}%)")
-                    return False  # Если хотя бы одно отношение <= 95, игра не завершается
+            for faction2, relationship, diplomacy_status in rows:
+                if int(relationship) <= 93:
+                    print(f"Отношение с {faction2} <= 93% ({relationship}%)")
+                    return False  # Если хотя бы одно отношение <= 93, игра не завершается
 
-            print("Все активные отношения > 95%. Условие завершения игры выполнено.")
+            print("Все активные отношения > 93%. Условие завершения игры выполнено.")
             return True
 
         except sqlite3.Error as e:
