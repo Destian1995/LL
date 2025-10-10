@@ -420,9 +420,7 @@ def check_coup_attempts(conn):
                     message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Многие увидели в этом слабость, лояльность снизилась на 4%."
                 show_coup_attempt_popup(successful=False, message_override=message)
 
-    # --- СТАРАЯ ЛОГИКА: Если нет дворян с loyalty < 30, но есть условия для переворота ---
-    # Это может произойти, если, например, все дворяне были уничтожены в предыдущем ходу.
-    # Оставим на всякий случай, но в новом контексте это маловероятно.
+    # --- Если нет дворян с loyalty < 30, но есть условия для переворота ---
     else:
         # Проверяем старые условия, но теперь они не приведут к уничтожению, если нет <30
         disloyal_count = sum(1 for _, loyalty, _ in all_nobles if loyalty < 30)
@@ -637,9 +635,9 @@ def update_loyalty_dynamically(conn):
             except (ValueError, TypeError):
                 relation_value = 0
 
-            # Лояльность растет если отношения >= 60%
-            if relation_value >= 60:
-                loyalty_change += 2.0  # Рост лояльности
+            # Лояльность растет если отношения >= 55%
+            if relation_value >= 55:
+                loyalty_change += 4.0  # Рост лояльности
             else:
                 loyalty_change -= 1.5  # Падение лояльности
 
