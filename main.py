@@ -1842,7 +1842,7 @@ class DossierScreen(Screen):
 
         return bottom
 
-    
+
 
     def _create_character_card(self, data: dict) -> BoxLayout:
         """

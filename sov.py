@@ -106,7 +106,7 @@ class AdvisorView(FloatLayout):
         # === Нижняя панель с кнопками ===
         bottom_panel = BoxLayout(
             size_hint=(1, None),
-            height=Window.height * 0.05,  # уменьшено на ~1.5 раза
+            height=Window.height * 0.09,  # уменьшено на ~1.5 раза
             padding=dp(6),
             spacing=dp(6),
             pos_hint={'x': 0, 'y': 0}
