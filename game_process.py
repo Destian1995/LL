@@ -517,7 +517,16 @@ class CircularProgressButton(Button):
 class GameScreen(Screen):
     SEASON_NAMES = ['Зима', 'Весна', 'Лето', 'Осень']
     SEASON_ICONS = ['snowflake', 'green_leaf', 'sun', 'yellow_leaf']
-
+    IDEOLOGY_ICONS = {
+        'player_submission': { # Идеология игрока - Смирение
+            'same': 'files/status/ideology/un_green.png',       # Та же (Смирение)
+            'different': 'files/status/ideology/fist_red.png'   # Другая (Борьба)
+        },
+        'player_struggle': {  # Идеология игрока - Борьба
+            'same': 'files/status/ideology/fist_green.png',     # Та же (Борьба)
+            'different': 'files/status/ideology/un_red.png'     # Другая (Смирение)
+        }
+    }
     def __init__(self, selected_faction, cities, conn=None, **kwargs):
         super(GameScreen, self).__init__(**kwargs)
         self.selected_faction = selected_faction
@@ -540,6 +549,9 @@ class GameScreen(Screen):
         # Инициализация политических данных
         self.initialize_political_data()
         self.prev_diplomacy_state = {}
+        # --- атрибут для хранения идеологии игрока ---
+        self.player_ideology = self.get_player_ideology(self.conn)
+
         # Инициализируем таблицу season
         self.season_manager = SeasonManager()
         self.initialize_season_table(self.conn)
@@ -1426,6 +1438,29 @@ class GameScreen(Screen):
         except sqlite3.Error as e:
             print(f"Ошибка при сбросе флагов check_attack: {e}")
 
+    def get_player_ideology(self, conn):
+        """Получает идеологию выбранной фракции игрока из таблицы political_systems."""
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT system FROM political_systems WHERE faction = ?", (self.selected_faction,))
+            result = cursor.fetchone()
+            if result:
+                ideology = result[0]
+                # Приводим к внутреннему формату, используемому в IDEOLOGY_ICONS
+                if ideology == "Смирение":
+                    return "player_submission"
+                elif ideology == "Борьба":
+                    return "player_struggle"
+                else:
+                    print(f"Неизвестная идеология в БД: {ideology}")
+                    return None
+            else:
+                print(f"Не найдена идеология для фракции {self.selected_faction}")
+                return None
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении идеологии игрока из БД: {e}")
+            return None
+
     def update_army_rating(self, dt=None):
         """Обновляет рейтинг армии и отрисовывает звёзды над городами."""
         self.update_city_military_status()
@@ -1433,44 +1468,69 @@ class GameScreen(Screen):
 
     def draw_army_stars_on_map(self):
         """
-        Рисует звёздочки над иконками городов.
+        Рисует звёздочки над иконками городов и иконки идеологии справа от иконок.
         Использует готовые координаты из self.city_star_levels:
-            { city_name: (star_level, icon_x, icon_y, city_name, has_hero) }
+            { city_name: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path) }
         """
         star_img_path = 'files/status/army_in_city/star.png'
         red_star_img_path = 'files/status/army_in_city/red_star.png'  # Путь к красной звезде
+        # Пути к иконкам идеологии теперь определяются в update_city_military_status
+
+        # Проверяем существование файлов звёзд (если они обязательны)
         if not os.path.exists(star_img_path):
             print(f"Файл звезды не найден: {star_img_path}")
-            return
-        # Проверяем существование красной звезды
+            # Можно вернуться, если звезды обязательны, или продолжить с иконками
+            # return
         if not os.path.exists(red_star_img_path):
             print(f"Файл красной звезды не найден: {red_star_img_path}")
-            # Можно продолжить без нее или остановить
+            # Можно вернуться, если красная звезда обязательна, или продолжить
             # return
 
         # Параметры отрисовки
         STAR_SIZE = 25
         SPACING = 5
         CITY_ICON_SIZE = 77
+        # Размер иконки идеологии (предположим квадратная)
+        IDEOLOGY_ICON_SIZE = 35
+        # Отступ от правого края иконки города
+        IDEOLOGY_ICON_OFFSET_X = 5
+
         # Если нет данных — ничего не рисуем
         if not hasattr(self, 'city_star_levels') or not self.city_star_levels:
             return
-        # Очищаем прошлые звёзды
+
+        # Очищаем прошлые элементы (звезды и иконки идеологии)
         self.game_area.canvas.before.clear()
         with self.game_area.canvas.before:
             for city_name, data in self.city_star_levels.items():
-                # star_level, icon_x, icon_y, city_name, has_hero = data # Обновленная распаковка
-                # Используем индексацию для совместимости, если данные еще не обновлены
-                star_level = data[0]
-                icon_x = data[1]
-                icon_y = data[2]
-                city_name = data[3]
-                # Предполагаем, что has_hero по умолчанию False, если данных нет
-                has_hero = data[4] if len(data) > 4 else False
+                try:
+                    star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path = data
+                except ValueError:
+                    # Совместимость со старым форматом данных (если вдруг)
+                    star_level, icon_x, icon_y, city_name, has_hero = data
+                    ideology_icon_path = None
 
                 # Центр иконки
                 icon_center_x = icon_x + CITY_ICON_SIZE / 2
                 icon_center_y = icon_y + CITY_ICON_SIZE / 2
+
+                # --- Отрисовка иконки идеологии (справа от иконки города) ---
+                if ideology_icon_path:
+                    # Позиция X - справа от правого края иконки города
+                    ideology_x = icon_x + CITY_ICON_SIZE + IDEOLOGY_ICON_OFFSET_X
+                    # Позиция Y - выравнивание по вертикали с центром иконки города
+                    ideology_y = icon_center_y - IDEOLOGY_ICON_SIZE / 2
+
+                    # Проверяем существование файла перед отрисовкой (еще раз на всякий)
+                    if os.path.exists(ideology_icon_path):
+                        Rectangle(
+                            source=ideology_icon_path,
+                            pos=(ideology_x, ideology_y),
+                            size=(IDEOLOGY_ICON_SIZE, IDEOLOGY_ICON_SIZE)
+                        )
+                    else:
+                        print(f"Файл иконки идеологии не найден при отрисовке: {ideology_icon_path}")
+
 
                 # --- Отрисовка красной звезды (если есть герой) ---
                 if has_hero:
@@ -1484,12 +1544,12 @@ class GameScreen(Screen):
                 # --- Отрисовка обычных звезд силы ---
                 if star_level <= 0:
                     continue
-
                 # Общая ширина всех звёздочек
                 total_width = STAR_SIZE * star_level + SPACING * (star_level - 1)
                 # Смещаем так, чтобы центр звёзд совпадал с центром иконки
                 start_x = icon_center_x - total_width / 2
                 start_y = icon_center_y + 20  # чуть выше центра иконки
+
                 # Рисуем каждую звезду
                 for i in range(star_level):
                     x_i = start_x + i * (STAR_SIZE + SPACING)
@@ -1499,6 +1559,120 @@ class GameScreen(Screen):
                         pos=(x_i, y_i),
                         size=(STAR_SIZE, STAR_SIZE)
                     )
+
+    def update_city_military_status(self):
+        """
+        Для всех фракций:
+          1) Находим все города, где есть гарнизоны
+          2) Для каждой фракции считаем общую мощь армии
+          3) Для каждого города этой фракции считаем его мощь
+          4) Вычисляем star_level = 0–3
+          5) Проверяем наличие юнитов 2-4 класса в гарнизоне
+          6) Получаем идеологию фракции города и определяем иконку
+          7) Сохраняем в self.city_star_levels:
+             { city_name: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path) }
+        """
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT name, faction, icon_coordinates 
+                FROM cities 
+                WHERE icon_coordinates IS NOT NULL
+            """)
+            raw_cities = cursor.fetchall()
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении городов с координатами: {e}")
+            self.city_star_levels = {}
+            return
+
+        if not raw_cities:
+            print("Нет городов с координатами.")
+            self.city_star_levels = {}
+            return
+
+        # --- Получаем идеологии всех фракций ---
+        faction_ideologies = {}
+        try:
+            cursor.execute("SELECT faction, system FROM political_systems")
+            for faction_name, system in cursor.fetchall():
+                # Приводим к внутреннему формату
+                if system == "Смирение":
+                    faction_ideologies[faction_name] = "submission"
+                elif system == "Борьба":
+                    faction_ideologies[faction_name] = "struggle"
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении идеологий фракций из БД: {e}")
+            # В случае ошибки, не отрисовываем иконки
+            faction_ideologies = {}
+
+        from collections import defaultdict
+        factions_cities = defaultdict(list)
+        for city_name, faction, coords_str in raw_cities:
+            factions_cities[faction].append((city_name, coords_str))
+
+        new_dict = {}
+        for faction, cities_list in factions_cities.items():
+            total_strength = self.get_total_army_strength_by_faction(faction)
+            # if total_strength == 0: # Не будем пропускать фракции без армии, так как может быть герой
+            #     continue
+            for city_name, coords_str in cities_list:
+                try:
+                    coords = eval(coords_str) # Лучше использовать ast.literal_eval
+                    icon_x, icon_y = coords
+                except Exception as ex:
+                    print(f"Ошибка парсинга icon_coordinates для {city_name}: {ex}")
+                    continue
+
+                # --- Проверка наличия героя (юнита 2-4 класса) ---
+                has_hero = False
+                try:
+                    cursor.execute("""
+                        SELECT 1
+                        FROM garrisons g
+                        JOIN units u ON g.unit_name = u.unit_name
+                        WHERE g.city_name = ? AND u.unit_class IN (2, 3, 4)
+                        LIMIT 1
+                    """, (city_name,))
+                    if cursor.fetchone():
+                        has_hero = True
+                except sqlite3.Error as e:
+                    print(f"Ошибка при проверке наличия героя в {city_name}: {e}")
+
+                # --- Расчет силы армии в городе ---
+                city_strength = self.get_city_army_strength_by_faction(city_name, faction)
+                star_level = 0  # По умолчанию 0 звезд
+                if total_strength > 0 and city_strength > 0:  # Избегаем деления на 0
+                    percent = (city_strength / total_strength) * 100
+                    if percent < 35:
+                        star_level = 1
+                    elif percent < 65:
+                        star_level = 2
+                    else:
+                        star_level = 3
+
+                # --- Определение иконки идеологии ---
+                ideology_icon_path = None
+                if self.player_ideology and faction in faction_ideologies:
+                    city_faction_ideology = faction_ideologies[faction]
+                    player_ideology_type = self.player_ideology.split('_')[1] # "submission" или "struggle"
+
+                    if city_faction_ideology == player_ideology_type:
+                        # Та же идеология
+                        ideology_icon_path = self.IDEOLOGY_ICONS[self.player_ideology]['same']
+                    else:
+                        # Другая идеология
+                        ideology_icon_path = self.IDEOLOGY_ICONS[self.player_ideology]['different']
+
+                    # Проверяем существование файла иконки
+                    if not os.path.exists(ideology_icon_path):
+                        print(f"Файл иконки идеологии не найден: {ideology_icon_path}")
+                        ideology_icon_path = None # Не отрисовываем, если файл не найден
+
+                # --- Сохранение данных ---
+                # Обновляем кортеж, добавляя ideology_icon_path
+                new_dict[city_name] = (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path)
+
+        self.city_star_levels = new_dict
 
     def get_total_army_strength_by_faction(self, faction):
         """Возвращает общую мощь армии фракции."""
@@ -1574,86 +1748,6 @@ class GameScreen(Screen):
             return 3
         else:
             return 3  # На случай, если процент > 100 из-за ошибок округления
-
-    def update_city_military_status(self):
-        """
-        Для всех фракций:
-          1) Находим все города, где есть гарнизоны
-          2) Для каждой фракции считаем общую мощь армии
-          3) Для каждого города этой фракции считаем его мощь
-          4) Вычисляем star_level = 0–3
-          5) Проверяем наличие юнитов 2-4 класса в гарнизоне
-          6) Сохраняем в self.city_star_levels:
-             { city_name: (star_level, icon_x, icon_y, city_name, has_hero) }
-        """
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute("""
-                SELECT name, faction, icon_coordinates 
-                FROM cities 
-                WHERE icon_coordinates IS NOT NULL
-            """)
-            raw_cities = cursor.fetchall()
-        except sqlite3.Error as e:
-            print(f"Ошибка при получении городов с координатами: {e}")
-            self.city_star_levels = {}
-            return
-
-        if not raw_cities:
-            print("Нет городов с координатами.")
-            self.city_star_levels = {}
-            return
-
-        from collections import defaultdict
-        factions_cities = defaultdict(list)
-        for city_name, faction, coords_str in raw_cities:
-            factions_cities[faction].append((city_name, coords_str))
-
-        new_dict = {}
-        for faction, cities_list in factions_cities.items():
-            total_strength = self.get_total_army_strength_by_faction(faction)
-            # if total_strength == 0: # Не будем пропускать фракции без армии, так как может быть герой
-            #     continue
-            for city_name, coords_str in cities_list:
-                try:
-                    coords = eval(coords_str)  # лучше заменить на ast.literal_eval
-                    icon_x, icon_y = coords
-                except Exception as ex:
-                    print(f"Ошибка парсинга icon_coordinates для {city_name}: {ex}")
-                    continue
-
-                # --- Проверка наличия героя (юнита 2-4 класса) ---
-                has_hero = False
-                try:
-                    cursor.execute("""
-                        SELECT 1
-                        FROM garrisons g
-                        JOIN units u ON g.unit_name = u.unit_name
-                        WHERE g.city_name = ? AND u.unit_class IN (2, 3, 4)
-                        LIMIT 1
-                    """, (city_name,))
-                    if cursor.fetchone():
-                        has_hero = True
-                except sqlite3.Error as e:
-                    print(f"Ошибка при проверке наличия героя в {city_name}: {e}")
-
-                # --- Расчет силы армии в городе ---
-                city_strength = self.get_city_army_strength_by_faction(city_name, faction)
-                star_level = 0  # По умолчанию 0 звезд
-                if total_strength > 0 and city_strength > 0:  # Избегаем деления на 0
-                    percent = (city_strength / total_strength) * 100
-                    if percent < 35:
-                        star_level = 1
-                    elif percent < 65:
-                        star_level = 2
-                    else:
-                        star_level = 3
-
-                # --- Сохранение данных ---
-                # Обновляем кортеж, добавляя has_hero
-                new_dict[city_name] = (star_level, icon_x, icon_y, city_name, has_hero)
-
-        self.city_star_levels = new_dict
 
     def initialize_turn_check_move(self):
         """

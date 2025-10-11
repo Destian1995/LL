@@ -628,7 +628,7 @@ class MapWidget(Widget):
 
         # Планируем мигание только при первом запуске (или когда явно разрешено)
         if schedule_blink:
-            Clock.schedule_once(self._schedule_blink, 0.5)
+            Clock.schedule_once(self._schedule_blink, 0.2)
 
     def update_cities(self, dt=None):
         """Полная перерисовка карты раз в секунду (как раньше)."""
