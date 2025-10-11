@@ -153,7 +153,8 @@ class LoadingScreen(FloatLayout):
         super(LoadingScreen, self).__init__(**kwargs)
         self.conn = conn
         self.selected_map = selected_map
-        # === Фон через Canvas ===
+
+        # === Фон ===
         with self.canvas.before:
             self.bg_rect = Rectangle(
                 source='files/menu/loading_bg.jpg',
@@ -162,39 +163,41 @@ class LoadingScreen(FloatLayout):
             )
         self.bind(pos=self._update_bg, size=self._update_bg)
 
-        # === Прогресс-бар ===
-        self.progress_bar = ProgressBar(
-            max=100,
-            value=0,
-            size_hint=(1, None),
+        # === Контейнер шкалы ===
+        self.pb_container = FloatLayout(
+            size_hint=(0.8, None),
             height=dp(30),
             pos_hint={'center_x': 0.5, 'center_y': 0.2}
         )
 
-        # Обёртка для стилизации прогресс-бара
-        self.pb_container = FloatLayout(
-            size_hint=(0.8, None),
-            height=dp(30)
-        )
-        self.pb_container.pos_hint = {'center_x': 0.5, 'center_y': 0.2}
-
         with self.pb_container.canvas.before:
-            # Тёмный фон контейнера прогресс-бара
-            Color(0.2, 0.2, 0.2, 1)
+            # === Фон прогресс-бара ===
+            Color(0.1, 0.1, 0.1, 0.8)
             self.pb_rect = Rectangle(size=self.pb_container.size, pos=self.pb_container.pos)
 
-            # Заливка (синяя) прогресса
-            Color(0, 0.7, 1, 1)
+            # === Заливка прогресса ===
+            Color(1, 1, 1, 1)  # Начальный белый цвет
             self.pb_fill = Rectangle(size=(0, self.pb_container.height), pos=self.pb_container.pos)
 
+            # === Обводка ===
+            Color(1, 1, 1, 0.9)
+            self.pb_border = Line(
+                rectangle=(
+                    self.pb_container.x - dp(1),
+                    self.pb_container.y - dp(1),
+                    self.pb_container.width + dp(2),
+                    self.pb_container.height + dp(2)
+                ),
+                width=dp(1.3)
+            )
+
         self.pb_container.bind(pos=self.update_pb_canvas, size=self.update_pb_canvas)
-        self.pb_container.add_widget(self.progress_bar)
         self.add_widget(self.pb_container)
 
-        # === Подпись с процентами ===
+        # === Текст загрузки ===
         self.label = Label(
             markup=True,
-            text="",
+            text="[color=#00ccff]Готовим ресурсы... 0%[/color]",
             font_size='19sp',
             pos_hint={'center_x': 0.5, 'center_y': 0.11},
             size_hint=(1, None),
@@ -202,23 +205,11 @@ class LoadingScreen(FloatLayout):
         )
         self.add_widget(self.label)
 
-        # Запускаем последовательность загрузки
-        Clock.schedule_once(self.start_loading)
-
-    def update_pb_canvas(self, *args):
-        # Обновляем фон контейнера прогресс-бара
-        self.pb_rect.pos = self.pb_container.pos
-        self.pb_rect.size = self.pb_container.size
-
-        # Обновляем саму заливку в зависимости от value
-        fill_width = self.progress_bar.value / 100 * self.pb_container.width
-        self.pb_fill.pos = self.pb_container.pos
-        self.pb_fill.size = (fill_width, self.pb_container.height)
-
-    # === Методы загрузки ===
-    def start_loading(self, dt):
+        # === Прогресс ===
         self.current_progress = 0
         self.target_progress = 0
+
+        # === Шаги загрузки ===
         self.loading_steps = [
             self.step_check_db,
             self.step_cleanup_cache,
@@ -226,6 +217,46 @@ class LoadingScreen(FloatLayout):
             self.step_load_assets,
             self.step_complete
         ]
+        Clock.schedule_once(self.start_loading)
+
+    # === Обновление заливки и рамки ===
+    def update_pb_canvas(self, *args):
+        self.pb_rect.pos = self.pb_container.pos
+        self.pb_rect.size = self.pb_container.size
+
+        fill_width = (self.current_progress / 100) * self.pb_container.width
+        self.pb_fill.pos = self.pb_container.pos
+        self.pb_fill.size = (fill_width, self.pb_container.height)
+
+        # === Плавный переход цвета от белого → голубого → синего ===
+        progress_ratio = self.current_progress / 100.0
+        if progress_ratio <= 0.5:
+            # От белого к голубому (0–50%)
+            r = 1 - progress_ratio * 0.5       # 1 → 0.75
+            g = 1 - progress_ratio * 0.3       # 1 → 0.85
+            b = 1                              # остаётся бело-голубым
+        else:
+            # От голубого к насыщенно-синему (50–100%)
+            t = (progress_ratio - 0.5) * 2     # нормализуем вторую половину
+            r = 0.75 - t * 0.55                # 0.75 → 0.2
+            g = 0.85 - t * 0.65                # 0.85 → 0.2
+            b = 1 - t * 0.3                    # 1 → 0.7
+
+        with self.pb_container.canvas:
+            Color(r, g, b, 1)
+            self.pb_fill.size = (fill_width, self.pb_container.height)
+            self.pb_fill.pos = self.pb_container.pos
+
+        # Обводка
+        self.pb_border.rectangle = (
+            self.pb_container.x - dp(1),
+            self.pb_container.y - dp(1),
+            self.pb_container.width + dp(2),
+            self.pb_container.height + dp(2)
+        )
+
+    # === Логика загрузки ===
+    def start_loading(self, dt):
         self.run_next_step()
 
     def run_next_step(self, *args):
@@ -233,60 +264,46 @@ class LoadingScreen(FloatLayout):
             step = self.loading_steps.pop(0)
             step()
         else:
-            # Дошли до 100%
             self.target_progress = 100
             self.smooth_progress_update()
 
     def update_progress_target(self, delta):
-        """Устанавливает целевое значение прогресса"""
         self.target_progress += delta
 
     def smooth_progress_update(self, dt=0):
-        """Плавное обновление прогресса"""
-        # Плавное приближение текущего значения к целевому
         if abs(self.target_progress - self.current_progress) > 0.5:
             self.current_progress += (self.target_progress - self.current_progress) * 0.1
-            self.progress_bar.value = self.current_progress
             percent = int(self.current_progress)
             self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
             self.update_pb_canvas()
-            # Продолжаем анимацию
-            Clock.schedule_once(self.smooth_progress_update, 0.016)  # ~60 FPS
+            Clock.schedule_once(self.smooth_progress_update, 0.016)
         else:
-            # Достигли целевого значения
             self.current_progress = self.target_progress
-            self.progress_bar.value = self.current_progress
             percent = int(self.current_progress)
             self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
             self.update_pb_canvas()
 
-            # Если достигли 100%, переходим к меню
             if self.target_progress >= 100:
                 self.label.text = "[color=#ff0000]НАЧИНАЕМ![/color]"
                 Clock.schedule_once(self.switch_to_menu, 0.8)
 
     def update_progress(self, delta):
-        """Обновление прогресса с плавной анимацией"""
         self.update_progress_target(delta)
         self.smooth_progress_update()
 
-    # === Шаги загрузки ===
+    # === Шаги ===
     def step_check_db(self):
         print("Шаг 1: Проверка базы данных...")
         self.update_progress(20)
         Clock.schedule_once(self.run_next_step, 0.5)
 
     def step_cleanup_cache(self):
-        print("Шаг 2: Очистка кэша и временных данных...")
-        # Выполняем очистку в отдельном потоке для плавности
+        print("Шаг 2: Очистка кэша...")
+        from threading import Thread
         def cleanup_task():
             clear_tables(self.conn)
             Clock.schedule_once(self.run_next_step, 0)
-
-        from threading import Thread
-        thread = Thread(target=cleanup_task)
-        thread.daemon = True
-        thread.start()
+        Thread(target=cleanup_task, daemon=True).start()
 
     def step_restore_backup(self):
         print("Шаг 3: Восстановление из бэкапа...")
@@ -294,39 +311,30 @@ class LoadingScreen(FloatLayout):
         Clock.schedule_once(self.run_next_step, 0.5)
 
     def step_load_assets(self):
-        print("Шаг 4: Подготовка ресурсов...")
-        # Имитируем загрузку с плавным прогрессом
+        print("Шаг 4: Загрузка ресурсов...")
         self.update_progress(10)
 
-        def load_assets_task():
+        from threading import Thread
+        def load_task():
             time.sleep(0.3)
             Clock.schedule_once(lambda dt: self.update_progress(10), 0)
             time.sleep(0.3)
             Clock.schedule_once(self.run_next_step, 0)
-
-        from threading import Thread
-        thread = Thread(target=load_assets_task)
-        thread.daemon = True
-        thread.start()
+        Thread(target=load_task, daemon=True).start()
 
     def step_complete(self):
-        print("Шаг 5: Подготовка перехода в меню...")
+        print("Шаг 5: Финализация...")
         self.update_progress(20)
-        # Завершаем плавную анимацию
-        Clock.schedule_once(lambda dt: None, 0.3)
         Clock.schedule_once(self.run_next_step, 0.3)
 
+    # === Вспомогательные ===
     def _update_bg(self, *args):
-        # Делаем так, чтобы фон всегда тянулся на весь экран
         self.bg_rect.pos = self.pos
         self.bg_rect.size = self.size
 
     def switch_to_menu(self, dt):
-        # --- Сначала меняем фон ---
         self.bg_rect.source = 'files/menu/main_fon.jpg'
         self.bg_rect.texture = CoreImage('files/menu/main_fon.jpg').texture
-
-        # --- Убираем все дочерние виджеты (прогресс-бар, подпись и т.д.) ---
         self.clear_widgets()
         self.add_widget(MenuWidget(self.conn, self.selected_map))
 
@@ -1366,8 +1374,6 @@ class KingdomSelectionWidget(FloatLayout):
                 child.disabled = disabled
 
 
-
-
 class RoundedButton(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1393,6 +1399,7 @@ class RoundedButton(Button):
                 width=1.2
             )
 
+
 class AnimatedLabel(Label):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1411,6 +1418,7 @@ class AnimatedLabel(Label):
         )
         anim.repeat = True
         anim.start(self)
+
 
 class MenuWidget(FloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
@@ -1687,6 +1695,7 @@ class MenuWidget(FloatLayout):
         app.on_stop()
         app.stop()
 
+
 class CustomTab(TabbedPanelItem):
     def __init__(self, **kwargs):
         super(CustomTab, self).__init__(**kwargs)
@@ -1709,7 +1718,6 @@ class DossierScreen(Screen):
         self.auto_clear_event = None
         self.auto_clear_toggle = None
         self.tabs = None
-        # Построение UI делаем в on_kv_post или прямо в __init__.
         self.build_ui()
 
     def build_ui(self):
@@ -1726,15 +1734,12 @@ class DossierScreen(Screen):
         root_layout.add_widget(title_widget)
 
         # === TabbedPanel ===
-        # Убираем size_hint_y=None и фиксированную высоту. Вместо этого делаем size_hint=(1, 1)
         self.tabs = TabbedPanel(do_default_tab=False, size_hint=(1, 1))
-        # Сразу загружаем данные — внутри load_dossier_data() каждая вкладка будет содержать ScrollView
         self.load_dossier_data()
         root_layout.add_widget(self.tabs)
 
         # === Нижняя панель кнопок ===
         bottom_panel = self._create_bottom_panel()
-        # Нижняя панель остаётся фиксированной по высоте
         root_layout.add_widget(bottom_panel)
 
         self.add_widget(root_layout)
@@ -1748,22 +1753,16 @@ class DossierScreen(Screen):
         with title_box.canvas.before:
             Color(0.1, 0.1, 0.1, 0.95)
             bg_rect = Rectangle(size=title_box.size, pos=title_box.pos)
-            Color(0, 0.7, 1, 1)
+            Color(0, 0.7, 1, 1) # Цвет рамки
             border_line = Line(
-                rectangle=(title_box.x + 1, title_box.y + 1, title_box.width - 2, title_box.height - 2),
-                width=1.4
+                rectangle=(title_box.x, title_box.y, title_box.width, title_box.height),
+                width=2
             )
 
-        # При изменении размеров/позиции обновляем Rect и Line
         def _update_title_canvas(instance, _):
             bg_rect.size = instance.size
             bg_rect.pos = instance.pos
-            border_line.rectangle = (
-                instance.x + 1,
-                instance.y + 1,
-                instance.width - 2,
-                instance.height - 2
-            )
+            border_line.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
         title_box.bind(pos=_update_title_canvas, size=_update_title_canvas)
 
@@ -1780,43 +1779,73 @@ class DossierScreen(Screen):
 
     def _create_bottom_panel(self):
         """
-        Создаёт нижнюю панель с кнопками:
-        - «Назад»
-        - «Очистить»
+        Создаёт нижнюю панель с кнопками.
+        Добавлены рамки для кнопок.
         """
-        bottom = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(10))
+        bottom = BoxLayout(size_hint_y=None, height=dp(70), spacing=dp(10), padding=dp(10))
 
-        # Кнопка «Назад»
+        # --- Кнопка «Назад» ---
+        back_btn_wrapper = BoxLayout(size_hint_x=0.5, size_hint_y=1)
+        with back_btn_wrapper.canvas.before:
+            Color(0, 0, 0, 1) # Цвет фона кнопки
+            back_bg_rect = Rectangle(size=back_btn_wrapper.size, pos=back_btn_wrapper.pos)
+            Color(0, 0.7, 1, 1) # Цвет рамки кнопки
+            back_border_line = Line(
+                rectangle=(back_btn_wrapper.x, back_btn_wrapper.y, back_btn_wrapper.width, back_btn_wrapper.height),
+                width=2
+            )
+
+        def _update_back_btn_canvas(instance, _):
+            back_bg_rect.size = instance.size
+            back_bg_rect.pos = instance.pos
+            back_border_line.rectangle = (instance.x, instance.y, instance.width, instance.height)
+
+        back_btn_wrapper.bind(pos=_update_back_btn_canvas, size=_update_back_btn_canvas)
+
         back_btn = Button(
-            text="Назад в главное меню",
-            background_color=(0, 0.7, 1, 1),
-            size_hint_y=None,
-            height=dp(48),
-            font_size=sp(16)
+            text="Назад",
+            background_color=(0, 0.7, 1, 0.1), # Прозрачный фон, чтобы видно было обводку
+            font_size=sp(16),
+            border=(2, 2, 2, 2) # Параметры border не влияют на Button напрямую в Kivy
         )
         back_btn.bind(on_release=self.go_back)
-        bottom.add_widget(back_btn)
+        back_btn_wrapper.add_widget(back_btn)
 
-        # Кнопка «Очистить данные»
+        # --- Кнопка «Очистить данные» ---
+        clear_btn_wrapper = BoxLayout(size_hint_x=0.5, size_hint_y=1)
+        with clear_btn_wrapper.canvas.before:
+            Color(0.2, 0.2, 0.2, 1) # Цвет фона кнопки
+            clear_bg_rect = Rectangle(size=clear_btn_wrapper.size, pos=clear_btn_wrapper.pos)
+            Color(0.9, 0.2, 0.2, 1) # Цвет рамки кнопки
+            clear_border_line = Line(
+                rectangle=(clear_btn_wrapper.x, clear_btn_wrapper.y, clear_btn_wrapper.width, clear_btn_wrapper.height),
+                width=2
+            )
+
+        def _update_clear_btn_canvas(instance, _):
+            clear_bg_rect.size = instance.size
+            clear_bg_rect.pos = instance.pos
+            clear_border_line.rectangle = (instance.x, instance.y, instance.width, instance.height)
+
+        clear_btn_wrapper.bind(pos=_update_clear_btn_canvas, size=_update_clear_btn_canvas)
+
         clear_btn = Button(
-            text="Очистить данные",
-            background_color=(0.9, 0.2, 0.2, 1),
-            size_hint_y=None,
-            height=dp(48),
+            text="Очистить",
+            background_color=(0.9, 0.2, 0.2, 0.1), # Прозрачный фон
             font_size=sp(16)
         )
         clear_btn.bind(on_release=self.clear_dossier)
-        bottom.add_widget(clear_btn)
+        clear_btn_wrapper.add_widget(clear_btn)
+
+        bottom.add_widget(back_btn_wrapper)
+        bottom.add_widget(clear_btn_wrapper)
 
         return bottom
 
     def load_dossier_data(self):
         """
         Читает данные из SQLite и наполняет TabbedPanel.
-        Если данных нет — выводит таб «Информация» с надписью «Вы еще не давали присягу»
-        Если данные есть — группирует по фракциям и создаёт для каждой фракции вкладку.
         """
-        # Очищаем предыдущие вкладки, если они уже были
         if self.tabs.get_tab_list():
             for tab in list(self.tabs.get_tab_list()):
                 self.tabs.remove_widget(tab)
@@ -1830,19 +1859,18 @@ class DossierScreen(Screen):
             rows = []
 
         if not rows:
-            # Если записей нет
             info_label = Label(
-                text="Вы еще не давали присягу",
+                text="Вы еще не воевали ни за одну расу...",
                 font_size=sp(18),
                 color=get_color_from_hex('#FFFFFF'),
-                halign='center'
+                halign='center',
+                valign='middle'
             )
             tab = TabbedPanelItem(text="Информация")
             tab.add_widget(info_label)
             self.tabs.add_widget(tab)
             return
 
-        # Группируем по фракциям (предполагаем, что row[1] — это фракция)
         factions = {}
         for row in rows:
             faction = row[1]
@@ -1858,12 +1886,11 @@ class DossierScreen(Screen):
             }
             factions.setdefault(faction, []).append(data)
 
-        # Для каждой фракции создаём новую вкладку
         for faction, data_list in factions.items():
             tab = CustomTab(text=faction)
             scroll = ScrollView()
             grid = GridLayout(
-                cols=2,
+                cols=1, # Теперь одна колонка для лучшей адаптивности на узких экранах
                 spacing=dp(10),
                 padding=dp(10),
                 size_hint_y=None
@@ -1880,50 +1907,37 @@ class DossierScreen(Screen):
 
     def _create_character_card(self, data: dict) -> BoxLayout:
         """
-        Создаёт одну карточку «персонажа»:
-        1) Загружает иконку звания через resource_find, переводя русское звание в английское имя файла,
-        2) Под картинкой — текст звания (по-прежнему на русском),
-        3) Дальше — статистика (боевой рейтинг, голод, результаты и т.д.).
-        Высота card подгоняется автоматически под содержимое.
+        Создаёт одну карточку «персонажа».
+        Теперь адаптирована под мобильные устройства.
         """
-        total_height = 0
-
-        # --- 1. Корневой контейнер карточки ---
         card = BoxLayout(
             orientation='vertical',
-            size_hint_y=None,  # высоту задаём вручную
+            size_hint_y=None,
             spacing=dp(5),
-            padding=dp(5)
+            padding=dp(10)
         )
 
         # Фон и рамка у карточки
         with card.canvas.before:
             Color(0.15, 0.15, 0.15, 1)
             bg_rect = Rectangle(size=card.size, pos=card.pos)
-            Color(0.3, 0.3, 0.3, 1)
+            Color(0.5, 0.5, 0.5, 1) # Цвет рамки
             border_line = Line(
-                rectangle=(card.x + 1, card.y + 1, card.width - 2, card.height - 2),
-                width=1
+                rectangle=(card.x, card.y, card.width, card.height),
+                width=2
             )
 
         def _update_card_canvas(instance, _):
             bg_rect.size = instance.size
             bg_rect.pos = instance.pos
-            border_line.rectangle = (
-                instance.x + 1,
-                instance.y + 1,
-                instance.width - 2,
-                instance.height - 2
-            )
+            border_line.rectangle = (instance.x, instance.y, instance.width, instance.height)
 
         card.bind(pos=_update_card_canvas, size=_update_card_canvas)
 
-        # === 2. Собираем "сырой" rank и нормализуем только для отладки/поиска файла ===
+        # --- Обработка звания ---
         raw_rank = data.get('military_rank') or "Еще не признан своим..."
         rank = raw_rank.strip()
         rank = unicodedata.normalize("NFC", rank)
-        # Заменяем все возможные тире/дефисы на обычный ASCII-дефис,
-        # чтобы ключ точно совпал с RANK_TO_FILENAME
         rank = (
             rank
             .replace("\u2010", "-")
@@ -1933,59 +1947,47 @@ class DossierScreen(Screen):
             .replace("\u2014", "-")
             .replace("\u2015", "-")
         )
-
-        # --- 3. Выбираем английское имя файла из словаря, если нет — fallback на '0.png' ---
         filename = RANK_TO_FILENAME.get(rank, "0.png")
         asset_path = f"files/menu/dossier/{filename}"
         real_path = resource_find(asset_path)
 
-        # === 4. Рисуем контейнер для иконки ===
-        image_height = dp(90)
-        image_container = BoxLayout(size_hint_y=None, height=image_height, padding=dp(5))
-
+        # --- Иконка ---
+        image_container = BoxLayout(size_hint_y=None, height=dp(100), padding=dp(5))
         if real_path:
             rank_img = Image(
                 source=real_path,
                 size_hint=(None, None),
-                size=(dp(60), dp(60))
+                size=(dp(80), dp(80)),
+                allow_stretch=True,
+                keep_ratio=True
             )
         else:
-            # Если иконка не найдена (на всякий случай), показываем знак вопроса
-            rank_img = Label(text="?", font_size=sp(30), color=(1, 1, 1, 0.5))
+            rank_img = Label(text="?", font_size=sp(40), color=(1, 1, 1, 0.5))
 
         img_anchor = AnchorLayout(anchor_x='center', anchor_y='center')
         img_anchor.add_widget(rank_img)
         image_container.add_widget(img_anchor)
         card.add_widget(image_container)
-        total_height += image_height
 
-        # === 5. Текстовое (русское) звание под иконкой ===
-        rank_label_height = dp(30)
+        # --- Текст звания ---
         rank_label = Label(
-            text=f"[b]{raw_rank}[/b]",  # <-- отображаем именно raw_rank, без перевода
+            text=f"[b]{raw_rank}[/b]",
             markup=True,
-            font_size=sp(18),
+            font_size=sp(20),
             color=(1, 1, 1, 1),
             halign='center',
             valign='middle',
-            size_hint=(None, None),
-            size=(self.width, rank_label_height)
-        )
-        rank_anchor = AnchorLayout(
-            anchor_x='center',
-            anchor_y='top',
             size_hint_y=None,
-            height=rank_label_height
+            height=dp(30)
         )
-        rank_anchor.add_widget(rank_label)
-        card.add_widget(rank_anchor)
-        total_height += rank_label_height
+        card.add_widget(rank_label)
 
-        # === 6. Левый блок: боевой рейтинг и голод ===
-        left_label_height = dp(50)
+        # --- Статистика в Grid ---
+        stats_grid = GridLayout(cols=2, spacing=dp(5), size_hint_y=None, height=dp(120))
+        # Левый блок
         left_text = (
-            f"[b]Боевой рейтинг(ср.):[/b] {data.get('avg_military_rating', 0)}\n"
-            f"[b]Умерло войск от голода(ср.):[/b] {data.get('avg_soldiers_starving', 0)}"
+            f"[b]Боевой рейтинг(ср.):[/b]\n{data.get('avg_military_rating', 0)}\n"
+            f"[b]Голод(ср.):[/b]\n{data.get('avg_soldiers_starving', 0)}"
         )
         left_label = Label(
             text=left_text,
@@ -1993,15 +1995,12 @@ class DossierScreen(Screen):
             font_size=sp(14),
             color=(1, 1, 1, 1),
             halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=left_label_height
+            valign='top',
+            text_size=(None, None)
         )
-        card.add_widget(left_label)
-        total_height += left_label_height
+        stats_grid.add_widget(left_label)
 
-        # === 7. Правый блок: сражения и матчи ===
-        right_label_height = dp(50)
+        # Правый блок
         right_text = (
             f"[b]Сражения (В/П):[/b]\n"
             f"[color=#00FF00]{data.get('victories', 0)}[/color]/"
@@ -2016,36 +2015,30 @@ class DossierScreen(Screen):
             font_size=sp(14),
             color=(1, 1, 1, 1),
             halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=right_label_height
+            valign='top',
+            text_size=(None, None)
         )
-        card.add_widget(right_label)
-        total_height += right_label_height
+        stats_grid.add_widget(right_label)
 
-        # === 8. Дата последней игры ===
-        date_label_height = dp(20)
+        card.add_widget(stats_grid)
+
+        # --- Дата ---
         date_label = Label(
-            text=f"Последняя игра: {data.get('last_data', '-')} ",
+            text=f"Последняя игра: {data.get('last_data', '-')}",
             font_size=sp(12),
             color=get_color_from_hex('#AAAAAA'),
             halign='center',
             valign='middle',
             size_hint_y=None,
-            height=date_label_height
+            height=dp(20)
         )
         card.add_widget(date_label)
-        total_height += date_label_height
 
-        # Устанавливаем итоговую высоту карточки
-        card.height = total_height + dp(10)
+        card.height = dp(270) # Примерная высота, можно рассчитать динамически
         return card
 
     def clear_dossier(self, instance):
-        """
-        Полная очистка всех записей в таблице dossier.
-        После успеха — полностью удаляем и пересоздаем вкладку.
-        """
+        """Очистка данных."""
         try:
             conn = self.conn
             cursor = conn.cursor()
@@ -2055,34 +2048,20 @@ class DossierScreen(Screen):
         except sqlite3.Error as e:
             print(f"❌ Ошибка удаления: {e}")
 
-
         self._recreate_dossier_tab()
 
     def go_back(self, instance):
-        """
-        Переход обратно в главное меню: удаляем все виджеты корня и добавляем MenuWidget.
-        """
+        """Переход в главное меню."""
         app = App.get_running_app()
         root = app.root
         root.clear_widgets()
-        root.add_widget(MenuWidget(self.conn))
+        root.add_widget(MenuWidget(self.conn)) # MenuWidget находится в этом же файле не надо ничего импортировать
 
     def _recreate_dossier_tab(self):
-        """
-        Полностью удаляет текущую вкладку 'Рейтинг' и создаёт новую.
-        """
-        # Определяем, какая вкладка сейчас открыта
-        current_tab = self.tabs.current_tab
-
-        # Если это нужная нам вкладка — удаляем её
-        if current_tab and current_tab.text == "Информация":
-            self.tabs.remove_widget(current_tab)
-
-        # Перезагружаем данные и создаём новую вкладку
+        """Пересоздание вкладки."""
+        for tab in list(self.tabs.get_tab_list()):
+            self.tabs.remove_widget(tab)
         self.load_dossier_data()
-        tab_list = self.tabs.get_tab_list()
-        if tab_list:
-            self.tabs.switch_to(tab_list[0])
 
 
 class HowToPlayScreen(Screen):

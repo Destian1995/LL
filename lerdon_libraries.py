@@ -55,6 +55,7 @@ from kivy.graphics import Color, Ellipse
 from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelHeader
 from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.image import Image as KivyImage
+from kivy.graphics import Color, Rectangle, Line, PushMatrix, PopMatrix, Rotate, Translate
 from kivy.graphics import RoundedRectangle, Color, Rectangle as KvRect
 from kivy.uix.video import Video
 from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
@@ -77,7 +78,20 @@ from kivy.clock import Clock
 from kivy.animation import AnimationTransition
 from kivy.utils import get_color_from_hex as hex_color
 from kivy.uix.stencilview import StencilView
-
+from kivy.uix.screenmanager import Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.image import Image
+from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.graphics import Color, Rectangle, Line, RoundedRectangle
+from kivy.metrics import dp, sp
+from kivy.utils import get_color_from_hex
+from kivy.app import App
+from kivy.resources import resource_find
 
 
 # kivymd libraries
