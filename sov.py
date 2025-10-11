@@ -37,13 +37,14 @@ reverse_translation_dict = {v: k for k, v in translation_dict.items()}
 
 
 class AdvisorView(FloatLayout):
-    def __init__(self, faction, conn, **kwargs):
+    def __init__(self, faction, conn, game_screen_instance=None, **kwargs):
         super(AdvisorView, self).__init__(**(kwargs))
         self.faction = faction
         self.db_connection = conn  # Единое подключение к базе
         self.cursor = self.db_connection.cursor()
         self._attack_progress = 0
         self._defense_progress = 0
+        self.game_screen = game_screen_instance
         # Инициализация таблицы political_systems
         self.initialize_political_systems()
         # Настройки темы
@@ -330,10 +331,13 @@ class AdvisorView(FloatLayout):
             self.db_connection.commit()
             print(f"Политическая система обновлена: {new_system}")
 
-            # Пересоздаем окно с обновленными данными
-            if hasattr(self, 'popup') and self.popup:
-                self.popup.dismiss()  # Закрываем текущее окно
-            self.show_political_systems()  # Показываем обновленное окно
+            if self.game_screen:
+                print("Уведомление GameScreen об изменении идеологии...")
+                # Вызываем метод обновления в GameScreen
+                self.game_screen.refresh_player_ideology()  # <-- Вызов метода из GameScreen
+            else:
+                print("Предупреждение: Ссылка на GameScreen не передана, обновление иконок невозможно.")
+            self.show_political_systems()
 
         except sqlite3.Error as e:
             print(f"Ошибка при обновлении политической системы: {e}")

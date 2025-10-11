@@ -1370,7 +1370,7 @@ class GameScreen(Screen):
     def show_advisor(self, instance):
         """Показать экран советника"""
         self.clear_game_area()
-        advisor_view = AdvisorView(self.selected_faction, self.conn)
+        advisor_view = AdvisorView(self.selected_faction, self.conn, game_screen_instance=self)
         self.game_area.add_widget(advisor_view)
 
     def update_destroyed_factions(self):
@@ -1491,7 +1491,7 @@ class GameScreen(Screen):
         SPACING = 5
         CITY_ICON_SIZE = 77
         # Размер иконки идеологии (предположим квадратная)
-        IDEOLOGY_ICON_SIZE = 35
+        IDEOLOGY_ICON_SIZE = 55
         # Отступ от правого края иконки города
         IDEOLOGY_ICON_OFFSET_X = 5
 
@@ -1765,6 +1765,27 @@ class GameScreen(Screen):
         except sqlite3.Error as e:
             print(f"Ошибка при сбросе флагов can_move: {e}")
 
+    def refresh_player_ideology(self):
+        """
+        Обновляет атрибут player_ideology, получая значение из БД,
+        и пересчитывает данные, зависящие от идеологии (например, иконки на карте).
+        """
+        print("Обновление идеологии игрока...")
+        old_ideology = getattr(self, 'player_ideology', None) # Получаем старое значение, если есть
+
+        # Получаем новую идеологию из БД
+        new_ideology = self.get_player_ideology(self.conn)
+        if new_ideology is not None:
+            self.player_ideology = new_ideology
+            print(f"Идеология игрока обновлена: {old_ideology} -> {new_ideology}")
+            if old_ideology != new_ideology:
+                print("Обнаружено изменение идеологии, обновляем данные на карте...")
+                # Пересчитываем данные для отрисовки с новой идеологией
+                self.update_city_military_status() # Это обновит self.city_star_levels
+            else:
+                print("Идеология не изменилась.")
+        else:
+            print("Не удалось получить новую идеологию игрока из БД.")
 
     def load_turn(self, faction):
         """Загрузка текущего значения хода для фракции."""
