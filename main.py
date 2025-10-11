@@ -1842,68 +1842,7 @@ class DossierScreen(Screen):
 
         return bottom
 
-    def load_dossier_data(self):
-        """
-        Читает данные из SQLite и наполняет TabbedPanel.
-        """
-        if self.tabs.get_tab_list():
-            for tab in list(self.tabs.get_tab_list()):
-                self.tabs.remove_widget(tab)
-        try:
-            conn = self.conn
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM dossier")
-            rows = cursor.fetchall()
-        except sqlite3.Error as e:
-            print(f"Ошибка базы данных: {e}")
-            rows = []
-
-        if not rows:
-            info_label = Label(
-                text="Вы еще не воевали ни за одну расу...",
-                font_size=sp(18),
-                color=get_color_from_hex('#FFFFFF'),
-                halign='center',
-                valign='middle'
-            )
-            tab = TabbedPanelItem(text="Информация")
-            tab.add_widget(info_label)
-            self.tabs.add_widget(tab)
-            return
-
-        factions = {}
-        for row in rows:
-            faction = row[1]
-            data = {
-                'military_rank': row[2],
-                'avg_military_rating': row[3],
-                'avg_soldiers_starving': row[4],
-                'victories': row[5],
-                'defeats': row[6],
-                'matches_won': row[7],
-                'matches_lost': row[8],
-                'last_data': row[9]
-            }
-            factions.setdefault(faction, []).append(data)
-
-        for faction, data_list in factions.items():
-            tab = CustomTab(text=faction)
-            scroll = ScrollView()
-            grid = GridLayout(
-                cols=1, # Теперь одна колонка для лучшей адаптивности на узких экранах
-                spacing=dp(10),
-                padding=dp(10),
-                size_hint_y=None
-            )
-            grid.bind(minimum_height=grid.setter('height'))
-
-            for data in data_list:
-                card = self._create_character_card(data)
-                grid.add_widget(card)
-
-            scroll.add_widget(grid)
-            tab.add_widget(scroll)
-            self.tabs.add_widget(tab)
+    
 
     def _create_character_card(self, data: dict) -> BoxLayout:
         """
@@ -2038,7 +1977,7 @@ class DossierScreen(Screen):
         return card
 
     def clear_dossier(self, instance):
-        """Очистка данных."""
+        """Очистка данных и обновление интерфейса."""
         try:
             conn = self.conn
             cursor = conn.cursor()
@@ -2048,7 +1987,103 @@ class DossierScreen(Screen):
         except sqlite3.Error as e:
             print(f"❌ Ошибка удаления: {e}")
 
-        self._recreate_dossier_tab()
+        # Пересоздаём TabbedPanel и заменяем его в родительском макете
+        self._recreate_tabs()
+
+    def _recreate_tabs(self):
+        """Пересоздаёт TabbedPanel и заменяет старый."""
+        # Удаляем старый TabbedPanel из макета
+        root_layout = self.children[0]  # BoxLayout(orientation='vertical')
+        # Найдём старый TabbedPanel по индексу (предполагаем, что он второй с конца, после bottom_panel и перед title)
+        # Лучше получить его индекс надёжно.
+        # self.children - это [BoxLayout], root_layout.children = [bottom_panel, old_tabs, title_widget]
+        # Индекс старого tabs: 1
+        old_tabs_index = 1
+        old_tabs = root_layout.children[old_tabs_index]
+        root_layout.remove_widget(old_tabs)
+
+        # Создаём новый TabbedPanel
+        new_tabs = TabbedPanel(do_default_tab=False, size_hint=(1, 1))
+        # Загружаем данные в новый TabbedPanel
+        self._load_dossier_data_to_tabs(new_tabs)
+
+        # Вставляем новый TabbedPanel обратно на старое место (индекс 1)
+        root_layout.add_widget(new_tabs, index=old_tabs_index)
+
+        # Сохраняем ссылку на новый TabbedPanel
+        self.tabs = new_tabs
+
+    def _load_dossier_data_to_tabs(self, tabs_widget):
+        """
+        Читает данные из SQLite и наполняет переданный TabbedPanel.
+        """
+        # Убедимся, что старые вкладки удалены
+        if tabs_widget.get_tab_list():
+            for tab in list(tabs_widget.get_tab_list()):
+                tabs_widget.remove_widget(tab)
+
+        try:
+            conn = self.conn
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM dossier")
+            rows = cursor.fetchall()
+        except sqlite3.Error as e:
+            print(f"Ошибка базы данных: {e}")
+            rows = []
+
+        if not rows:
+            info_label = Label(
+                text="Вы еще не воевали ни за одну расу...",
+                font_size=sp(18),
+                color=get_color_from_hex('#FFFFFF'),
+                halign='center',
+                valign='middle'
+            )
+            tab = TabbedPanelItem(text="Информация")
+            tab.add_widget(info_label)
+            tabs_widget.add_widget(tab)
+            return
+
+        factions = {}
+        for row in rows:
+            faction = row[1]
+            data = {
+                'military_rank': row[2],
+                'avg_military_rating': row[3],
+                'avg_soldiers_starving': row[4],
+                'victories': row[5],
+                'defeats': row[6],
+                'matches_won': row[7],
+                'matches_lost': row[8],
+                'last_data': row[9]
+            }
+            factions.setdefault(faction, []).append(data)
+
+        for faction, data_list in factions.items():
+            tab = CustomTab(text=faction)
+            scroll = ScrollView()
+            grid = GridLayout(
+                cols=1,
+                spacing=dp(10),
+                padding=dp(10),
+                size_hint_y=None
+            )
+            grid.bind(minimum_height=grid.setter('height'))
+
+            for data in data_list:
+                card = self._create_character_card(data)
+                grid.add_widget(card)
+
+            scroll.add_widget(grid)
+            tab.add_widget(scroll)
+            tabs_widget.add_widget(tab)
+
+    # Модифицируем load_dossier_data, чтобы он использовал текущий self.tabs
+    def load_dossier_data(self):
+        """
+        Читает данные из SQLite и наполняет текущий TabbedPanel (self.tabs).
+        """
+        self._load_dossier_data_to_tabs(self.tabs)
 
     def go_back(self, instance):
         """Переход в главное меню."""
