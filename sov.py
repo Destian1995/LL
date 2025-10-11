@@ -38,28 +38,31 @@ reverse_translation_dict = {v: k for k, v in translation_dict.items()}
 
 class AdvisorView(FloatLayout):
     def __init__(self, faction, conn, game_screen_instance=None, **kwargs):
-        super(AdvisorView, self).__init__(**(kwargs))
+        super(AdvisorView, self).__init__(**kwargs)
+
         self.faction = faction
-        self.db_connection = conn  # Единое подключение к базе
+        self.db_connection = conn
         self.cursor = self.db_connection.cursor()
         self._attack_progress = 0
         self._defense_progress = 0
         self.game_screen = game_screen_instance
-        # Инициализация таблицы political_systems
+
+        # Инициализация таблицы политических систем
         self.initialize_political_systems()
-        # Настройки темы
+
+        # Цветовая тема интерфейса
         self.colors = {
             'background': (0.95, 0.95, 0.95, 1),
-            'primary': (0.118, 0.255, 0.455, 1),  # Темно-синий
-            'accent': (0.227, 0.525, 0.835, 1),  # Голубой
+            'primary': (0.118, 0.255, 0.455, 1),
+            'accent': (0.227, 0.525, 0.835, 1),
             'text': (1, 1, 1, 1),
             'card': (1, 1, 1, 1)
         }
 
-        # Создаем главное окно
+        # Главное окно интерфейса
         self.interface_window = FloatLayout(size_hint=(1, 1))
 
-        # Основной контейнер
+        # === Основной контейнер ===
         main_layout = BoxLayout(
             orientation='horizontal',
             spacing=dp(20),
@@ -67,10 +70,10 @@ class AdvisorView(FloatLayout):
             size_hint=(1, 1)
         )
 
-        # Левая панель с изображением
+        # Левая панель (изображение, инфо и т.п.)
         left_panel = FloatLayout(size_hint=(0.45, 1))
 
-        # Правая панель
+        # Правая панель (таблицы и вкладки)
         right_panel = BoxLayout(
             orientation='vertical',
             size_hint=(0.55, 1),
@@ -78,13 +81,14 @@ class AdvisorView(FloatLayout):
             padding=0
         )
 
-        # Панель вкладок
+        # === Панель вкладок ===
         tabs_panel = ScrollView(
             size_hint=(1, None),
-            height=Window.height * 0.3,  # Адаптивная высота
+            height=Window.height * 0.3,  # адаптивная высота
             bar_width=dp(8),
             bar_color=(0.5, 0.5, 0.5, 0.5)
         )
+
         self.tabs_content = GridLayout(
             cols=1,
             size_hint_y=None,
@@ -95,62 +99,81 @@ class AdvisorView(FloatLayout):
         tabs_panel.add_widget(self.tabs_content)
         right_panel.add_widget(tabs_panel)
 
-        # Сборка интерфейса
+        # Сборка основной панели
         main_layout.add_widget(left_panel)
         main_layout.add_widget(right_panel)
 
-        # Нижняя панель с кнопками
+        # === Нижняя панель с кнопками ===
         bottom_panel = BoxLayout(
             size_hint=(1, None),
-            height=Window.height * 0.1,  # Адаптивная высота
-            padding=dp(10),
-            pos_hint={'x': 0, 'y': 0},
-            spacing=dp(10)
+            height=Window.height * 0.05,  # уменьшено на ~1.5 раза
+            padding=dp(6),
+            spacing=dp(6),
+            pos_hint={'x': 0, 'y': 0}
         )
+
+        button_style = {
+            "size_hint": (1, 1),
+            "background_normal": '',
+            "color": (1, 1, 1, 1),
+            "font_size": calculate_font_size() * 0.9,  # немного компактнее текст
+            "bold": True,
+            "border": (0, 0, 0, 0)
+        }
 
         political_system_button = Button(
             text="Идеология",
-            size_hint=(1, 1),  # Растягиваем кнопку по ширине и высоте
-            background_normal='',
             background_color=(0.227, 0.525, 0.835, 1),
-            color=(1, 1, 1, 1),
-            font_size=calculate_font_size(),  # Размер шрифта зависит от высоты окна
-            bold=True,
-            border=(0, 0, 0, 0)
+            **button_style
         )
         political_system_button.bind(on_release=lambda x: self.show_political_systems())
 
         relations_button = Button(
             text="Отношения",
-            size_hint=(1, 1),  # Растягиваем кнопку по ширине и высоте
-            background_normal='',
             background_color=(0.118, 0.255, 0.455, 1),
-            color=(1, 1, 1, 1),
-            font_size=calculate_font_size(),  # Размер шрифта зависит от высоты окна
-            bold=True,
-            border=(0, 0, 0, 0)
+            **button_style
         )
         relations_button.bind(on_release=lambda x: self.show_relations("Состояние отношений"))
+
+        # Добавляем рамку вокруг кнопок
+        for btn in (political_system_button, relations_button):
+            with btn.canvas.after:
+                Color(0.1, 0.1, 0.1, 1)
+                btn.border_line = Line(rectangle=(btn.x, btn.y, btn.width, btn.height), width=1.5)
+            btn.bind(
+                size=lambda inst, val: setattr(inst.border_line, "rectangle", (inst.x, inst.y, inst.width, inst.height))
+            )
+            btn.bind(
+                pos=lambda inst, val: setattr(inst.border_line, "rectangle", (inst.x, inst.y, inst.width, inst.height))
+            )
 
         bottom_panel.add_widget(political_system_button)
         bottom_panel.add_widget(relations_button)
 
+        # === Финальная сборка ===
         self.interface_window.add_widget(main_layout)
         self.interface_window.add_widget(bottom_panel)
 
-        # Создаем Popup
+        # === Popup ===
         self.popup = Popup(
-            title=f"",  # Жирный шрифт с помощью [b][/b]
-            title_size=Window.height * 0.03,  # Размер заголовка зависит от высоты окна
-            title_align="center",  # Центрирование текста (по умолчанию уже centered, но явно указываем)
+            title="",
+            title_size=Window.height * 0.03,
+            title_align="center",
             content=self.interface_window,
             size_hint=(0.7, 0.7),
             separator_height=dp(0),
-            background=f'files/sov/parlament/{translation_dict.get(self.faction)}_palace.jpg' if os.path.exists(
-                f'files/sov/parlament/{translation_dict.get(self.faction)}_palace.jpg') else ''
+            background=f'files/sov/parlament/{translation_dict.get(self.faction)}_palace.jpg'
+            if os.path.exists(f'files/sov/parlament/{translation_dict.get(self.faction)}_palace.jpg') else ''
         )
         self.popup.open()
 
+    def _update_border(self, *args):
+        self.border_rect.rectangle = (
+            dp(2),
+            dp(2),
+            self.interface_window.width - dp(4),
+            self.interface_window.height - dp(4)
+        )
 
     def create_arrow_icon(self, direction):
         if direction == "up":
@@ -409,87 +432,7 @@ class AdvisorView(FloatLayout):
         return combined_relations
 
 
-    def reset_popup_to_main(self, *args):
-        """Возвращает к главному интерфейсу вкладки"""
-        # Очищаем и восстанавливаем основной интерфейс
-        self.interface_window.clear_widgets()
-        main_layout = BoxLayout(
-            orientation='horizontal',
-            spacing=dp(20),
-            padding=dp(20),
-            size_hint=(1, 1)
-        )
 
-        # Левая панель с изображением
-        left_panel = FloatLayout(size_hint=(0.45, 1))
-        # Правая панель
-        right_panel = BoxLayout(
-            orientation='vertical',
-            size_hint=(0.55, 1),
-            spacing=0,
-            padding=0
-        )
-
-        # Панель вкладок
-        tabs_panel = ScrollView(
-            size_hint=(1, None),
-            height=Window.height * 0.3,
-            bar_width=dp(8),
-            bar_color=(0.5, 0.5, 0.5, 0.5)
-        )
-        self.tabs_content = GridLayout(
-            cols=1,
-            size_hint_y=None,
-            spacing=dp(10),
-            padding=dp(5)
-        )
-        self.tabs_content.bind(minimum_height=self.tabs_content.setter('height'))
-        tabs_panel.add_widget(self.tabs_content)
-        right_panel.add_widget(tabs_panel)
-
-        # Сборка интерфейса
-        main_layout.add_widget(left_panel)
-        main_layout.add_widget(right_panel)
-
-        # Нижняя панель с кнопками
-        bottom_panel = BoxLayout(
-            size_hint=(1, None),
-            height=Window.height * 0.1,
-            padding=dp(10),
-            pos_hint={'x': 0, 'y': 0},
-            spacing=dp(10)
-        )
-        political_system_button = Button(
-            text="Идеология",
-            size_hint=(1, 1),
-            background_normal='',
-            background_color=(0.227, 0.525, 0.835, 1),
-            color=(1, 1, 1, 1),
-            font_size=calculate_font_size(),
-            bold=True,
-            border=(0, 0, 0, 0)
-        )
-        political_system_button.bind(on_release=lambda x: self.show_political_systems())
-
-        relations_button = Button(
-            text="Отношения",
-            size_hint=(1, 1),
-            background_normal='',
-            background_color=(0.118, 0.255, 0.455, 1),
-            color=(1, 1, 1, 1),
-            font_size=calculate_font_size(),
-            bold=True,
-            border=(0, 0, 0, 0)
-        )
-        relations_button.bind(on_release=lambda x: self.show_relations("Состояние отношений"))
-
-        bottom_panel.add_widget(political_system_button)
-        bottom_panel.add_widget(relations_button)
-
-        self.interface_window.add_widget(main_layout)
-        self.interface_window.add_widget(bottom_panel)
-
-        self.popup.content = self.interface_window
 
 
     def manage_relations(self):
@@ -620,6 +563,7 @@ class AdvisorView(FloatLayout):
             spacing=dp(10)
         )
 
+        # --- Изменения начинаются здесь ---
         capitalism_button = Button(
             text="Смирение",
             background_color=(0.2, 0.7, 0.3, 1),
@@ -641,32 +585,62 @@ class AdvisorView(FloatLayout):
             background_down=''
         )
 
-        capitalism_button.bind(on_release=lambda x: self.update_political_system("Смирение"))
-        communism_button.bind(on_release=lambda x: self.update_political_system("Борьба"))
+        # --- Определяем функции-обработчики для задержки возврата ---
+        def schedule_return_to_main(dt):
+            """Функция, которая вызывает возврат на главное меню после задержки"""
+            self.return_to_main_tab()
+
+        # Привязываем кнопки к выполнению двух действий:
+        # 1. Обновление идеологии (сразу)
+        # 2. Планирование возврата (через 2 секунды)
+        capitalism_button.bind(
+            on_release=lambda x: [
+                self.update_political_system("Смирение"), # Выполняется сразу
+                Clock.schedule_once(schedule_return_to_main, 2.0) # Планируется на 2 сек
+            ]
+        )
+        communism_button.bind(
+            on_release=lambda x: [
+                self.update_political_system("Борьба"), # Выполняется сразу
+                Clock.schedule_once(schedule_return_to_main, 2.0) # Планируется на 2 сек
+            ]
+        )
+
+        # Добавляем рамки вокруг кнопок
+        for btn in (capitalism_button, communism_button):
+            with btn.canvas.after:
+                Color(0.1, 0.1, 0.1, 1)
+                btn.border_line = Line(
+                    rectangle=(btn.x, btn.y, btn.width, btn.height), width=1.5)
+            btn.bind(
+                size=lambda inst, val: setattr(inst.border_line, "rectangle", (inst.x, inst.y, inst.width, inst.height))
+            )
+            btn.bind(
+                pos=lambda inst, val: setattr(inst.border_line, "rectangle", (inst.x, inst.y, inst.width, inst.height))
+            )
 
         system_layout.add_widget(capitalism_button)
         system_layout.add_widget(communism_button)
+        # --- Изменения заканчиваются здесь ---
 
         content.add_widget(system_layout)
 
-        # Обновляем содержимое popup вместо создания нового
+        # Обновляем содержимое popup
         self.popup.content = content
 
-    def show_relations(self, instance):
+    def show_relations(self, instance=None):
         """Отображает окно с таблицей отношений."""
         self.manage_relations()
-
-        # Загружаем комбинированные отношения
         combined_relations = self.load_combined_relations()
-        print("Комбинированные отношения для отображения:", combined_relations)
 
         if not combined_relations:
             print(f"Нет данных об отношениях для фракции {self.faction}.")
             return
 
-        # Очищаем текущее содержимое popup
+        # === Основное содержимое ===
         content = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
 
+        # Таблица
         table = GridLayout(
             cols=4,
             size_hint_y=None,
@@ -696,6 +670,7 @@ class AdvisorView(FloatLayout):
         scroll.add_widget(table)
         content.add_widget(scroll)
 
+        # === Кнопка Назад ===
         back_button = Button(
             text="Назад",
             background_color=(0.227, 0.525, 0.835, 1),
@@ -704,13 +679,31 @@ class AdvisorView(FloatLayout):
             height=dp(48),
             color=(1, 1, 1, 1),
             background_normal='',
-            background_down=''
+            background_down='',
+            bold=True
         )
-        back_button.bind(on_release=lambda x: self.reset_popup_to_main())
-        content.add_widget(back_button)
 
-        # Обновляем содержимое popup вместо создания нового
+        # Добавляем рамку вокруг кнопки Назад
+        with back_button.canvas.after:
+            Color(0.1, 0.1, 0.1, 1)
+            back_button.border_line = Line(
+                rectangle=(back_button.x, back_button.y, back_button.width, back_button.height), width=1.5)
+        back_button.bind(
+            size=lambda inst, val: setattr(inst.border_line, "rectangle", (inst.x, inst.y, inst.width, inst.height))
+        )
+        back_button.bind(
+            pos=lambda inst, val: setattr(inst.border_line, "rectangle", (inst.x, inst.y, inst.width, inst.height))
+        )
+
+        # При нажатии — возвращаем исходный интерфейс
+        back_button.bind(on_release=lambda x: self.return_to_main_tab())
+
+        content.add_widget(back_button)
         self.popup.content = content
+
+    def return_to_main_tab(self, *args):
+        """Возвращает к главному интерфейсу (главная вкладка)."""
+        self.popup.content = self.interface_window
 
     def create_value_cell(self, value):
         color = self.get_relation_color(value)
@@ -837,7 +830,6 @@ class AdvisorView(FloatLayout):
             return (0.1, 0.3, 0.9, 1)  # Темно-синий
         else:
             return (1, 1, 1, 1)  # Белый
-
 
     def get_relation_color(self, value):
         """Возвращает цвет в зависимости от значения"""

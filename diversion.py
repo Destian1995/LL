@@ -31,9 +31,9 @@ def format_number(number):
     sign = -1 if number < 0 else 1
     if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e36:.1f} андец."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e33:.1f} децил."
     elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:
+        return f"{sign * absolute / 1e33:.1f} децил."
+    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e30:.1f} нонил."
     elif absolute >= 1_000_000_000_000_000_000_000_000_000:
         return f"{sign * absolute / 1e27:.1f} октил."
@@ -127,13 +127,13 @@ def show_diversion_window(conn, faction, class_faction):
 
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(15)
-    spacing_main = dp(10)
-    font_title = sp(20)
-    font_header = sp(14)
-    font_info = sp(13)
-    font_btn = sp(13)
-    btn_height = dp(50)
-    item_height = dp(55)
+    spacing_main = dp(5)  # Уменьшен отступ между элементами
+    font_title = sp(18)   # Уменьшен размер заголовка окна
+    font_header = sp(12)  # Уменьшен размер заголовка таблицы
+    font_info = sp(11)    # Уменьшен размер текста информации
+    font_btn = sp(11)     # Уменьшен размер текста кнопки
+    btn_height = dp(25)   # Уменьшена высота кнопки вдвое
+    item_height = dp(27)  # Уменьшена высота строки вдвое (примерно)
 
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
@@ -191,24 +191,10 @@ def show_diversion_window(conn, faction, class_faction):
             'heroes': target_heroes
         }
 
-    scroll_view_factions = ScrollView(do_scroll_x=False, size_hint=(1, 0.4))
+    # --- Обновленный интерфейс для Android ---
+    scroll_view_factions = ScrollView(do_scroll_x=False, size_hint=(1, 0.6))
     table_factions = GridLayout(cols=2, spacing=dp(5), size_hint_y=None)
     table_factions.bind(minimum_height=table_factions.setter('height'))
-
-    header_names_factions = ["Фракция", "Доступные цели"]
-    for header_text in header_names_factions:
-        header_label = Label(
-            text=f"[b]{header_text}[/b]",
-            font_size=font_header,
-            markup=True,
-            halign='center',
-            valign='middle',
-            color=ACCENT_COLOR,
-            size_hint_y=None,
-            height=dp(35),
-        )
-        header_label.bind(size=header_label.setter('text_size'))
-        table_factions.add_widget(header_label)
 
     selected_faction = [None]
     selected_btn = [None]
@@ -219,9 +205,7 @@ def show_diversion_window(conn, faction, class_faction):
             show_operations_window(conn, player_faction, cash_player, selected_faction[0], targets_info)
 
     for target_faction in target_factions:
-        info = targets_info[target_faction]
-        target_desc = f"Города с войсками: {len(info['cities_with_garrison'])}\nГорода без войск: {len(info['cities_without_garrison'])}\nГерои: {len(info['heroes'])}"
-
+        # Создаем Label для названия фракции
         faction_label = Label(
             text=target_faction,
             halign='left',
@@ -234,18 +218,7 @@ def show_diversion_window(conn, faction, class_faction):
         )
         faction_label.bind(size=faction_label.setter('text_size'))
 
-        desc_label = Label(
-            text=target_desc,
-            halign='left',
-            valign='middle',
-            font_size=font_info - sp(2),
-            color=get_color_from_hex("#cccccc"),
-            size_hint_y=None,
-            height=item_height,
-            text_size=(dp(150), None)
-        )
-        desc_label.bind(size=desc_label.setter('text_size'))
-
+        # Создаем кнопку "Выбрать"
         select_btn = ThemedButton(
             text="Выбрать",
             size_hint_y=None,
@@ -253,6 +226,8 @@ def show_diversion_window(conn, faction, class_faction):
             font_size=font_btn,
             background_color=SECONDARY_COLOR
         )
+
+        # Функция для выбора фракции
         def make_select_handler(faction_name, btn):
             def handler(instance):
                 if selected_btn[0]:
@@ -270,39 +245,40 @@ def show_diversion_window(conn, faction, class_faction):
                     RoundedRectangle(size=btn.size, pos=btn.pos, radius=[dp(12)], line_width=dp(2), source=None)
                 selected_btn[0] = btn
                 selected_faction[0] = faction_name
-                select_btn.disabled = False
+                # Включаем кнопку "Перейти к операциям"
+                select_all_btn.disabled = False
             return handler
 
         select_btn.bind(on_release=make_select_handler(target_faction, select_btn))
 
+        # Добавляем элементы в таблицу
         table_factions.add_widget(faction_label)
-        table_factions.add_widget(desc_label)
         table_factions.add_widget(select_btn)
-        table_factions.add_widget(Label(text=""))
 
     scroll_view_factions.add_widget(table_factions)
 
-    select_btn = ThemedButton(
+    # Кнопка "Перейти к операциям" (изначально отключена)
+    select_all_btn = ThemedButton(
         text="Перейти к операциям",
         size_hint_y=None,
-        height=btn_height,
-        font_size=font_btn,
+        height=btn_height, # Используем уменьшенную высоту
+        font_size=font_btn, # Используем уменьшенный шрифт
         background_color=ACCENT_COLOR,
         disabled=True
     )
-    select_btn.bind(on_release=select_target_faction)
+    select_all_btn.bind(on_release=select_target_faction)
 
     close_btn = ThemedButton(
         text="Закрыть",
         size_hint_y=None,
-        height=btn_height,
-        font_size=font_btn,
+        height=btn_height, # Используем уменьшенную высоту
+        font_size=font_btn, # Используем уменьшенный шрифт
         background_color=WARNING_COLOR
     )
 
-    content.add_widget(Label(text="Выберите цель:", font_size=font_header, bold=True, halign='center', color=TEXT_COLOR, size_hint_y=None, height=dp(30)))
+    content.add_widget(Label(text="Выберите цель:", font_size=font_header, bold=True, halign='center', color=TEXT_COLOR, size_hint_y=None, height=dp(25))) # Уменьшена высота заголовка
     content.add_widget(scroll_view_factions)
-    content.add_widget(select_btn)
+    content.add_widget(select_all_btn)
     content.add_widget(close_btn)
 
     popup = ThemedPopup(
@@ -317,11 +293,11 @@ def show_diversion_window(conn, faction, class_faction):
 def show_operations_window(conn, player_faction, cash_player, target_faction, targets_info):
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(15)
-    spacing_main = dp(10)
-    font_title = sp(18)
-    font_info = sp(13)
-    font_btn = sp(13)
-    btn_height = dp(50)
+    spacing_main = dp(5)  # Уменьшен отступ
+    font_title = sp(16)   # Уменьшен размер заголовка
+    font_info = sp(11)    # Уменьшен размер текста информации
+    font_btn = sp(11)     # Уменьшен размер текста кнопки
+    btn_height = dp(25)   # Уменьшена высота кнопки вдвое
 
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
@@ -331,7 +307,7 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
         bold=True,
         color=TEXT_COLOR,
         size_hint_y=None,
-        height=dp(35)
+        height=dp(30) # Уменьшена высота заголовка
     )
 
     ops_descriptions = {
@@ -351,15 +327,15 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
 
     # Создаем ScrollView для операций
     operations_scroll = ScrollView(size_hint_y=0.6)
-    operations_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=spacing_main)
+    operations_layout = BoxLayout(orientation='vertical', size_hint_y=None, spacing=spacing_main) # Используем уменьшенный отступ
     operations_layout.bind(minimum_height=operations_layout.setter('height'))
 
     for op_name, op_info in ops_descriptions.items():
         op_btn = ThemedButton(
             text=f"{op_name}\n{op_info['desc']}",
             size_hint_y=None,
-            height=dp(70),  # Увеличим высоту для лучшего отображения
-            font_size=font_info,
+            height=dp(50),  # Уменьшаем высоту кнопки операции
+            font_size=font_info, # Используем уменьшенный шрифт
             background_color=CARD_COLOR
         )
         def make_op_handler(op_name, op_info):
@@ -378,8 +354,8 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
     close_btn = ThemedButton(
         text="Назад",
         size_hint_y=None,
-        height=btn_height,
-        font_size=font_btn,
+        height=btn_height, # Используем уменьшенную высоту
+        font_size=font_btn, # Используем уменьшенный шрифт
         background_color=WARNING_COLOR
     )
 
@@ -396,14 +372,18 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
     close_btn.bind(on_release=popup.dismiss)
     popup.open()
 
+# --- Остальные функции остаются без изменений ---
+# (show_rebellion_cost_selection, show_confirmation_popup, execute_diversion_operation, show_result_popup)
+# Просто убедитесь, что в них используются те же уменьшенные значения для высот и шрифтов, где это возможно и логично.
+
 def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op_info, target_faction, targets_info):
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(15)
-    spacing_main = dp(10)
-    font_title = sp(18)
-    font_info = sp(13)
-    font_btn = sp(13)
-    btn_height = dp(50)
+    spacing_main = dp(5) # Уменьшен
+    font_title = sp(16) # Уменьшен
+    font_info = sp(11) # Уменьшен
+    font_btn = sp(11) # Уменьшен
+    btn_height = dp(25) # Уменьшен
 
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
@@ -413,7 +393,7 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
         bold=True,
         color=TEXT_COLOR,
         size_hint_y=None,
-        height=dp(35)
+        height=dp(30) # Уменьшена
     )
 
     desc_label = Label(
@@ -509,11 +489,11 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
 def show_confirmation_popup(conn, player_faction, cash_player, op_name, op_info, target_faction, targets_info, custom_cost=None, rebels_count=None):
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(15)
-    spacing_main = dp(10)
-    font_title = sp(18)
-    font_info = sp(13)
-    font_btn = sp(13)
-    btn_height = dp(50)
+    spacing_main = dp(5) # Уменьшен
+    font_title = sp(16) # Уменьшен
+    font_info = sp(11) # Уменьшен
+    font_btn = sp(11) # Уменьшен
+    btn_height = dp(25) # Уменьшен
 
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
@@ -523,7 +503,7 @@ def show_confirmation_popup(conn, player_faction, cash_player, op_name, op_info,
         bold=True,
         color=TEXT_COLOR,
         size_hint_y=None,
-        height=dp(35)
+        height=dp(30) # Уменьшена
     )
 
     cost = custom_cost if custom_cost else op_info['cost']
@@ -790,10 +770,10 @@ def execute_diversion_operation(conn, player_faction, op_name, op_info, target_f
 
 def show_result_popup(title, message, is_success=True):
     is_android = hasattr(Window, 'keyboard')
-    font_title = sp(18)
-    font_message = sp(14)
+    font_title = sp(16) # Уменьшен
+    font_message = sp(12) # Уменьшен
     padding_main = dp(20)
-    spacing_main = dp(10)
+    spacing_main = dp(5) # Уменьшен
 
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
@@ -805,7 +785,7 @@ def show_result_popup(title, message, is_success=True):
         valign='middle',
         color=SECONDARY_COLOR if is_success else WARNING_COLOR,
         size_hint_y=None,
-        height=dp(40)
+        height=dp(30) # Уменьшена
     )
     title_label.bind(size=title_label.setter('text_size'))
 

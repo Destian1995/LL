@@ -392,8 +392,8 @@ def check_coup_attempts(conn):
                     generate_new_noble(conn, faction_race)
 
                 conn.commit()
-                message = (f"Попытка переворота! Они прорвались! Уничтожены дворяне: {', '.join(eliminated_names)}.\n "
-                           f"Но парламент все равно победил....мы проиграли...")
+                message = (f"Переворот! Они прорвались! Уничтожены дворяне: {', '.join(eliminated_names)}.\n "
+                           f"Но оставшиеся прорвались, придется отречься от престола....мы проиграли...")
                 show_coup_attempt_popup(successful=True, message_override=message)
             else: # Попытка переворота провалилась
                 # Уничтожаем ВСЕХ нелояльных (loyalty < 30) как в случае провала
