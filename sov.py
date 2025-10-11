@@ -563,13 +563,13 @@ class AdvisorView(FloatLayout):
             spacing=dp(10)
         )
 
-        # --- Изменения начинаются здесь ---
+        # --- Кнопки выбор идеологии ---
         capitalism_button = Button(
             text="Смирение",
             background_color=(0.2, 0.7, 0.3, 1),
             font_size='18sp',
             size_hint=(0.5, None),
-            height=dp(50),
+            height=calculate_font_size() * 1,
             color=(1, 1, 1, 1),
             background_normal='',
             background_down=''
@@ -579,7 +579,7 @@ class AdvisorView(FloatLayout):
             background_color=(0.8, 0.2, 0.2, 1),
             font_size='18sp',
             size_hint=(0.5, None),
-            height=dp(50),
+            height=calculate_font_size() * 1,
             color=(1, 1, 1, 1),
             background_normal='',
             background_down=''
@@ -676,7 +676,7 @@ class AdvisorView(FloatLayout):
             background_color=(0.227, 0.525, 0.835, 1),
             font_size='16sp',
             size_hint=(1, None),
-            height=dp(48),
+            height=calculate_font_size() * 0.9,
             color=(1, 1, 1, 1),
             background_normal='',
             background_down='',
