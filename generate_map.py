@@ -346,9 +346,29 @@ def save_to_database(conn, cities, graph):
             )
             road_id += 1
 
-    # Генерируем случайные значения для kf_crystal
+    # --- НОВАЯ ЛОГИКА: Генерация значений kf_crystal по заданному распределению ---
     total_cities_count = len(cities)
-    kf_crystal_values = [round(random.uniform(1.2, 4.8), 2) for _ in range(total_cities_count)]
+    # Проверяем, что общее количество городов соответствует
+    assert total_cities_count == 23, f"Ожидается 23 города, получено {total_cities_count}"
+
+    kf_crystal_values = []
+
+    # 1. Генерируем 10 значений для диапазона [1.0, 1.7)
+    for _ in range(13):
+        kf_crystal_values.append(round(random.uniform(1.0, 1.7), 2))
+
+    # 2. Генерируем 7 значений для диапазона [1.7, 2.9)
+    for _ in range(6):
+        kf_crystal_values.append(round(random.uniform(1.7, 2.9), 2))
+
+    # 3. Генерируем 6 значений для диапазона [2.9, 4.8]
+    for _ in range(4):
+        kf_crystal_values.append(round(random.uniform(2.9, 4.8), 2))
+
+    # Перемешиваем список, чтобы распределение было случайным по городам
+    random.shuffle(kf_crystal_values)
+
+    # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
 
     # Обновляем таблицу cities, устанавливая kf_crystal для каждого id
     for i, kf_val in enumerate(kf_crystal_values):
@@ -361,7 +381,7 @@ def save_to_database(conn, cities, graph):
     conn.commit()
     print(f"[INFO] Сохранено {len(cities)} городов и {road_id - 1} дорог.")
     # Опционально: сообщить о заполнении kf_crystal
-    print(f"[INFO] Столбец kf_crystal заполнен случайными значениями от 1.2 до 4.8 для {total_cities_count} городов.")
+    print(f"[INFO] Столбец kf_crystal заполнен по заданному распределению: 10 значений [1.0, 1.7), 7 значений [1.7, 2.9), 6 значений [2.9, 4.8].")
 
 
 
