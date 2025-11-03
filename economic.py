@@ -1121,13 +1121,12 @@ class Faction:
 
         # Рассчитываем чистую прибыль (разница после *всех* изменений)
         net_profit_coins = round(self.money - previous_money, 2)
-        # --- ИСПРАВЛЕНО: используем self.raw_material (уже обновленное) и previous_raw_material ---
         net_profit_raw = round(self.raw_material - previous_raw_material, 2)
-        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
 
         # Обновляем средние значения чистой прибыли в таблице results
         self.update_average_net_profit(net_profit_coins, net_profit_raw)
-
+        self.calculate_and_deduct_consumption()
         # Сохраняем обновленные ресурсы в базу данных
         self.save_resources_to_db()
 
