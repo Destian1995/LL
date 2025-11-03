@@ -345,8 +345,24 @@ def save_to_database(conn, cities, graph):
                 (road_id, city_namex + 1, neighbor_idx + 1)
             )
             road_id += 1
+
+    # Генерируем случайные значения для kf_crystal
+    total_cities_count = len(cities)
+    kf_crystal_values = [round(random.uniform(1.2, 4.8), 2) for _ in range(total_cities_count)]
+
+    # Обновляем таблицу cities, устанавливая kf_crystal для каждого id
+    for i, kf_val in enumerate(kf_crystal_values):
+        city_id = i + 1  # Предполагаем, что id города начинаются с 1
+        cursor.execute(
+            "UPDATE cities SET kf_crystal = ? WHERE id = ?",
+            (kf_val, city_id)
+        )
+
     conn.commit()
     print(f"[INFO] Сохранено {len(cities)} городов и {road_id - 1} дорог.")
+    # Опционально: сообщить о заполнении kf_crystal
+    print(f"[INFO] Столбец kf_crystal заполнен случайными значениями от 1.2 до 4.8 для {total_cities_count} городов.")
+
 
 
 def manhattan(a, b):

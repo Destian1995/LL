@@ -1022,12 +1022,13 @@ class Faction:
         self.auto_build()
         # Сохраняем предыдущие значения ресурсов
         previous_money = self.money
-        previous_raw_material = self.raw_material
+        previous_raw_material = self.raw_material # Сохраняем *до* обновления
+
         # Генерируем новую цену на Кристаллы
         self.generate_raw_material_price()
+
         # Обновляем ресурсы на основе торговых соглашений
         self.update_trade_resources_from_db()
-
 
         # Коэффициенты для каждой фракции
         faction_coefficients = {
@@ -1048,8 +1049,10 @@ class Faction:
         self.born_peoples = int(self.hospitals * 500)
         self.work_peoples = int(self.factories * 200)
         self.clear_up_peoples = self.born_peoples - (self.work_peoples - self.tax_effects*2.5)
+
         # Загружаем текущие значения ресурсов из базы данных
         self.load_resources_from_db()
+
         # Выполняем расчеты
         self.free_peoples += self.clear_up_peoples
         self.money += int(self.calculate_tax_income() - (self.hospitals * coeffs['money_loss']))
@@ -1057,14 +1060,41 @@ class Faction:
         self.money_up = int(self.calculate_tax_income() - (self.hospitals * coeffs['money_loss']))
         self.taxes_info = int(self.calculate_tax_income())
 
-        # Учитываем, что одна фабрика может прокормить 10000 людей
+        # --- НАЧАЛО ИЗМЕНЕНИЙ ---
+        # Рассчитываем базовый прирост Кристаллов (до бонусов городов)
         base_raw_material_production = (self.factories * 10000) - (self.population * coeffs['food_loss'])
-        city_bonus_raw_material = base_raw_material_production * (0.05 * self.city_count)  # Бонус 5% за каждый город
-        self.raw_material += int(base_raw_material_production + city_bonus_raw_material)
+        # self.food_info теперь будет без бонусов городов
+        self.food_info = int(base_raw_material_production) - self.current_consumption
 
-        self.food_info = (
-                int((self.factories * 10000) - (self.population * coeffs['food_loss'])) - self.current_consumption)
+        # Загружаем коэффициенты kf_crystal для городов фракции
+        city_raw_material_bonus = 0.0
+        try:
+            self.cursor.execute('''
+                SELECT kf_crystal
+                FROM cities
+                WHERE faction = ?
+            ''', (self.faction,))
+            rows = self.cursor.fetchall()
+            for row in rows:
+                kf_val = row[0]
+                if kf_val is not None: # Проверяем, что значение не NULL
+                    city_raw_material_bonus += float(kf_val) # Суммируем коэффициенты
+                else:
+                    print(f"Предупреждение: kf_crystal для города фракции {self.faction} равен NULL, пропущено.")
+        except sqlite3.Error as e:
+            print(f"Ошибка при загрузке kf_crystal из таблицы cities: {e}")
+
+        # Рассчитываем бонус от городов (kf_crystal)
+        # Базовый прирост Кристаллов * суммарный kf_crystal
+        total_city_bonus_kf = int(base_raw_material_production * city_raw_material_bonus)
+
+        # Итоговый прирост Кристаллов = базовый + бонус от kf_crystal - потребление армии
+        # self.raw_material увеличивается на этот итоговый прирост
+        self.raw_material += int(base_raw_material_production + total_city_bonus_kf - self.current_consumption)
+
+        # self.food_peoples не изменяется, так как зависит от coeffs['food_loss'] и населения
         self.food_peoples = int(self.population * coeffs['food_loss'])
+        # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
         # Проверяем условия для роста населения
         if self.raw_material > 0:
@@ -1089,24 +1119,34 @@ class Faction:
             "Лимит армии": self.max_army_limit
         })
 
-        # Рассчитываем чистую прибыль
+        # Рассчитываем чистую прибыль (разница после *всех* изменений)
         net_profit_coins = round(self.money - previous_money, 2)
+        # --- ИСПРАВЛЕНО: используем self.raw_material (уже обновленное) и previous_raw_material ---
         net_profit_raw = round(self.raw_material - previous_raw_material, 2)
+        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
         # Обновляем средние значения чистой прибыли в таблице results
         self.update_average_net_profit(net_profit_coins, net_profit_raw)
-        # Списываем потребление войсками
-        self.calculate_and_deduct_consumption()
+
         # Сохраняем обновленные ресурсы в базу данных
         self.save_resources_to_db()
+
         print(f"Ресурсы обновлены: {self.resources}, Больницы: {self.hospitals}, Фабрики: {self.factories}")
-        # Профит от бонусов
+
+        # Профит от бонусов - теперь вызывается *после* всех расчетов ресурсов
+        # Внутри apply_player_bonuses используется self.food_info (базовый прирост) для расчета бонуса "Борьба"
+        self.apply_player_bonuses() # Вызываем здесь, после обновления ресурсов
+
+        # profit_details для UI может включать базовую прибыль и бонусы, если нужно отображать отдельно.
+        # В текущем виде, profit_details отражает чистое изменение ресурса за ход до бонусов UI.
         profit_details = {
             "Кроны": net_profit_coins,
-            "Кристаллы": net_profit_raw,
+            "Кристаллы": net_profit_raw, # Это прибыль до бонусов, но отражает чистое изменение за ход
         }
-        # Оставляем только положительные значения
+        # Оставляем только положительные значения для UI
         profit_details = {k: v for k, v in profit_details.items() if v > 0}
 
+        # Возвращаем словарь с прибылью (базовой, до бонусов UI)
         return profit_details
 
     def get_resource_now(self, resource_type):

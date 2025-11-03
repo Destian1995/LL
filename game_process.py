@@ -1469,11 +1469,19 @@ class GameScreen(Screen):
     def draw_army_stars_on_map(self):
         """
         Рисует звёздочки над иконками городов и иконки идеологии справа от иконок.
+        Также рисует иконки бонуса кристаллов (от 1 до 3) справа от иконки города,
+        но левее иконки идеологии.
+        Также рисует увеличенную иконку выбора игрока (в 1.5 раза больше иконки города)
+        по центру иконки города, но только для городов игрока.
         Использует готовые координаты из self.city_star_levels:
-            { city_name: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path) }
+            { city_name: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city) }
         """
         star_img_path = 'files/status/army_in_city/star.png'
         red_star_img_path = 'files/status/army_in_city/red_star.png'  # Путь к красной звезде
+        # Путь к иконке бонуса кристаллов (одна иконка для отрисовки 1-3 раз)
+        crystal_icon_path = 'files/status/city_bonus/crystal.png'
+        # Путь к иконке выбора игрока
+        player_choise_icon_path = 'files/status/choise.png' # Путь к иконке
         # Пути к иконкам идеологии теперь определяются в update_city_military_status
 
         # Проверяем существование файлов звёзд (если они обязательны)
@@ -1485,6 +1493,14 @@ class GameScreen(Screen):
             print(f"Файл красной звезды не найден: {red_star_img_path}")
             # Можно вернуться, если красная звезда обязательна, или продолжить
             # return
+        # Проверяем существование файла иконки кристалла
+        if not os.path.exists(crystal_icon_path):
+            print(f"Файл иконки бонуса кристаллов не найден: {crystal_icon_path}")
+            # Игра продолжит выполнение, но иконки кристаллов не будут отрисованы
+        # Проверяем существование файла иконки выбора игрока
+        if not os.path.exists(player_choise_icon_path):
+            print(f"Файл иконки выбора игрока не найден: {player_choise_icon_path}")
+            # Игра продолжит выполнение, но иконки выбора не будут отрисованы
 
         # Параметры отрисовки
         STAR_SIZE = 25
@@ -1495,24 +1511,70 @@ class GameScreen(Screen):
         # Отступ от правого края иконки города
         IDEOLOGY_ICON_OFFSET_X = 5
 
+        # --- НОВЫЕ ПАРАМЕТРЫ ДЛЯ ИКОНОК КРИСТАЛЛОВ ---
+        CRYSTAL_ICON_SIZE = 20  # Установим размер иконки кристалла поменьше
+        # Отступ от правого края иконки города для ПЕРВОЙ иконки кристалла
+        CRYSTAL_ICON_START_OFFSET_X = 5  # Например, начинаем сразу справа от иконки города
+        CRYSTAL_ICON_SPACING = 5  # Расстояние между иконками кристаллов
+        CRYSTAL_ICON_Y_OFFSET = -5  # Сдвиг вниз относительно центра иконки города (чуть ниже)
+        # --- КОНЕЦ НОВЫХ ПАРАМЕТРОВ ---
+
+        # --- НОВЫЕ ПАРАМЕТРЫ ДЛЯ ИКОНКИ ВЫБОРА ИГРОКА ---
+        # Размер иконки выбора - в 1.5 раза больше иконки города
+        PLAYER_CHOISE_ICON_SIZE = int(CITY_ICON_SIZE * 1.2)
+        # Центрируем иконку выбора по центру иконки города
+        # PLAYER_CHOISE_ICON_OFFSET_X и PLAYER_CHOISE_ICON_Y_OFFSET не нужны, так как она центрирована
+        # --- КОНЕЦ НОВЫХ ПАРАМЕТРОВ ---
+
         # Если нет данных — ничего не рисуем
         if not hasattr(self, 'city_star_levels') or not self.city_star_levels:
             return
 
-        # Очищаем прошлые элементы (звезды и иконки идеологии)
+        # Очищаем прошлые элементы (звезды и иконки)
         self.game_area.canvas.before.clear()
         with self.game_area.canvas.before:
             for city_name, data in self.city_star_levels.items():
                 try:
-                    star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path = data
+                    # Ожидаем, что в data теперь 8 элементов: ... , is_player_city
+                    star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city = data
                 except ValueError:
                     # Совместимость со старым форматом данных (если вдруг)
-                    star_level, icon_x, icon_y, city_name, has_hero = data
-                    ideology_icon_path = None
+                    # Пытаемся распаковать 7 элементов
+                    try:
+                        star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count = data
+                        is_player_city = False # Устанавливаем False, если данные не содержат принадлежности
+                        print(f"Предупреждение: данные для {city_name} не содержат is_player_city, установлено в False.")
+                    except ValueError:
+                        # Пытаемся распаковать 6 элементов (ещё старее)
+                        try:
+                            star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path = data
+                            crystal_icon_count = 0 # Устанавливаем 0, если данные не содержат бонуса
+                            is_player_city = False # Устанавливаем False, если данные не содержат принадлежности
+                            print(f"Предупреждение: данные для {city_name} не содержат crystal_icon_count и is_player_city, установлены в 0 и False.")
+                        except ValueError:
+                            # Если и это не удалось, что-то серьёзно не так
+                            print(f"Ошибка: неожиданный формат данных для {city_name}: {data}")
+                            continue
 
                 # Центр иконки
                 icon_center_x = icon_x + CITY_ICON_SIZE / 2
                 icon_center_y = icon_y + CITY_ICON_SIZE / 2
+
+                # --- ОТРИСОВКА ИКОНКИ ВЫБОРА ИГРОКА ---
+                # Проверяем, является ли город городом игрока и существует ли файл
+                if is_player_city and os.path.exists(player_choise_icon_path):
+                    # Центрируем иконку относительно иконки города
+                    choise_x = icon_x + (CITY_ICON_SIZE - PLAYER_CHOISE_ICON_SIZE) / 2
+                    choise_y = icon_y + (CITY_ICON_SIZE - PLAYER_CHOISE_ICON_SIZE) / 2
+                    Rectangle(
+                        source=player_choise_icon_path,
+                        pos=(choise_x, choise_y),
+                        size=(PLAYER_CHOISE_ICON_SIZE, PLAYER_CHOISE_ICON_SIZE)
+                    )
+                elif is_player_city: # Был город игрока, но файл не найден
+                    print(f"Файл иконки выбора игрока не найден при отрисовке: {player_choise_icon_path}")
+                # --- КОНЕЦ ОТРИСОВКИ ИКОНКИ ВЫБОРА ИГРОКА ---
+
 
                 # --- Отрисовка иконки идеологии (справа от иконки города) ---
                 if ideology_icon_path:
@@ -1530,6 +1592,27 @@ class GameScreen(Screen):
                         )
                     else:
                         print(f"Файл иконки идеологии не найден при отрисовке: {ideology_icon_path}")
+
+                # --- ОТРИСОВКА ИКОНОК БОНУСА КРИСТАЛЛОВ ---
+                # Проверяем, есть ли иконки для отрисовки и существует ли файл
+                if crystal_icon_count > 0 and os.path.exists(crystal_icon_path):
+                    # Позиция Y для иконок кристаллов (с небольшим сдвигом вниз)
+                    crystal_y = icon_y + CRYSTAL_ICON_Y_OFFSET
+                    # Рисуем иконки в ряд справа от иконки города
+                    for i in range(crystal_icon_count):
+                        # Позиция X для i-й иконки (0-индексированной)
+                        # Первая иконка: CITY_ICON_SIZE + START_OFFSET
+                        # Вторая: CITY_ICON_SIZE + START_OFFSET + (1 * (SIZE + SPACING))
+                        # Третья: CITY_ICON_SIZE + START_OFFSET + (2 * (SIZE + SPACING))
+                        crystal_x = icon_x + CITY_ICON_SIZE + CRYSTAL_ICON_START_OFFSET_X + i * (CRYSTAL_ICON_SIZE + CRYSTAL_ICON_SPACING)
+                        Rectangle(
+                            source=crystal_icon_path,
+                            pos=(crystal_x, crystal_y),
+                            size=(CRYSTAL_ICON_SIZE, CRYSTAL_ICON_SIZE)
+                        )
+                elif crystal_icon_count > 0:  # Были иконки, но файл не найден
+                    print(f"Файл иконки бонуса кристаллов не найден при отрисовке: {crystal_icon_path}")
+                # --- КОНЕЦ ОТРИСОВКИ ИКОНОК БОНУСА КРИСТАЛЛОВ ---
 
 
                 # --- Отрисовка красной звезды (если есть герой) ---
@@ -1569,19 +1652,21 @@ class GameScreen(Screen):
           4) Вычисляем star_level = 0–3
           5) Проверяем наличие юнитов 2-4 класса в гарнизоне
           6) Получаем идеологию фракции города и определяем иконку
-          7) Сохраняем в self.city_star_levels:
-             { city_name: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path) }
+          7) Загружаем коэффициент kf_crystal и определяем количество иконок бонуса кристаллов
+          8) Проверяем принадлежность города фракции игрока
+          9) Сохраняем в self.city_star_levels:
+             { city_name: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city) }
         """
         cursor = self.conn.cursor()
         try:
             cursor.execute("""
-                SELECT name, faction, icon_coordinates 
+                SELECT name, faction, icon_coordinates, kf_crystal
                 FROM cities 
                 WHERE icon_coordinates IS NOT NULL
             """)
             raw_cities = cursor.fetchall()
         except sqlite3.Error as e:
-            print(f"Ошибка при получении городов с координатами: {e}")
+            print(f"Ошибка при получении городов с координатами и kf_crystal: {e}")
             self.city_star_levels = {}
             return
 
@@ -1607,15 +1692,17 @@ class GameScreen(Screen):
 
         from collections import defaultdict
         factions_cities = defaultdict(list)
-        for city_name, faction, coords_str in raw_cities:
-            factions_cities[faction].append((city_name, coords_str))
+        # --- ИЗМЕНЕНО: Теперь сохраняем faction ---
+        for city_name, faction, coords_str, kf_crystal_val in raw_cities:
+            factions_cities[faction].append((city_name, coords_str, kf_crystal_val, faction))
 
         new_dict = {}
         for faction, cities_list in factions_cities.items():
             total_strength = self.get_total_army_strength_by_faction(faction)
             # if total_strength == 0: # Не будем пропускать фракции без армии, так как может быть герой
             #     continue
-            for city_name, coords_str in cities_list:
+            # --- ИЗМЕНЕНО: Теперь распаковываем faction из списка ---
+            for city_name, coords_str, kf_crystal_val, city_faction in cities_list:
                 try:
                     coords = eval(coords_str) # Лучше использовать ast.literal_eval
                     icon_x, icon_y = coords
@@ -1668,9 +1755,30 @@ class GameScreen(Screen):
                         print(f"Файл иконки идеологии не найден: {ideology_icon_path}")
                         ideology_icon_path = None # Не отрисовываем, если файл не найден
 
+                # --- Логика для определения количества иконок бонуса кристаллов ---
+                crystal_icon_count = 0  # По умолчанию - 0 иконок
+                if kf_crystal_val is not None:
+                    kf_val = float(kf_crystal_val)
+                    if 1.0 <= kf_val < 1.7:
+                        crystal_icon_count = 1
+                    elif 1.7 <= kf_val < 2.9:
+                        crystal_icon_count = 2
+                    elif kf_val >= 2.9:
+                        crystal_icon_count = 3
+                    # else: # kf_val < 1.0 - иконка не отображается
+                else:
+                    print(f"Предупреждение: kf_crystal для города {city_name} равен NULL.")
+                # --- Конец логики бонуса кристаллов ---
+
+                # --- Логика для определения, принадлежит ли город игроку ---
+                is_player_city = (city_faction == self.selected_faction)
+                # --- Конец логики принадлежности ---
+
+
                 # --- Сохранение данных ---
-                # Обновляем кортеж, добавляя ideology_icon_path
-                new_dict[city_name] = (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path)
+                # Обновляем кортеж, добавляя ideology_icon_path, crystal_icon_count и is_player_city
+                # Порядок: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city)
+                new_dict[city_name] = (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city)
 
         self.city_star_levels = new_dict
 
