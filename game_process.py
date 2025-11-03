@@ -1759,11 +1759,11 @@ class GameScreen(Screen):
                 crystal_icon_count = 0  # По умолчанию - 0 иконок
                 if kf_crystal_val is not None:
                     kf_val = float(kf_crystal_val)
-                    if 1.0 <= kf_val < 1.1:
+                    if 1.0 <= kf_val < 1.05:
                         crystal_icon_count = 1
-                    elif 1.1 <= kf_val < 1.4:
+                    elif 1.05 <= kf_val < 1.2:
                         crystal_icon_count = 2
-                    elif kf_val >= 1.4:
+                    elif kf_val >= 1.2:
                         crystal_icon_count = 3
                 else:
                     print(f"Предупреждение: kf_crystal для города {city_name} равен NULL.")

@@ -355,15 +355,15 @@ def save_to_database(conn, cities, graph):
 
     # 1. Генерируем 10 значений для диапазона [1.0, 1.7)
     for _ in range(13):
-        kf_crystal_values.append(round(random.uniform(1.0, 1.1), 2))
+        kf_crystal_values.append(round(random.uniform(1.0, 1.05), 2))
 
     # 2. Генерируем 7 значений для диапазона [1.7, 2.9)
     for _ in range(6):
-        kf_crystal_values.append(round(random.uniform(1.1, 1.4), 2))
+        kf_crystal_values.append(round(random.uniform(1.05, 1.2), 2))
 
     # 3. Генерируем 6 значений для диапазона [2.9, 4.8]
     for _ in range(4):
-        kf_crystal_values.append(round(random.uniform(1.4, 1.75), 2))
+        kf_crystal_values.append(round(random.uniform(1.2, 1.45), 2))
 
     # Перемешиваем список, чтобы распределение было случайным по городам
     random.shuffle(kf_crystal_values)
