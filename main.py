@@ -3,342 +3,6 @@ from ui import *
 from db_lerdon_connect import *
 from generate_map import generate_map_and_cities
 
-class AuthorScreen(Screen):
-    def __init__(self, conn, **kwargs):
-        super(AuthorScreen, self).__init__(**kwargs)
-        self.conn = conn
-        root = FloatLayout()
-
-        # Фоновое видео
-        video = Video(source="files/menu/author.mp4",
-                      options={'eos': 'loop'},
-                      state='play',
-                      allow_stretch=True,
-                      keep_ratio=False,
-                      volume=0)
-        video.size_hint = (1, 1)
-        video.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
-        root.add_widget(video)
-
-        # Прозрачный слой с контентом
-        layout = BoxLayout(orientation='vertical',
-                           padding=dp(20),
-                           spacing=dp(20),
-                           size_hint=(0.9, 0.8),
-                           pos_hint={'center_x': 0.5, 'center_y': 0.5})
-
-        # Заголовок
-        title_label = Label(
-            text="[b]Сообщество Лэрдона[/b]",
-            markup=True,
-            font_size='28sp',
-            size_hint_y=None,
-            height=dp(50),
-            outline_color=(0, 0, 0, 1),
-            outline_width=2,
-            color=(1, 1, 1, 1),
-            halign="center"
-        )
-        layout.add_widget(title_label)
-
-        top_layout = BoxLayout(
-            orientation='vertical',
-            size_hint=(1, None),
-            height=dp(60),  # Высота окантовки
-            pos_hint={'top': 1}  # Прижимаем к верху экрана
-        )
-
-        # Создаем фон для окантовки (можно использовать виджет с цветом или изображением)
-        # Для простоты сделаем полупрозрачный черный фон
-        from kivy.graphics import Color, Rectangle
-        with top_layout.canvas.before:
-            Color(0, 0, 0, 0.5)  # Черный цвет с 50% прозрачностью
-            self.top_bg_rect = Rectangle(size=top_layout.size, pos=top_layout.pos)
-
-        # Обновляем размер и позицию фона при изменении размера виджета
-        def update_top_bg_rect(instance, value):
-            self.top_bg_rect.pos = instance.pos
-            self.top_bg_rect.size = instance.size
-        top_layout.bind(pos=update_top_bg_rect, size=update_top_bg_rect)
-
-        # Создаем саму надпись
-        greeting_label = Label(
-            text="[b][color=#FFD700]Желаю Вам приятно провести время в моем мире![/color][/b]", # Желтый цвет (#FFD700) и жирный шрифт
-            markup=True,
-            font_size='18sp', # Размер шрифта
-            outline_color=(0, 0, 0, 1), # Черная обводка
-            outline_width=1.5, # Ширина обводки
-            halign="center",
-            valign="middle"
-        )
-        # Убедимся, что Label заполняет всё пространство BoxLayout
-        greeting_label.bind(size=greeting_label.setter('text_size'))
-
-        top_layout.add_widget(greeting_label)
-        root.add_widget(top_layout)
-        # Ссылки-карточки
-        link_box = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None, height=dp(100))
-
-        vk_label = Label(
-            text="[ref=https://vk.com/destianfarbius][color=#00aaff]Страница автора ВКонтакте[/color][/ref]",
-            markup=True,
-            font_size='18sp',
-            size_hint_y=None,
-            height=dp(40),
-            outline_color=(0, 0, 0, 1),
-            outline_width=2,
-            halign="center",
-            valign="middle"
-        )
-        vk_label.bind(on_ref_press=self.open_link)
-
-        tg_label = Label(
-            text="[ref=https://t.me/+scOGK6ph6r03YmU6][color=#00aaff]Присоединиться к Telegram[/color][/ref]",
-            markup=True,
-            font_size='18sp',
-            size_hint_y=None,
-            height=dp(40),
-            outline_color=(0, 0, 0, 1),
-            outline_width=2,
-            halign="center",
-            valign="middle"
-        )
-        tg_label.bind(on_ref_press=self.open_link)
-
-        link_box.add_widget(vk_label)
-        link_box.add_widget(tg_label)
-        layout.add_widget(link_box)
-
-        # Новая желтая подпись внизу
-        credits_label = Label(
-            text="[color=#FFD700]Все иконки и изображения были разработаны с использованием ресурсов: \n Flaticon.com, Qwen, ChatGPT, а так же Шедеврума.[/color]",
-            markup=True,
-            font_size='12sp',
-            size_hint_y=None,
-            height=dp(40),
-            outline_color=(0, 0, 0, 1),
-            outline_width=2,
-            halign="center",
-            valign="middle"
-        )
-        layout.add_widget(credits_label)
-
-        # Кнопка "Назад" — уменьшена
-        back_button = Button(
-            text="Назад",
-            size_hint=(0.3, None),
-            height=dp(40),
-            pos_hint={'center_x': 0.5},
-            background_color=(0.2, 0.6, 1, 0.8),
-            color=(1, 1, 1, 1),
-            font_size='14sp'
-        )
-        back_button.bind(on_press=self.go_back)
-        layout.add_widget(back_button)
-
-        root.add_widget(layout)
-        self.add_widget(root)
-
-    def go_back(self, instance):
-        app = App.get_running_app()
-        app.root.clear_widgets()
-        app.root.add_widget(MenuWidget(self.conn))
-
-    def open_link(self, instance, url):
-        webbrowser.open(url)
-
-
-class LoadingScreen(FloatLayout):
-    def __init__(self, conn, selected_map=None, **kwargs):
-        super(LoadingScreen, self).__init__(**kwargs)
-        self.conn = conn
-        self.selected_map = selected_map
-
-        # === Фон ===
-        with self.canvas.before:
-            self.bg_rect = Rectangle(
-                source='files/menu/loading_bg.jpg',
-                pos=self.pos,
-                size=self.size
-            )
-        self.bind(pos=self._update_bg, size=self._update_bg)
-
-        # === Контейнер шкалы ===
-        self.pb_container = FloatLayout(
-            size_hint=(0.8, None),
-            height=dp(30),
-            pos_hint={'center_x': 0.5, 'center_y': 0.2}
-        )
-
-        with self.pb_container.canvas.before:
-            # === Фон прогресс-бара ===
-            Color(0.1, 0.1, 0.1, 0.8)
-            self.pb_rect = Rectangle(size=self.pb_container.size, pos=self.pb_container.pos)
-
-            # === Заливка прогресса ===
-            Color(1, 1, 1, 1)  # Начальный белый цвет
-            self.pb_fill = Rectangle(size=(0, self.pb_container.height), pos=self.pb_container.pos)
-
-            # === Обводка ===
-            Color(1, 1, 1, 0.9)
-            self.pb_border = Line(
-                rectangle=(
-                    self.pb_container.x - dp(1),
-                    self.pb_container.y - dp(1),
-                    self.pb_container.width + dp(2),
-                    self.pb_container.height + dp(2)
-                ),
-                width=dp(1.3)
-            )
-
-        self.pb_container.bind(pos=self.update_pb_canvas, size=self.update_pb_canvas)
-        self.add_widget(self.pb_container)
-
-        # === Текст загрузки ===
-        self.label = Label(
-            markup=True,
-            text="[color=#00ccff]Готовим ресурсы... 0%[/color]",
-            font_size='19sp',
-            pos_hint={'center_x': 0.5, 'center_y': 0.11},
-            size_hint=(1, None),
-            halign='center'
-        )
-        self.add_widget(self.label)
-
-        # === Прогресс ===
-        self.current_progress = 0
-        self.target_progress = 0
-
-        # === Шаги загрузки ===
-        self.loading_steps = [
-            self.step_check_db,
-            self.step_cleanup_cache,
-            self.step_restore_backup,
-            self.step_load_assets,
-            self.step_complete
-        ]
-        Clock.schedule_once(self.start_loading)
-
-    # === Обновление заливки и рамки ===
-    def update_pb_canvas(self, *args):
-        self.pb_rect.pos = self.pb_container.pos
-        self.pb_rect.size = self.pb_container.size
-
-        fill_width = (self.current_progress / 100) * self.pb_container.width
-        self.pb_fill.pos = self.pb_container.pos
-        self.pb_fill.size = (fill_width, self.pb_container.height)
-
-        # === Плавный переход цвета от белого → голубого → синего ===
-        progress_ratio = self.current_progress / 100.0
-        if progress_ratio <= 0.5:
-            # От белого к голубому (0–50%)
-            r = 1 - progress_ratio * 0.5       # 1 → 0.75
-            g = 1 - progress_ratio * 0.3       # 1 → 0.85
-            b = 1                              # остаётся бело-голубым
-        else:
-            # От голубого к насыщенно-синему (50–100%)
-            t = (progress_ratio - 0.5) * 2     # нормализуем вторую половину
-            r = 0.75 - t * 0.55                # 0.75 → 0.2
-            g = 0.85 - t * 0.65                # 0.85 → 0.2
-            b = 1 - t * 0.3                    # 1 → 0.7
-
-        with self.pb_container.canvas:
-            Color(r, g, b, 1)
-            self.pb_fill.size = (fill_width, self.pb_container.height)
-            self.pb_fill.pos = self.pb_container.pos
-
-        # Обводка
-        self.pb_border.rectangle = (
-            self.pb_container.x - dp(1),
-            self.pb_container.y - dp(1),
-            self.pb_container.width + dp(2),
-            self.pb_container.height + dp(2)
-        )
-
-    # === Логика загрузки ===
-    def start_loading(self, dt):
-        self.run_next_step()
-
-    def run_next_step(self, *args):
-        if self.loading_steps:
-            step = self.loading_steps.pop(0)
-            step()
-        else:
-            self.target_progress = 100
-            self.smooth_progress_update()
-
-    def update_progress_target(self, delta):
-        self.target_progress += delta
-
-    def smooth_progress_update(self, dt=0):
-        if abs(self.target_progress - self.current_progress) > 0.5:
-            self.current_progress += (self.target_progress - self.current_progress) * 0.1
-            percent = int(self.current_progress)
-            self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
-            self.update_pb_canvas()
-            Clock.schedule_once(self.smooth_progress_update, 0.016)
-        else:
-            self.current_progress = self.target_progress
-            percent = int(self.current_progress)
-            self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
-            self.update_pb_canvas()
-
-            if self.target_progress >= 100:
-                self.label.text = "[color=#ff0000]НАЧИНАЕМ![/color]"
-                Clock.schedule_once(self.switch_to_menu, 0.8)
-
-    def update_progress(self, delta):
-        self.update_progress_target(delta)
-        self.smooth_progress_update()
-
-    # === Шаги ===
-    def step_check_db(self):
-        print("Шаг 1: Проверка базы данных...")
-        self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0.5)
-
-    def step_cleanup_cache(self):
-        print("Шаг 2: Очистка кэша...")
-        from threading import Thread
-        def cleanup_task():
-            clear_tables(self.conn)
-            Clock.schedule_once(self.run_next_step, 0)
-        Thread(target=cleanup_task, daemon=True).start()
-
-    def step_restore_backup(self):
-        print("Шаг 3: Восстановление из бэкапа...")
-        self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0.5)
-
-    def step_load_assets(self):
-        print("Шаг 4: Загрузка ресурсов...")
-        self.update_progress(10)
-
-        from threading import Thread
-        def load_task():
-            time.sleep(0.3)
-            Clock.schedule_once(lambda dt: self.update_progress(10), 0)
-            time.sleep(0.3)
-            Clock.schedule_once(self.run_next_step, 0)
-        Thread(target=load_task, daemon=True).start()
-
-    def step_complete(self):
-        print("Шаг 5: Финализация...")
-        self.update_progress(20)
-        Clock.schedule_once(self.run_next_step, 0.3)
-
-    # === Вспомогательные ===
-    def _update_bg(self, *args):
-        self.bg_rect.pos = self.pos
-        self.bg_rect.size = self.size
-
-    def switch_to_menu(self, dt):
-        self.bg_rect.source = 'files/menu/main_fon.jpg'
-        self.bg_rect.texture = CoreImage('files/menu/main_fon.jpg').texture
-        self.clear_widgets()
-        self.add_widget(MenuWidget(self.conn, self.selected_map))
-
-
 RANK_TO_FILENAME = {
     # Группа 1: Военные
     "Главнокомандующий": "19.png",   # старший
@@ -563,6 +227,342 @@ def clear_tables(conn):
     except sqlite3.Error as e:
         print(f"Ошибка при очистке таблиц: {e}")
         conn.rollback()  # Откат изменений в случае ошибки
+
+class AuthorScreen(Screen):
+    def __init__(self, conn, **kwargs):
+        super(AuthorScreen, self).__init__(**kwargs)
+        self.conn = conn
+        root = FloatLayout()
+
+        # === Статичный фон ===
+        # Замените 'files/menu/author.jpg' на путь к вашему изображению-фону.
+        # Рекомендуется использовать изображение в формате .jpg или .png.
+        self.bg_image = Image(
+            source='files/menu/author.jpg', # <- Укажите путь к вашему изображению
+            allow_stretch=True, # Растягивать под размер виджета
+            keep_ratio=False,   # Игнорировать соотношение сторон
+            size_hint=(1, 1),   # Занимает весь родительский контейнер
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        root.add_widget(self.bg_image)
+        # ---
+
+        # Прозрачный слой с контентом (остается без изменений)
+        layout = BoxLayout(orientation='vertical',
+                           padding=dp(20),
+                           spacing=dp(20),
+                           size_hint=(0.9, 0.8),
+                           pos_hint={'center_x': 0.5, 'center_y': 0.5})
+
+        # Заголовок (остается без изменений)
+        title_label = Label(
+            text="[b]Сообщество Лэрдона[/b]",
+            markup=True,
+            font_size='28sp',
+            size_hint_y=None,
+            height=dp(50),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
+            color=(1, 1, 1, 1),
+            halign="center"
+        )
+        layout.add_widget(title_label)
+
+        top_layout = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, None),
+            height=dp(60),  # Высота окантовки
+            pos_hint={'top': 1}  # Прижимаем к верху экрана
+        )
+
+        # Создаем фон для окантовки (остается без изменений)
+        from kivy.graphics import Color, Rectangle
+        with top_layout.canvas.before:
+            Color(0, 0, 0, 0.5)  # Черный цвет с 50% прозрачностью
+            self.top_bg_rect = Rectangle(size=top_layout.size, pos=top_layout.pos)
+
+        # Обновляем размер и позицию фона при изменении размера виджета (остается без изменений)
+        def update_top_bg_rect(instance, value):
+            self.top_bg_rect.pos = instance.pos
+            self.top_bg_rect.size = instance.size
+        top_layout.bind(pos=update_top_bg_rect, size=update_top_bg_rect)
+
+        # Создаем саму надпись (остается без изменений)
+        greeting_label = Label(
+            text="[b][color=#FFD700]Желаю Вам приятно провести время в моем мире![/color][/b]",
+            markup=True,
+            font_size='18sp',
+            outline_color=(0, 0, 0, 1),
+            outline_width=1.5,
+            halign="center",
+            valign="middle"
+        )
+        greeting_label.bind(size=greeting_label.setter('text_size'))
+        top_layout.add_widget(greeting_label)
+        root.add_widget(top_layout)
+
+        # Ссылки-карточки (остается без изменений)
+        link_box = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None, height=dp(100))
+
+        vk_label = Label(
+            text="[ref=https://vk.com/destianfarbius  ][color=#00aaff]Страница автора ВКонтакте[/color][/ref]",
+            markup=True,
+            font_size='18sp',
+            size_hint_y=None,
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
+            halign="center",
+            valign="middle"
+        )
+        vk_label.bind(on_ref_press=self.open_link)
+
+        tg_label = Label(
+            text="[ref=https://t.me/+scOGK6ph6r03YmU6  ][color=#00aaff]Присоединиться к Telegram[/color][/ref]",
+            markup=True,
+            font_size='18sp',
+            size_hint_y=None,
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
+            halign="center",
+            valign="middle"
+        )
+        tg_label.bind(on_ref_press=self.open_link)
+
+        link_box.add_widget(vk_label)
+        link_box.add_widget(tg_label)
+        layout.add_widget(link_box)
+
+        # Новая желтая подпись внизу (остается без изменений)
+        credits_label = Label(
+            text="[color=#FFD700]Все иконки и изображения были разработаны с использованием ресурсов: \n Flaticon.com, Qwen, ChatGPT, а так же Шедеврума.[/color]",
+            markup=True,
+            font_size='12sp',
+            size_hint_y=None,
+            height=dp(40),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
+            halign="center",
+            valign="middle"
+        )
+        layout.add_widget(credits_label)
+
+        # Кнопка "Назад" — уменьшена (остается без изменений)
+        back_button = Button(
+            text="Назад",
+            size_hint=(0.3, None),
+            height=dp(40),
+            pos_hint={'center_x': 0.5},
+            background_color=(0.2, 0.6, 1, 0.8),
+            color=(1, 1, 1, 1),
+            font_size='14sp'
+        )
+        back_button.bind(on_press=self.go_back)
+        layout.add_widget(back_button)
+
+        root.add_widget(layout)
+        self.add_widget(root)
+
+    def go_back(self, instance):
+        # Нет видео для остановки, упрощаем функцию
+        app = App.get_running_app()
+        app.root.clear_widgets()
+        app.root.add_widget(MenuWidget(self.conn))
+
+    def open_link(self, instance, url):
+        webbrowser.open(url)
+
+
+class LoadingScreen(FloatLayout):
+    def __init__(self, conn, selected_map=None, **kwargs):
+        super(LoadingScreen, self).__init__(**kwargs)
+        self.conn = conn
+        self.selected_map = selected_map
+
+        # === Фон ===
+        with self.canvas.before:
+            self.bg_rect = Rectangle(
+                source='files/menu/loading_bg.jpg',
+                pos=self.pos,
+                size=self.size
+            )
+        self.bind(pos=self._update_bg, size=self._update_bg)
+
+        # === Контейнер шкалы ===
+        self.pb_container = FloatLayout(
+            size_hint=(0.8, None),
+            height=dp(30),
+            pos_hint={'center_x': 0.5, 'center_y': 0.2}
+        )
+
+        with self.pb_container.canvas.before:
+            # === Фон прогресс-бара ===
+            Color(0.1, 0.1, 0.1, 0.8)
+            self.pb_rect = Rectangle(size=self.pb_container.size, pos=self.pb_container.pos)
+
+            # === Заливка прогресса ===
+            Color(1, 1, 1, 1)  # Начальный белый цвет
+            self.pb_fill = Rectangle(size=(0, self.pb_container.height), pos=self.pb_container.pos)
+
+            # === Обводка ===
+            Color(1, 1, 1, 0.9)
+            self.pb_border = Line(
+                rectangle=(
+                    self.pb_container.x - dp(1),
+                    self.pb_container.y - dp(1),
+                    self.pb_container.width + dp(2),
+                    self.pb_container.height + dp(2)
+                ),
+                width=dp(1.3)
+            )
+
+        self.pb_container.bind(pos=self.update_pb_canvas, size=self.update_pb_canvas)
+        self.add_widget(self.pb_container)
+
+        # === Текст загрузки ===
+        self.label = Label(
+            markup=True,
+            text="[color=#00ccff]Готовим ресурсы... 0%[/color]",
+            font_size='19sp',
+            pos_hint={'center_x': 0.5, 'center_y': 0.11},
+            size_hint=(1, None),
+            halign='center'
+        )
+        self.add_widget(self.label)
+
+        # === Прогресс ===
+        self.current_progress = 0
+        self.target_progress = 0
+
+        # === Шаги загрузки ===
+        self.loading_steps = [
+            self.step_check_db,
+            self.step_cleanup_cache,
+            self.step_restore_backup,
+            self.step_load_assets,
+            self.step_complete
+        ]
+        Clock.schedule_once(self.start_loading)
+
+    # === Обновление заливки и рамки ===
+    def update_pb_canvas(self, *args):
+        self.pb_rect.pos = self.pb_container.pos
+        self.pb_rect.size = self.pb_container.size
+
+        fill_width = (self.current_progress / 100) * self.pb_container.width
+        self.pb_fill.pos = self.pb_container.pos
+        self.pb_fill.size = (fill_width, self.pb_container.height)
+
+        # === Плавный переход цвета от белого → голубого → синего ===
+        progress_ratio = self.current_progress / 100.0
+        if progress_ratio <= 0.5:
+            # От белого к голубому (0–50%)
+            r = 1 - progress_ratio * 0.5       # 1 → 0.75
+            g = 1 - progress_ratio * 0.3       # 1 → 0.85
+            b = 1                              # остаётся бело-голубым
+        else:
+            # От голубого к насыщенно-синему (50–100%)
+            t = (progress_ratio - 0.5) * 2     # нормализуем вторую половину
+            r = 0.75 - t * 0.55                # 0.75 → 0.2
+            g = 0.85 - t * 0.65                # 0.85 → 0.2
+            b = 1 - t * 0.3                    # 1 → 0.7
+
+        with self.pb_container.canvas:
+            Color(r, g, b, 1)
+            self.pb_fill.size = (fill_width, self.pb_container.height)
+            self.pb_fill.pos = self.pb_container.pos
+
+        # Обводка
+        self.pb_border.rectangle = (
+            self.pb_container.x - dp(1),
+            self.pb_container.y - dp(1),
+            self.pb_container.width + dp(2),
+            self.pb_container.height + dp(2)
+        )
+
+    # === Логика загрузки ===
+    def start_loading(self, dt):
+        self.run_next_step()
+
+    def run_next_step(self, *args):
+        if self.loading_steps:
+            step = self.loading_steps.pop(0)
+            step()
+        else:
+            self.target_progress = 100
+            self.smooth_progress_update()
+
+    def update_progress_target(self, delta):
+        self.target_progress += delta
+
+    def smooth_progress_update(self, dt=0):
+        if abs(self.target_progress - self.current_progress) > 0.5:
+            self.current_progress += (self.target_progress - self.current_progress) * 0.1
+            percent = int(self.current_progress)
+            self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
+            self.update_pb_canvas()
+            Clock.schedule_once(self.smooth_progress_update, 0.016)
+        else:
+            self.current_progress = self.target_progress
+            percent = int(self.current_progress)
+            self.label.text = f"[color=#00ccff]Готовим ресурсы... {percent}%[/color]"
+            self.update_pb_canvas()
+
+            if self.target_progress >= 100:
+                self.label.text = "[color=#ff0000]НАЧИНАЕМ![/color]"
+                Clock.schedule_once(self.switch_to_menu, 0.8)
+
+    def update_progress(self, delta):
+        self.update_progress_target(delta)
+        self.smooth_progress_update()
+
+    # === Шаги ===
+    def step_check_db(self):
+        print("Шаг 1: Проверка базы данных...")
+        self.update_progress(20)
+        Clock.schedule_once(self.run_next_step, 0.5)
+
+    def step_cleanup_cache(self):
+        print("Шаг 2: Очистка кэша...")
+        from threading import Thread
+        def cleanup_task():
+            clear_tables(self.conn)
+            Clock.schedule_once(self.run_next_step, 0)
+        Thread(target=cleanup_task, daemon=True).start()
+
+    def step_restore_backup(self):
+        print("Шаг 3: Восстановление из бэкапа...")
+        self.update_progress(20)
+        Clock.schedule_once(self.run_next_step, 0.5)
+
+    def step_load_assets(self):
+        print("Шаг 4: Загрузка ресурсов...")
+        self.update_progress(10)
+
+        from threading import Thread
+        def load_task():
+            time.sleep(0.3)
+            Clock.schedule_once(lambda dt: self.update_progress(10), 0)
+            time.sleep(0.3)
+            Clock.schedule_once(self.run_next_step, 0)
+        Thread(target=load_task, daemon=True).start()
+
+    def step_complete(self):
+        print("Шаг 5: Финализация...")
+        self.update_progress(20)
+        Clock.schedule_once(self.run_next_step, 0.3)
+
+    # === Вспомогательные ===
+    def _update_bg(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
+
+    def switch_to_menu(self, dt):
+        self.bg_rect.source = 'files/menu/main_fon.jpg'
+        self.bg_rect.texture = CoreImage('files/menu/main_fon.jpg').texture
+        self.clear_widgets()
+        self.add_widget(MenuWidget(self.conn, self.selected_map))
 
 
 class MapWidget(Widget):
@@ -1147,6 +1147,12 @@ class KingdomSelectionWidget(FloatLayout):
     def back_to_menu(self, instance):
         if getattr(self, 'buttons_locked', False):
             return
+
+        # --- Добавляем строку для остановки фонового видео ---
+        if hasattr(self, 'bg_video'):
+            self.bg_video.state = 'stop'
+            print("Фоновое видео choice.mp4 остановлено при возврате в меню.")
+
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
@@ -1298,6 +1304,7 @@ class KingdomSelectionWidget(FloatLayout):
         army_row.add_widget(self.generate_icons_layout(data["Армия"]))
         self.faction_info_container.add_widget(army_row)
 
+    # Найди функцию start_game внутри класса KingdomSelectionWidget
     def start_game(self, instance):
         if getattr(self, 'buttons_locked', False):
             return
@@ -1308,6 +1315,11 @@ class KingdomSelectionWidget(FloatLayout):
 
         # === Блокируем все кнопки ===
         self.disable_all_buttons(True)
+
+        # --- Добавляем строку для остановки фонового видео ---
+        if hasattr(self, 'bg_video'):
+            self.bg_video.state = 'stop'
+            print("Фоновое видео choice.mp4 остановлено перед запуском start_game.mp4.")
 
         # === Создаём Overlay и запускаем видео ===
         overlay = FloatLayout(size=Window.size)
@@ -1345,7 +1357,12 @@ class KingdomSelectionWidget(FloatLayout):
         self.cleanup_and_start_game()
 
     def cleanup_and_start_game(self):
-        # Убираем оверлей с видео
+        # --- Добавляем эту строку для остановки фонового видео ---
+        if hasattr(self, 'bg_video'):
+            self.bg_video.state = 'stop'
+            print("Фоновое видео choice.mp4 остановлено.")
+
+        # Убираем оверлей с начального видео (если он есть)
         if hasattr(self, 'overlay') and self.overlay in self.children:
             self.remove_widget(self.overlay)
         self.disable_all_buttons(False)

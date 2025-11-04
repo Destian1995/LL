@@ -9,6 +9,7 @@ from results_game import ResultsGame
 from seasons import SeasonManager
 from nobles_generator import generate_initial_nobles
 from nobles_generator import process_nobles_turn
+from kivy.core.audio import SoundLoader
 
 # Новые кастомные виджеты
 class ModernButton(Button):
