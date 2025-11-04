@@ -1285,11 +1285,6 @@ class Faction:
                 print(message)
                 return False, message
 
-            if not population_valid or not city_count_valid:
-                message = "Города опустели, уровень налогов распугал всех граждан..."
-                print(message)
-                return False, message
-
             # Условия завершения игры
             if self.population == 0 and self.raw_material <= 0:
                 message = "Города опустели из-за отсутствия еды...."
