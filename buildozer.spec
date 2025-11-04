@@ -4,7 +4,7 @@
 # Основные параметры приложения
 # ---------------------------------
 
-version = 3.2.12
+version = 3.2.14
 title = Легенды Лэрдона
 package.name = lerdonlegends
 package.domain = com.lerdonlegends
@@ -22,8 +22,7 @@ author = Vladislav Lerdon Team
 # ---------------------------------
 
 # ВНИМАНИЕ: ffpyplayer оставляем для звука, но добавляем sdl2_mixer
-# и убираем прямое указание ffmpeg (он уже встроен в ffpyplayer)
-requirements = python3==3.11.0, kivy==2.1.0, pyjnius==1.5.0, cython==0.29.36, ffpyplayer, sdl2, sdl2_image, sdl2_mixer, sdl2_ttf
+requirements = python3==3.11.0, kivy==2.1.0, pyjnius==1.5.0, cython==0.29.36, sdl2, sdl2_image, sdl2_ttf
 
 # Для python-for-android (p4a)
 p4a.python_version = 3.11.0
