@@ -1022,7 +1022,7 @@ class Faction:
         self.auto_build()
         # Сохраняем предыдущие значения ресурсов
         previous_money = self.money
-        previous_raw_material = self.raw_material # Сохраняем *до* обновления
+        previous_raw_material = self.raw_material  # Сохраняем *до* обновления
 
         # Генерируем новую цену на Кристаллы
         self.generate_raw_material_price()
@@ -1048,22 +1048,22 @@ class Faction:
         # Обновление ресурсов с учетом коэффициентов
         self.born_peoples = int(self.hospitals * 500)
         self.work_peoples = int(self.factories * 200)
-        self.clear_up_peoples = self.born_peoples - (self.work_peoples - self.tax_effects*2.5)
+        # self.clear_up_peoples теперь влияет только на free_peoples, не включает эффект налогов напрямую
+        self.clear_up_peoples = self.born_peoples - self.work_peoples
 
         # Загружаем текущие значения ресурсов из базы данных
         self.load_resources_from_db()
 
         # Выполняем расчеты
+        # Изменение свободных рабочих только от разницы рожденных/работающих
         self.free_peoples += self.clear_up_peoples
         self.money += int(self.calculate_tax_income() - (self.hospitals * coeffs['money_loss']))
         self.money_info = int(self.hospitals * coeffs['money_loss'])
         self.money_up = int(self.calculate_tax_income() - (self.hospitals * coeffs['money_loss']))
         self.taxes_info = int(self.calculate_tax_income())
 
-        # --- НАЧАЛО ИЗМЕНЕНИЙ ---
         # Рассчитываем базовый прирост Кристаллов (до бонусов городов)
         base_raw_material_production = (self.factories * 10000) - (self.population * coeffs['food_loss'])
-        # self.food_info теперь будет без бонусов городов
         self.food_info = int(base_raw_material_production) - self.current_consumption
 
         # Загружаем коэффициенты kf_crystal для городов фракции
@@ -1077,8 +1077,8 @@ class Faction:
             rows = self.cursor.fetchall()
             for row in rows:
                 kf_val = row[0]
-                if kf_val is not None: # Проверяем, что значение не NULL
-                    city_raw_material_bonus += float(kf_val) # Суммируем коэффициенты
+                if kf_val is not None:  # Проверяем, что значение не NULL
+                    city_raw_material_bonus += float(kf_val)  # Суммируем коэффициенты
                 else:
                     print(f"Предупреждение: kf_crystal для города фракции {self.faction} равен NULL, пропущено.")
         except sqlite3.Error as e:
@@ -1094,13 +1094,34 @@ class Faction:
 
         # self.food_peoples не изменяется, так как зависит от coeffs['food_loss'] и населения
         self.food_peoples = int(self.population * coeffs['food_loss'])
-        # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
-        # Проверяем условия для роста населения
+        # --- ПРИМЕНЕНИЕ ЭФФЕКТА НАЛОГОВ К НАСЕЛЕНИЮ ---
+        # Получаем текущую ставку налога (предполагается, что она хранится как строка, например, "15%")
+        # Извлекаем числовое значение
+        try:
+            # Убираем символ '%' и преобразуем в float
+            current_tax_rate_numeric = float(self.current_tax_rate.rstrip('%'))
+        except (ValueError, AttributeError):
+            print(f"Предупреждение: Не удалось распознать ставку налога '{self.current_tax_rate}', используется 0%.")
+            current_tax_rate_numeric = 0.0
+
+        # Рассчитываем процентное изменение населения от налогов
+        tax_percentage_change = self.tax_effect(current_tax_rate_numeric)
+
+        # Рассчитываем абсолютное изменение населения от налогов
+        # Округляем до ближайшего целого
+        tax_population_change = int(self.population * (tax_percentage_change / 100))
+
+        # --- ОБНОВЛЕНИЕ НАСЕЛЕНИЯ ---
+        # Проверяем условия для роста/убыли населения
         if self.raw_material > 0:
-            self.population += int(self.clear_up_peoples)
+            # При избытке Кристаллов:
+            # 1. Прирост населения от больниц (рождение)
+            # 2. Изменение населения от эффекта налогов (как абсолютное значение, рассчитанное от текущего населения)
+            net_growth_from_hospitals_and_tax = self.born_peoples + tax_population_change
+            self.population += net_growth_from_hospitals_and_tax
         else:
-            # Логика убыли населения при недостатке Кристаллы
+            # Логика убыли населения при недостатке Кристаллов (как было)
             if self.population > 100:
                 loss = int(self.population * 0.45)  # 45% от населения
                 self.population -= loss
@@ -1108,6 +1129,9 @@ class Faction:
                 loss = min(self.population, 50)  # Обнуление по 50, но не ниже 0
                 self.population -= loss
             self.free_peoples = 0  # Все рабочие обнуляются, так как Кристаллы нет
+
+        # Проверка, чтобы население не опускалось ниже 0
+        self.population = max(0, self.population)
 
         # Проверка, чтобы ресурсы не опускались ниже 0 и не превышали максимальные значения
         self.resources.update({
@@ -1123,7 +1147,6 @@ class Faction:
         net_profit_coins = round(self.money - previous_money, 2)
         net_profit_raw = round(self.raw_material - previous_raw_material, 2)
 
-
         # Обновляем средние значения чистой прибыли в таблице results
         self.update_average_net_profit(net_profit_coins, net_profit_raw)
         self.calculate_and_deduct_consumption()
@@ -1134,13 +1157,13 @@ class Faction:
 
         # Профит от бонусов - теперь вызывается *после* всех расчетов ресурсов
         # Внутри apply_player_bonuses используется self.food_info (базовый прирост) для расчета бонуса "Борьба"
-        self.apply_player_bonuses() # Вызываем здесь, после обновления ресурсов
+        self.apply_player_bonuses()  # Вызываем здесь, после обновления ресурсов
 
         # profit_details для UI может включать базовую прибыль и бонусы, если нужно отображать отдельно.
         # В текущем виде, profit_details отражает чистое изменение ресурса за ход до бонусов UI.
         profit_details = {
             "Кроны": net_profit_coins,
-            "Кристаллы": net_profit_raw, # Это прибыль до бонусов, но отражает чистое изменение за ход
+            "Кристаллы": net_profit_raw,  # Это прибыль до бонусов, но отражает чистое изменение за ход
         }
         # Оставляем только положительные значения для UI
         profit_details = {k: v for k, v in profit_details.items() if v > 0}
@@ -1276,18 +1299,9 @@ class Faction:
             - str: Сообщение с описанием условий завершения игры.
         """
         try:
-            # Проверяем, что население и количество городов корректны
-            population_valid = isinstance(self.population, int) and self.population >= 0
-            city_count_valid = isinstance(self.get_city_count(), int) and self.get_city_count() >= 0
-
-            if not population_valid and self.raw_material >= 0:
-                message = "Слишком мало больниц было построено на текущем этапе, население накрыла неизвестная болезнь..."
-                print(message)
-                return False, message
-
             # Условия завершения игры
-            if self.population == 0 and self.raw_material <= 0:
-                message = "Города опустели из-за отсутствия еды...."
+            if self.population <= 0:
+                message = "Города опустели...."
                 print(message)
                 return False, message
 
