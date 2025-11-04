@@ -1,8 +1,6 @@
 # all libraries
 import math
 import os
-os.environ["SDL_AUDIODRIVER"] = "opensl"
-os.environ["KIVY_AUDIO"] = "ffpyplayer"
 import re
 import shutil
 import random
