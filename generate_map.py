@@ -6,7 +6,7 @@ MAP_IMAGES_DIR = "files/map/generate"
 AVAILABLE_MAPS = [f for f in os.listdir(MAP_IMAGES_DIR) if f.startswith("map_") and f.endswith(".png")]
 
 # Фракции
-FACTIONS = ["Люди", "Эльфы", "Вампиры", "Адепты", "Элины"]
+FACTIONS = ["Север", "Эльфы", "Вампиры", "Адепты", "Элины"]
 # Пул имён для городов
 CITY_NAMES_POOL = [
     "Аргенвилль", "Партон", "Миргород", "Владонск", "Эледрин",
@@ -22,7 +22,7 @@ CITY_NAMES_POOL = [
 # Цвета для фракций
 FACTION_COLORS = {
     'Вампиры': 'files/buildings/giperion.png',
-    'Люди': 'files/buildings/arkadia.png',
+    'Север': 'files/buildings/arkadia.png',
     'Эльфы': 'files/buildings/celestia.png',
     'Адепты': 'files/buildings/eteria.png',
     'Элины': 'files/buildings/halidon.png'

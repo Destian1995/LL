@@ -670,7 +670,7 @@ class MapWidget(Widget):
 
         faction_images = {
             'Вампиры': 'files/buildings/giperion.png',
-            'Люди': 'files/buildings/arkadia.png',
+            'Север': 'files/buildings/arkadia.png',
             'Эльфы': 'files/buildings/celestia.png',
             'Адепты': 'files/buildings/eteria.png',
             'Элины': 'files/buildings/halidon.png'
@@ -1200,7 +1200,7 @@ class KingdomSelectionWidget(FloatLayout):
 
         # === Обновление изображения советника ===
         kingdom_rename = {
-            "Люди": "people",
+            "Север": "people",
             "Эльфы": "elfs",
             "Адепты": "adept",
             "Вампиры": "vampire",
@@ -1272,7 +1272,7 @@ class KingdomSelectionWidget(FloatLayout):
             return
 
         stats = {
-            "Люди": {"Доход Крон": 3, "Доход Кристаллов": 1, "Армия": 2},
+            "Север": {"Доход Крон": 3, "Доход Кристаллов": 1, "Армия": 2},
             "Эльфы": {"Доход Крон": 2, "Доход Кристаллов": 2, "Армия": 2},
             "Вампиры": {"Доход Крон": 2, "Доход Кристаллов": 2, "Армия": 3},
             "Элины": {"Доход Крон": 1, "Доход Кристаллов": 3, "Армия": 1},

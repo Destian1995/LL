@@ -19,30 +19,14 @@ from nobles_generator import (
     get_noble_display_name_with_sympathies
 )
 def format_number(number):
-    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
+    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн.)"""
     if not isinstance(number, (int, float)):
         return str(number)
     if number == 0:
         return "0"
     absolute = abs(number)
     sign = -1 if number < 0 else 1
-    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:  # 1e36
-        return f"{sign * absolute / 1e36:.1f} андец."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:  # 1e33
-        return f"{sign * absolute / 1e33:.1f} децил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:  # 1e30
-        return f"{sign * absolute / 1e30:.1f} нонил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e27
-        return f"{sign * absolute / 1e27:.1f} октил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:  # 1e24
-        return f"{sign * absolute / 1e24:.1f} септил."
-    elif absolute >= 1_000_000_000_000_000_000_000:  # 1e21
-        return f"{sign * absolute / 1e21:.1f} секст."
-    elif absolute >= 1_000_000_000_000_000_000:  # 1e18
-        return f"{sign * absolute / 1e18:.1f} квинт."
-    elif absolute >= 1_000_000_000_000_000:  # 1e15
-        return f"{sign * absolute / 1e15:.1f} квадр."
-    elif absolute >= 1_000_000_000_000:  # 1e12
+    if absolute >= 1_000_000_000_000:  # 1e36
         return f"{sign * absolute / 1e12:.1f} трлн."
     elif absolute >= 1_000_000_000:  # 1e9
         return f"{sign * absolute / 1e9:.1f} млрд."
@@ -196,7 +180,7 @@ def create_noble_widget(noble_data, conn, cash_player):
 # --- calculate_event_cost остается без изменений ---
 def calculate_event_cost(season_index):
     """Рассчитывает стоимость мероприятия в зависимости от сезона."""
-    base_cost = 2_000_000
+    base_cost = 2_000
     seasonal_multiplier = {0: 1.9, 1: 0.4, 2: 4.5, 3: 9.1}
     multiplier = seasonal_multiplier.get(season_index, 1.0)
     return int(base_cost * multiplier)
@@ -560,7 +544,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                 'Смирение': "Смирение",
                 'Любит Эльфы': "Любит Эльфов",
                 'Любит Элины': "Любит Элинов",
-                'Любит Люди': "Любит Людей",
+                'Любит Север': "Любит Людей",
                 'Любит Вампиры': "Любит Вампиров",
                 'Любит Адепты': "Любит Адептов",
             }

@@ -419,7 +419,7 @@ def load_unit_data(faction, conn):
 def start_army_mode(faction, game_area, class_faction, conn):
     army_hire = ArmyCash(faction, class_faction, conn)
     faction_colors = {
-        "Люди": (0.2, 0.4, 0.9, 0.8),
+        "Север": (0.2, 0.4, 0.9, 0.8),
         "Эльфы": (0.2, 0.7, 0.3, 0.8),
         "Вампиры": (0.5, 0.2, 0.6, 0.8),
         "Адепты": (0, 0, 0, 0.8),

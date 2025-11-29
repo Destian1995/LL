@@ -2,7 +2,7 @@ from lerdon_libraries import *
 from db_lerdon_connect import *
 
 def format_number(number):
-    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
+    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн.)"""
     if not isinstance(number, (int, float)):
         return str(number)
     if number == 0:
@@ -10,26 +10,7 @@ def format_number(number):
 
     absolute = abs(number)
     sign = -1 if number < 0 else 1
-
-    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:  # 1e36
-        return f"{sign * absolute / 1e36:.1f} андец."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:  # 1e33
-        return f"{sign * absolute / 1e33:.1f} децил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:  # 1e30
-        return f"{sign * absolute / 1e30:.1f} нонил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e27
-        return f"{sign * absolute / 1e27:.1f} октил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:  # 1e24
-        return f"{sign * absolute / 1e24:.1f} септил."
-    elif absolute >= 1_000_000_000_000_000_000_000:  # 1e21
-        return f"{sign * absolute / 1e21:.1f} секст."
-    elif absolute >= 1_000_000_000_000_000_000:  # 1e18
-        return f"{sign * absolute / 1e18:.1f} квинт."
-    elif absolute >= 1_000_000_000_000_000:  # 1e15
-        return f"{sign * absolute / 1e15:.1f} квадр."
-    elif absolute >= 1_000_000_000_000:  # 1e12
-        return f"{sign * absolute / 1e12:.1f} трлн."
-    elif absolute >= 1_000_000_000:  # 1e9
+    if absolute >= 1_000_000_000:  # 1e9
         return f"{sign * absolute / 1e9:.1f} млрд."
     elif absolute >= 1_000_000:  # 1e6
         return f"{sign * absolute / 1e6:.1f} млн."

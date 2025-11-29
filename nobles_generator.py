@@ -13,14 +13,14 @@ SHOW_SYMPATHIES = False         # Флаг, показывать ли симпа
 SYMPATHIES_VISIBLE_UNTIL_PRIORITY_CHANGE = False  # Симпатии скрываются при смене приоритетов
 
 # Список рас (5 штук)
-RACES = ['Люди', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']
+RACES = ['Север', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']
 
 # Список идеологий (всего 2)
 IDEOLOGIES = ['Борьба', 'Смирение']
 
 # Список имен для каждой расы
 NAMES = {
-    'Люди': [
+    'Север': [
         'Николай', 'Леонид', 'Карами', 'Генрих', 'Уильям', 'Мирослав',
         'Александр', 'Дмитрий', 'Иван', 'Сергей', 'Людмила', 'Алексей',
         'Евгений', 'Владимир', 'Павел', 'Максим', 'Олег', 'Виктор',
@@ -155,9 +155,9 @@ def generate_new_noble(conn, faction_race):
     elif trait_type == 'race_love':
         new_ideology = f"Любит {random.choice([r for r in RACES if r != faction_race])}"
     else:  # greed
-        base_demand = 1_000_000
+        base_demand = 1_000
         percentage = random.uniform(0.35, 0.75)
-        additional_demand = int(10_000_000 * percentage)
+        additional_demand = int(10_000 * percentage)
         total_demand = base_demand + additional_demand
         new_ideology = json.dumps({'type': 'greed', 'demand': total_demand})
 
@@ -212,10 +212,10 @@ def generate_initial_nobles(conn):
             loved_race = random.choice([r for r in RACES if r != faction_race])
             ideology = f"Любит {loved_race}"
         else: # greed
-            # Генерируем требование: 1,000,000 + 25%-85% от 10,000,000
-            base_demand = 1_000_000
+            # Генерируем требование: 1,000 + 25%-85% от 10,000,000
+            base_demand = 1_000
             percentage = random.uniform(0.25, 0.85)
-            additional_demand = int(10_000_000 * percentage)
+            additional_demand = int(10_000 * percentage)
             total_demand = base_demand + additional_demand
             ideology = json.dumps({'type': 'greed', 'demand': total_demand})
 
@@ -303,7 +303,7 @@ def calculate_attendance_probability(conn, noble_id, player_faction, event_type,
         loved_race = noble_traits['value']
         # Предположим, что сезон связан с расой (упрощение)
         season_to_race_map = {
-            'Зима': 'Люди', 'Весна': 'Эльфы', 'Лето': 'Элины', 'Осень': 'Вампиры'
+            'Зима': 'Север', 'Весна': 'Эльфы', 'Лето': 'Элины', 'Осень': 'Вампиры'
         }
         event_race = season_to_race_map.get(event_season)
         if event_race and loved_race != event_race:
@@ -388,7 +388,7 @@ def check_coup_attempts(conn):
                     # Генерируем нового дворянина на его место
                     faction_race = get_player_faction(conn)
                     if not faction_race:
-                        faction_race = 'Люди'  # fallback
+                        faction_race = 'Север'  # fallback
                     generate_new_noble(conn, faction_race)
 
                 conn.commit()
@@ -404,7 +404,7 @@ def check_coup_attempts(conn):
                     # Генерируем нового дворянина на его место
                     faction_race = get_player_faction(conn)
                     if not faction_race:
-                        faction_race = 'Люди'  # fallback
+                        faction_race = 'Север'  # fallback
                     generate_new_noble(conn, faction_race)
 
                 conn.commit()
@@ -480,7 +480,7 @@ def handle_failed_coup(conn, all_nobles):
     # Генерируем нового дворянина на его место
     faction_race = get_player_faction(conn)
     if not faction_race:
-        faction_race = 'Люди'  # fallback
+        faction_race = 'Север'  # fallback
     generate_new_noble(conn, faction_race)
 
     show_coup_attempt_popup(successful=False, message_override=message)
@@ -590,7 +590,7 @@ def get_noble_display_name_with_sympathies(noble):
         'Смирение': " (Смирение залог процветания!)",
         'Любит Эльфы': " (Только Эльфы знают как жить в гармонии!)",
         'Любит Элины': " (Как же грациозен повелитель Элинов!)",
-        'Любит Люди': " (Люди единственный баланс в мире!)",
+        'Любит Север': " (Север единственный баланс в мире!)",
         'Любит Вампиры': " (Наш мир принадлежит Вампирам!)",
         'Любит Адепты': " (Вера наше спасение!)",
     }
@@ -745,7 +745,7 @@ def attempt_secret_service_action(conn, player_faction=None, target_noble_id=Non
     # Генерация нового дворянина на его место
     faction_race = get_player_faction(conn)
     if not faction_race:
-        faction_race = 'Люди'  # fallback
+        faction_race = 'Север'  # fallback
     generate_new_noble(conn, faction_race)
 
     # 50% шанс, что узнают об успешной операции

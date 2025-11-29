@@ -15,7 +15,7 @@ def calculate_font_size():
 
 # Словарь для перевода названий
 translation_dict = {
-    "Люди": "people",
+    "Север": "people",
     "Эльфы": "elfs",
     "Адепты": "adept",
     "Вампиры": "vampire",
@@ -311,7 +311,7 @@ class AdvisorView(FloatLayout):
             count = self.cursor.fetchone()[0]
             if count == 0:
                 # Список всех фракций
-                factions = ["Люди", "Эльфы", "Вампиры", "Адепты", "Элины"]
+                factions = ["Север", "Эльфы", "Вампиры", "Адепты", "Элины"]
 
                 # Список возможных политических систем
                 systems = ["Смирение", "Борьба"]

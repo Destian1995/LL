@@ -1006,7 +1006,7 @@ def reset_third_class_units_if_empty(conn, faction_name):
                 faction_effects = [
                     # 0 = Зима
                     {
-                        'Люди':  {'stat': 1.25,  'cost': 0.65},
+                        'Север':  {'stat': 1.25,  'cost': 0.65},
                         'Эльфы': {'stat': 0.65,  'cost': 1.25},
                         'Вампиры': {'stat': 0.97,  'cost': 1.00},
                         'Адепты':   {'stat': 0.90,  'cost': 1.17},
@@ -1014,7 +1014,7 @@ def reset_third_class_units_if_empty(conn, faction_name):
                     },
                     # 1 = Весна
                     {
-                        'Люди':  {'stat': 0.90,  'cost': 1.17},
+                        'Север':  {'stat': 0.90,  'cost': 1.17},
                         'Эльфы': {'stat': 0.97,  'cost': 1.00},
                         'Вампиры': {'stat': 1.25,  'cost': 0.65},
                         'Адепты':   {'stat': 0.65,  'cost': 1.25},
@@ -1022,7 +1022,7 @@ def reset_third_class_units_if_empty(conn, faction_name):
                     },
                     # 2 = Лето
                     {
-                        'Люди':  {'stat': 0.65,  'cost': 1.25},
+                        'Север':  {'stat': 0.65,  'cost': 1.25},
                         'Эльфы': {'stat': 1.25,  'cost': 0.65},
                         'Вампиры': {'stat': 0.90,  'cost': 1.17},
                         'Адепты':   {'stat': 0.97,  'cost': 1.00},
@@ -1030,7 +1030,7 @@ def reset_third_class_units_if_empty(conn, faction_name):
                     },
                     # 3 = Осень
                     {
-                        'Люди':  {'stat': 0.97,  'cost': 1.00},
+                        'Север':  {'stat': 0.97,  'cost': 1.00},
                         'Эльфы': {'stat': 0.90,  'cost': 1.17},
                         'Вампиры': {'stat': 0.65,  'cost': 1.25},
                         'Адепты':   {'stat': 1.25,  'cost': 0.65},

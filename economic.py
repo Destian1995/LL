@@ -126,7 +126,7 @@ class Faction:
             'Лимит армии': self.max_army_limit
         }
         self.economic_params = {
-            "Люди": {"tax_rate": 0.07},
+            "Север": {"tax_rate": 0.06},
             "Эльфы": {"tax_rate": 0.03},
             "Вампиры": {"tax_rate": 0.02},
             "Адепты": {"tax_rate": 0.017},
@@ -193,20 +193,20 @@ class Faction:
 
     def city_has_space(self, city_name):
         current = self.cities_buildings.get(city_name, {"Больница": 0, "Фабрика": 0})
-        return current["Больница"] + current["Фабрика"] < 500
+        return current["Больница"] + current["Фабрика"] < 25
 
     # Основной метод автоматического строительства
     def auto_build(self):
         """
         Рассчитывает количество возможных зданий на основе текущих ресурсов
         и передает результат в методы build_factory и build_hospital.
-        Учитывает лимит в 500 зданий на город и минимальное количество крон (200).
+        Учитывает лимит в 10 зданий на город и минимальное количество крон (200).
         """
         if not self.auto_build_enabled:
             return
 
         # Проверяем, достаточно ли денег для строительства
-        if self.money < 200:
+        if self.money < 10:
             print("Недостаточно крон для авто-строительства. Минимум требуется 200 крон.")
             return
         print("Проверка доступных городов перед загрузкой:", self.cities)
@@ -222,8 +222,8 @@ class Faction:
             return
 
         # Определяем стоимость одного цикла строительства
-        hospital_cost = 300
-        factory_cost = 200
+        hospital_cost = 15
+        factory_cost = 10
         cost_per_cycle = hospitals_ratio * hospital_cost + factories_ratio * factory_cost
 
         if cost_per_cycle == 0:
@@ -241,7 +241,7 @@ class Faction:
             city_name = city['name']
             current_buildings = self.cities_buildings.get(city_name, {"Больница": 0, "Фабрика": 0})
             total_current = current_buildings["Больница"] + current_buildings["Фабрика"]
-            space_left = 500 - total_current
+            space_left = 25 - total_current
             available_cities.extend([city_name] * (space_left // total_per_cycle))
 
         # Если доступных городов нет, завершаем выполнение
@@ -1032,11 +1032,11 @@ class Faction:
 
         # Коэффициенты для каждой фракции
         faction_coefficients = {
-            'Люди': {'money_loss': 150, 'food_loss': 0.4},
-            'Эльфы': {'money_loss': 180, 'food_loss': 0.1},
-            'Вампиры': {'money_loss': 210, 'food_loss': 0.09},
-            'Адепты': {'money_loss': 240, 'food_loss': 0.05},
-            'Элины': {'money_loss': 270, 'food_loss': 0.04},
+            'Север': {'money_loss': 15, 'food_loss': 0.4},
+            'Эльфы': {'money_loss': 18, 'food_loss': 0.1},
+            'Вампиры': {'money_loss': 21, 'food_loss': 0.09},
+            'Адепты': {'money_loss': 24, 'food_loss': 0.05},
+            'Элины': {'money_loss': 27, 'food_loss': 0.04},
         }
 
         # Получение коэффициентов для текущей фракции
@@ -1046,8 +1046,8 @@ class Faction:
         coeffs = faction_coefficients[faction]
 
         # Обновление ресурсов с учетом коэффициентов
-        self.born_peoples = int(self.hospitals * 500)
-        self.work_peoples = int(self.factories * 200)
+        self.born_peoples = int(self.hospitals * 50)
+        self.work_peoples = int(self.factories * 20)
         # self.clear_up_peoples теперь влияет только на free_peoples, не включает эффект налогов напрямую
         self.clear_up_peoples = self.born_peoples - self.work_peoples
 
@@ -1063,7 +1063,7 @@ class Faction:
         self.taxes_info = int(self.calculate_tax_income())
 
         # Рассчитываем базовый прирост Кристаллов (до бонусов городов)
-        base_raw_material_production = (self.factories * 10000) - (self.population * coeffs['food_loss'])
+        base_raw_material_production = (self.factories * 100) - (self.population * coeffs['food_loss'])
         self.food_info = int(base_raw_material_production) - self.current_consumption
 
         # Загружаем коэффициенты kf_crystal для городов фракции
@@ -1122,7 +1122,7 @@ class Faction:
             self.population += net_growth_from_hospitals_and_tax
         else:
             # Логика убыли населения при недостатке Кристаллов (как было)
-            if self.population > 100:
+            if self.population > 5:
                 loss = int(self.population * 0.45)  # 45% от населения
                 self.population -= loss
             else:
@@ -1135,10 +1135,10 @@ class Faction:
 
         # Проверка, чтобы ресурсы не опускались ниже 0 и не превышали максимальные значения
         self.resources.update({
-            "Кроны": max(min(int(self.money), 10_000_000_000), 0),  # Не более 10 млрд
-            "Рабочие": max(min(int(self.free_peoples), 10_000_000), 0),  # Не более 10 млн
-            "Кристаллы": max(min(int(self.raw_material), 10_000_000_000), 0),  # Не более 10 млрд
-            "Население": max(min(int(self.population), 100_000_000), 0),  # Не более 100 млн
+            "Кроны": max(min(int(self.money), 10_000_000), 0),  # Не более 10 млн
+            "Рабочие": max(min(int(self.free_peoples), 500_000), 0),  # Не более 500 тыс
+            "Кристаллы": max(min(int(self.raw_material), 10_000_000), 0),  # Не более 10 млн
+            "Население": max(min(int(self.population), 1_000_000), 0),  # Не более 1 млн
             "Потребление": self.current_consumption,  # Используем рассчитанное значение
             "Лимит армии": self.max_army_limit
         })
@@ -1331,16 +1331,16 @@ class Faction:
             return False, message
 
     def buildings_info_fraction(self):
-        if self.faction == 'Люди':
-            return 150
+        if self.faction == 'Север':
+            return 15
         if self.faction == 'Эльфы':
-            return 180
+            return 18
         if self.faction == 'Вампиры':
-            return 210
+            return 21
         if self.faction == 'Адепты':
-            return 240
+            return 24
         if self.faction == 'Элины':
-            return 270
+            return 27
 
     def update_economic_efficiency(self, efficiency_value):
         """
@@ -1400,7 +1400,7 @@ class Faction:
             if row:
                 current_turn = row[0]  # Текущий номер хода
             else:
-                current_turn = 1  # Если записей нет, начинаем с нуля
+                current_turn = 1  # Если записей нет, начинаем с 1
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке номера хода: {e}")
             current_turn = 1  # В случае ошибки устанавливаем значение по умолчанию
@@ -1411,14 +1411,14 @@ class Faction:
 
         # Генерация новой цены
         if current_turn == 1:  # Если это первый ход
-            self.current_raw_material_price = random.randint(736, 9720)
+            self.current_raw_material_price = round(random.uniform(0.4, 9.5), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
         else:
-            # Генерация новой цены на основе текущей
-            self.current_raw_material_price = self.raw_material_price_history[-1] + random.randint(-345, 475)
-            self.current_raw_material_price = max(
-                736, min(9720, self.current_raw_material_price)  # Ограничиваем диапазон
-            )
+            # Генерация изменения цены (дробное число)
+            price_change = random.uniform(-1.5, 1.5)
+            self.current_raw_material_price = self.raw_material_price_history[-1] + price_change
+            # Ограничиваем диапазон
+            self.current_raw_material_price = round(max(0.4, min(9.5, self.current_raw_material_price)), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
 
         # Ограничение длины истории цен до 25 элементов
@@ -1427,7 +1427,6 @@ class Faction:
 
         # Обновляем значение последнего загруженного хода
         self.last_turn_loaded = current_turn
-
     def trade_raw_material(self, action, quantity):
         """
         Торговля Кристаллым через таблицу resources.
@@ -1435,7 +1434,7 @@ class Faction:
         :param quantity: Количество лотов (1 лот = 10,000 единиц Кристаллы).
         """
         # Преобразуем количество лотов в единицы Кристаллы
-        total_quantity = quantity * 10000
+        total_quantity = quantity * 100
         total_cost = self.current_raw_material_price * quantity
 
         if action == 'buy':  # Покупка Кристаллы
@@ -1476,7 +1475,7 @@ class Faction:
 
     def get_available_raw_material_lots(self) -> int:
         """Возвращает количество доступных для торговли лотов Кристаллы"""
-        return self.raw_material // 10000
+        return self.raw_material // 100
 
 def show_message(title, message):
     # === Оценка высоты текста ===
@@ -1606,7 +1605,7 @@ def open_build_popup(faction):
 
     # Подпись для больницы
     hosp_label = Label(
-        text=f"1 больница: +500 раб./-{faction.buildings_info_fraction()} крон",
+        text=f"1 больница: +50 раб./-{faction.buildings_info_fraction()} крон",
         font_size=adaptive_font,
         color=(1, 1, 1, 1),
         size_hint_y=None,
@@ -1619,7 +1618,7 @@ def open_build_popup(faction):
 
     # Подпись для фабрики
     fact_label = Label(
-        text="1 фабрика: +1000 крист./-200 рабочих",
+        text="1 фабрика: +100 крист./-20 рабочих",
         font_size=adaptive_font,
         color=(1, 1, 1, 1),
         size_hint_y=None,
@@ -1906,12 +1905,12 @@ def handle_trade(game_instance, action, quantity, trade_popup, sell_all=False):
             quantity = int(quantity)
 
         # Проверяем, что количество Кристаллы для продажи не превышает доступное
-        if action == 'sell' and quantity * 10000 > game_instance.resources["Кристаллы"]:
+        if action == 'sell' and quantity * 100 > game_instance.resources["Кристаллы"]:
             raise ValueError("Недостаточно Кристаллы для продажи.")
 
         result = game_instance.trade_raw_material(action, quantity)
         if result:  # Если торговля прошла успешно
-            economic_efficiency = round(price_per_lot / 10000, 2)
+            economic_efficiency = round(price_per_lot / 100, 2)
             game_instance.update_economic_efficiency(economic_efficiency)
 
             if action == 'buy':

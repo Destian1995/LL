@@ -420,22 +420,22 @@ class AIController:
     def manage_buildings(self):
         """
         Управляет строительством зданий для ИИ.
-        Теперь ИИ строит 250 больниц и 250 фабрик вместо 500 одного типа.
+        Теперь ИИ строит 15 больниц и 15 фабрик
         """
         try:
             crowns = self.resources['Кроны']
             building_budget = int(crowns * 0.99)  # Используем 90% бюджета на строительство
 
-            if building_budget < 250:
+            if building_budget < 25:
                 print("Недостаточно средств для строительства.")
                 return
 
-            # Фиксируем максимальное количество зданий — 500 всего
-            max_hospitals = 250
-            max_factories = 250
+            # Фиксируем максимальное количество зданий — 30 всего
+            max_hospitals = 15
+            max_factories = 15
 
             # Проверяем, сколько можно построить с учетом денег
-            max_by_money = building_budget // 125  # Каждое здание стоит 125 крон
+            max_by_money = building_budget // 12  # Каждое здание стоит 12 крон
             total_possible = min(max_hospitals + max_factories, max_by_money)
 
             # Пропорционально делим возможное количество
@@ -460,7 +460,7 @@ class AIController:
         :param building_type: Тип здания ("Больница" или "Фабрика").
         :param count: Максимальное количество зданий для постройки.
         """
-        cost = 125 if building_type == 'Больница' else 125
+        cost = 12 if building_type == 'Больница' else 12
 
         # Загружаем актуальные данные о городах фракции
         self.cities = self.load_cities()
@@ -479,7 +479,7 @@ class AIController:
         total_buildings = current_factories + current_hospitals
 
         # Максимальное количество зданий в городе
-        max_buildings_per_city = 500
+        max_buildings_per_city = 25
 
         # Вычисляем, сколько еще можно построить зданий в городе
         remaining_slots = max_buildings_per_city - total_buildings
@@ -515,14 +515,14 @@ class AIController:
         return True
 
     def sell_resources(self):
-        if self.resources['Кристаллы'] > 1000:
+        if self.resources['Кристаллы'] > 100:
             amount_to_sell = int(self.resources['Кристаллы'] * 0.95)
             earned_crowns = int(amount_to_sell * self.raw_material_price)
             self.resources['Кристаллы'] -= amount_to_sell
             self.resources['Кроны'] += earned_crowns
 
             # Рассчитываем эффективность сделки (цена за единицу Кристаллы)
-            price_per_lot = self.raw_material_price / 1000
+            price_per_lot = self.raw_material_price / 100
             self.update_economic_efficiency(price_per_lot)  # Обновляем эффективность
 
             print(f"Продано {amount_to_sell} Кристаллы за {earned_crowns} крон.")
@@ -1426,7 +1426,7 @@ class AIController:
 
             # Коэффициенты для каждой фракции
             faction_coefficients = {
-                'Люди': {'money_loss': 100, 'food_loss': 0.4},
+                'Север': {'money_loss': 100, 'food_loss': 0.4},
                 'Эльфы': {'money_loss': 10, 'food_loss': 0.04},
                 'Вампиры': {'money_loss': 5, 'food_loss': 0.03},
                 'Адепты': {'money_loss': 100, 'food_loss': 0.07},
@@ -1440,8 +1440,8 @@ class AIController:
             coeffs = faction_coefficients[faction]
 
             # Обновление ресурсов с учетом коэффициентов
-            self.born_peoples = int(self.hospitals * 500)
-            self.work_peoples = int(self.factories * 200)
+            self.born_peoples = int(self.hospitals * 50)
+            self.work_peoples = int(self.factories * 20)
             self.clear_up_peoples = (self.born_peoples - self.work_peoples + self.tax_effects) + int(
                 self.city_count * (self.population / 100))
 

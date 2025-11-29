@@ -61,10 +61,10 @@ def parse_formatted_number(formatted_str):
 
 
 # Список всех фракций
-FACTIONS = ["Люди", "Эльфы", "Вампиры", "Элины", "Адепты"]
+FACTIONS = ["Север", "Эльфы", "Вампиры", "Элины", "Адепты"]
 global_resource_manager = {}
 translation_dict = {
-    "Люди": "people",
+    "Север": "people",
     "Эльфы": "elfs",
     "Адепты": "adept",
     "Вампиры": "vampire",
@@ -1312,7 +1312,7 @@ class GameScreen(Screen):
             count = cursor.fetchone()[0]
             if count == 0:
                 # Список всех фракций
-                factions = ["Люди", "Эльфы", "Вампиры", "Адепты", "Элины"]
+                factions = ["Север", "Эльфы", "Вампиры", "Адепты", "Элины"]
 
                 # Список возможных политических систем
                 systems = ["Смирение", "Борьба"]

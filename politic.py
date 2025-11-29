@@ -10,7 +10,7 @@ from nobles import show_nobles_window
 from diversion import show_diversion_window
 
 translation_dict = {
-    "Люди": "arkadia",
+    "Север": "arkadia",
     "Эльфы": "celestia",
     "Адепты": "eteria",
     "Вампиры": "giperion",
@@ -19,7 +19,7 @@ translation_dict = {
 
 # Словарь для перевода названий файлов в русскоязычные названия фракций
 faction_names = {
-    "arkadia_in_city": "Люди",
+    "arkadia_in_city": "Север",
     "celestia_in_city": "Эльфы",
     "eteria_in_city": "Адепты",
     "giperion_in_city": "Вампиры",
@@ -27,7 +27,7 @@ faction_names = {
 }
 
 faction_names_build = {
-    "arkadia_buildings_city": "Люди",
+    "arkadia_buildings_city": "Север",
     "celestia_buildings_city": "Эльфы",
     "eteria_buildings_city": "Адепты",
     "giperion_buildings_city": "Вампиры",
@@ -1184,7 +1184,7 @@ def show_peace_form(player_faction, conn):
 # Словарь фраз для каждой фракции
 alliance_phrases = {
     "Эльфы": "Природа восторжествует!",
-    "Люди": "Светлого неба!",
+    "Север": "Светлого неба!",
     "Адепты": "Да хранит нас Бог!",
     "Элины": "Огонь пустыни защитит Вас!",
     "Вампиры": "Теплокровных оставьте нам..."
@@ -1599,7 +1599,7 @@ def show_declare_war_form(faction, conn):
     # Уникальные фразы для фракций
     faction_phrases = {
         "Эльфы": "Еще один решил что может гадить в наших лесах!",
-        "Люди": "Ты знаешь что такое 12 калибр? Сейчас узнаешь...",
+        "Север": "Ты знаешь что такое 12 калибр? Сейчас узнаешь...",
         "Адепты": "С нами Бог!",
         "Элины": "Повелитель песка Вас уничтожит...",
         "Вампиры": "Кажется у нас будет новый слуга...кто бы это мог быть?"
