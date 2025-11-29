@@ -76,25 +76,7 @@ def format_number(number):
     absolute = abs(number)
     sign = -1 if number < 0 else 1
 
-    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:  # 1e36
-        return f"{sign * absolute / 1e36:.1f} андец."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:  # 1e33
-        return f"{sign * absolute / 1e33:.1f} децил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:  # 1e30
-        return f"{sign * absolute / 1e30:.1f} нонил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e27
-        return f"{sign * absolute / 1e27:.1f} октил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e24
-        return f"{sign * absolute / 1e24:.1f} септил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e21
-        return f"{sign * absolute / 1e21:.1f} секст."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:  # 1e18
-        return f"{sign * absolute / 1e18:.1f} квинт."
-    elif absolute >= 1_000_000_000_000_000_000_000:  # 1e15
-        return f"{sign * absolute / 1e15:.1f} квадр."
-    elif absolute >= 1_000_000_000_000_000_000:  # 1e12
-        return f"{sign * absolute / 1e12:.1f} трлн."
-    elif absolute >= 1_000_000_000:  # 1e9
+    if absolute >= 1_000_000_000:  # 1e9
         return f"{sign * absolute / 1e9:.1f} млрд."
     elif absolute >= 1_000_000:  # 1e6
         return f"{sign * absolute / 1e6:.1f} млн."
@@ -657,8 +639,8 @@ def workshop(faction, db_conn):
             seasons_bonus = [s.strip() for s in current_data['season'].split(',')]
 
         # Логика расчета стоимости
-        attack_cost = abs(attack_bonus) * random.uniform(0.4, 1.0) * 1000000
-        defense_cost = abs(defense_bonus) * random.uniform(0.6, 1.1) * 1000000
+        attack_cost = abs(attack_bonus) * random.uniform(0.4, 1.0) * 10000
+        defense_cost = abs(defense_bonus) * random.uniform(0.6, 1.1) * 10000
         base_cost = attack_cost + defense_cost
 
         # === Расчет скидки по сезонам ===
@@ -690,7 +672,7 @@ def workshop(faction, db_conn):
             negative_modifier = 1 - (negative_count * 0.3)
 
         total_cost = base_cost * (1 - season_discount) * negative_modifier
-        min_cost = 500000
+        min_cost = 5000
         total_cost = max(min_cost, total_cost)
 
         artifact_cost_label = Label(
@@ -753,16 +735,16 @@ def workshop(faction, db_conn):
 
         def on_create(instance):
             current_data['slot'] = slots[slot_index[0]]  # Обновляем слот перед созданием
-            if total_cost > 20000000000:
+            if total_cost > 200000000:
                 show_message("Ошибка",
-                             "Стоимость производства артефакта превышает 20 млрд. крон. \nПожалуйста, уменьшите параметры артефакта.")
+                             "Стоимость производства артефакта превышает 20 млн. крон. \nПожалуйста, уменьшите параметры артефакта.")
                 return
 
-            if faction.money < 35000000:
-                show_message("Ошибка", "Недостаточно средств для создания чертежа артефакта (требуется 35 млн крон)")
+            if faction.money < 350000:
+                show_message("Ошибка", "Недостаточно средств для создания чертежа артефакта (требуется 350 тыс. крон)")
                 return
 
-            faction.money -= 35000000
+            faction.money -= 350000
             money_label = Label(
                 text=f"Баланс: {format_number(faction.money)}",
                 font_size=font_small,

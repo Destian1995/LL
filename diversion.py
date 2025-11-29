@@ -20,7 +20,7 @@ ACCENT_COLOR = get_color_from_hex("#bb86fc")
 SECONDARY_COLOR = get_color_from_hex("#03dac6")
 WARNING_COLOR = get_color_from_hex("#cf6679")
 DISABLED_COLOR = get_color_from_hex("#444444")
-SELECTED_OUTLINE = get_color_from_hex("#bb86fc")  # Цвет подсветки
+SELECTED_OUTLINE = get_color_from_hex("#bb86fc")
 
 def format_number(number):
     if not isinstance(number, (int, float)):
@@ -29,25 +29,8 @@ def format_number(number):
         return "0"
     absolute = abs(number)
     sign = -1 if number < 0 else 1
-    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e36:.1f} андец."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e33:.1f} децил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e30:.1f} нонил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e27:.1f} октил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e24:.1f} септил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e21:.1f} секст."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e18:.1f} квинт."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e15:.1f} квадр."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:
-        return f"{sign * absolute / 1e12:.1f} трлн."
-    elif absolute >= 1_000_000_000:
+
+    if absolute >= 1_000_000_000:
         return f"{sign * absolute / 1e9:.1f} млрд."
     elif absolute >= 1_000_000:
         return f"{sign * absolute / 1e6:.1f} млн."
@@ -312,16 +295,16 @@ def show_operations_window(conn, player_faction, cash_player, target_faction, ta
 
     ops_descriptions = {
         'Саботаж': {
-            'desc': 'Снижение численности войск в городе на 5-40% (50% шанс успеха). Стоимость: 15 млн.',
-            'cost': 15_000_000
+            'desc': 'Снижение численности войск в городе на 5-40% (50% шанс успеха). Стоимость: 150 тыс.',
+            'cost': 150_000
         },
         'Мятеж': {
             'desc': 'Захват города без гарнизона.',
-            'cost': 70_000_000
+            'cost': 700_000
         },
         'Заказ': {
-            'desc': 'Убийство вражеского героя (30% шанс успеха). Стоимость: 25 млн.',
-            'cost': 25_000_000
+            'desc': 'Убийство вражеского героя (30% шанс успеха). Стоимость: 250 тыс.',
+            'cost': 250_000
         }
     }
 
@@ -397,7 +380,7 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
     )
 
     desc_label = Label(
-        text="Выберите сумму (от 70 млн до 650 млн):",
+        text="Выберите сумму (от 700 тыс до 6.5 млн):",
         font_size=font_info,
         color=TEXT_COLOR,
         halign='center',
@@ -408,13 +391,13 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
 
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
-    max_affordable = min(650_000_000, current_money)
+    max_affordable = min(6_500_000, current_money)
 
     slider = Slider(
-        min=70_000_000,
+        min=700_000,
         max=max_affordable,
-        value=70_000_000,
-        step=1_000_000
+        value=700_000,
+        step=10000
     )
     slider_label = Label(
         text=f"Выбрано: {format_number(slider.value)}",
@@ -427,9 +410,9 @@ def show_rebellion_cost_selection(conn, player_faction, cash_player, op_name, op
     slider.bind(value=lambda instance, value: slider_label.setter('text')(slider_label, f"Выбрано: {format_number(value)}"))
 
     def calculate_rebels(cost):
-        base_cost = 70_000_000
+        base_cost = 700_000
         extra_money = max(0, cost - base_cost)
-        extra_percentage = (extra_money // 10_000_000) * 0.37
+        extra_percentage = (extra_money // 100_000) * 0.37
         total_percentage = 1.0 + extra_percentage
         return int(2750 * total_percentage)
 

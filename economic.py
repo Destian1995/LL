@@ -209,6 +209,7 @@ class Faction:
         if self.money < 10:
             print("Недостаточно крон для авто-строительства. Минимум требуется 200 крон.")
             return
+
         print("Проверка доступных городов перед загрузкой:", self.cities)
         # Загружаем актуальные данные о городах и зданиях
         self.load_cities()
@@ -268,7 +269,11 @@ class Faction:
 
         # Распределяем здания по городам
         try:
-            selected_cities = random.sample(available_cities, max_full_cycles * total_per_cycle)
+            # ✅ Исправленная строка: используем int() для округления
+            selected_count = int(max_full_cycles * total_per_cycle)
+            # Дополнительно проверим, чтобы не превысить длину available_cities
+            selected_count = min(selected_count, len(available_cities))
+            selected_cities = random.sample(available_cities, selected_count)
         except ValueError:
             print("Ошибка при выборе городов. Возможно, недостаточно доступных городов.")
             return
@@ -746,8 +751,8 @@ class Faction:
         Динамически рассчитывает максимальный лимит армии
         на основе базового значения и бонуса от городов.
         """
-        base_limit = 400_000
-        city_bonus = 100_000 * self.city_count
+        base_limit = 4000
+        city_bonus = 1000 * self.city_count
         return base_limit + city_bonus
 
     def load_relations(self):
@@ -1135,12 +1140,12 @@ class Faction:
 
         # Проверка, чтобы ресурсы не опускались ниже 0 и не превышали максимальные значения
         self.resources.update({
-            "Кроны": max(min(int(self.money), 10_000_000), 0),  # Не более 10 млн
-            "Рабочие": max(min(int(self.free_peoples), 500_000), 0),  # Не более 500 тыс
-            "Кристаллы": max(min(int(self.raw_material), 10_000_000), 0),  # Не более 10 млн
-            "Население": max(min(int(self.population), 1_000_000), 0),  # Не более 1 млн
-            "Потребление": self.current_consumption,  # Используем рассчитанное значение
-            "Лимит армии": self.max_army_limit
+            "Кроны": max(min(round(self.money, 2), 10_000_000), 0),  # Не более 10 млн, 2 знака
+            "Рабочие": max(min(round(self.free_peoples, 2), 500_000), 0),  # Не более 500 тыс, 2 знака
+            "Кристаллы": max(min(round(self.raw_material, 2), 10_000_000), 0),  # Не более 10 млн, 2 знака
+            "Население": max(min(round(self.population, 2), 1_000_000), 0),  # Не более 1 млн, 2 знака
+            "Потребление": round(self.current_consumption, 2),  # 2 знака
+            "Лимит армии": round(self.max_army_limit, 2)  # 2 знака
         })
 
         # Рассчитываем чистую прибыль (разница после *всех* изменений)
@@ -1427,6 +1432,7 @@ class Faction:
 
         # Обновляем значение последнего загруженного хода
         self.last_turn_loaded = current_turn
+
     def trade_raw_material(self, action, quantity):
         """
         Торговля Кристаллым через таблицу resources.
@@ -1435,7 +1441,8 @@ class Faction:
         """
         # Преобразуем количество лотов в единицы Кристаллы
         total_quantity = quantity * 100
-        total_cost = self.current_raw_material_price * quantity
+        # ✅ Округляем стоимость до 2 знаков после запятой
+        total_cost = round(self.current_raw_material_price * quantity, 2)
 
         if action == 'buy':  # Покупка Кристаллы
             # Проверяем, достаточно ли денег для покупки
