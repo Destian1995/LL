@@ -794,7 +794,7 @@ class Faction:
         try:
             system = self.load_political_system()
             if system == "Смирение":
-                crowns_bonus = int(self.money_up * 4.40)
+                crowns_bonus = int(self.money_up * 7.75)
                 if crowns_bonus > 0:
                     self.money += crowns_bonus
                     bonuses["Кроны"] = crowns_bonus
