@@ -639,8 +639,8 @@ def workshop(faction, db_conn):
             seasons_bonus = [s.strip() for s in current_data['season'].split(',')]
 
         # Логика расчета стоимости
-        attack_cost = abs(attack_bonus) * random.uniform(0.4, 1.0) * 10000
-        defense_cost = abs(defense_bonus) * random.uniform(0.6, 1.1) * 10000
+        attack_cost = abs(attack_bonus) * random.uniform(0.4, 1.0) * 1000
+        defense_cost = abs(defense_bonus) * random.uniform(0.6, 1.1) * 1000
         base_cost = attack_cost + defense_cost
 
         # === Расчет скидки по сезонам ===
@@ -740,11 +740,11 @@ def workshop(faction, db_conn):
                              "Стоимость производства артефакта превышает 20 млн. крон. \nПожалуйста, уменьшите параметры артефакта.")
                 return
 
-            if faction.money < 350000:
-                show_message("Ошибка", "Недостаточно средств для создания чертежа артефакта (требуется 350 тыс. крон)")
+            if faction.money < 75000:
+                show_message("Ошибка", "Недостаточно средств для создания чертежа артефакта (требуется 75 тыс. крон)")
                 return
 
-            faction.money -= 350000
+            faction.money -= 75000
             money_label = Label(
                 text=f"Баланс: {format_number(faction.money)}",
                 font_size=font_small,

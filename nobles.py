@@ -471,7 +471,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     # --- Создаем попап ---
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
     title_label = Label(
-        text="Санкция на физическое устранение (20 млн. крон)",
+        text="Санкция на физическое устранение (200 тыс. крон)",
         font_size=font_title,
         bold=True,
         size_hint_y=None,
