@@ -35,7 +35,7 @@ NEUTRAL_CITIES = TOTAL_CITIES - FACTION_CITIES
 ALL_CITIES = FACTION_CITIES + TOTAL_CITIES
 # Константы
 MAX_NEIGHBOURS = 3  # Максимум 3 соседа
-MIN_DISTANCE_PX = 120   # <-- Увеличиваем до расстояния между Штормградом и Ферраданом
+MIN_DISTANCE_PX = 120   # <-- Увеличиваем до расстояния между
 MAX_DISTANCE_PX = 230   # Можно немного увеличить для большей гибкости
 MAP_SIZE = (1200, 800)
 MARGIN = 100            # Лучше тоже чуть увеличить, чтобы города не прилипали к краям
