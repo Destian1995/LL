@@ -11,6 +11,7 @@ from nobles_generator import generate_initial_nobles
 from nobles_generator import process_nobles_turn
 from kivy.core.audio import SoundLoader
 
+
 # Новые кастомные виджеты
 class ModernButton(Button):
     bg_color = ListProperty([0.11, 0.15, 0.21, 1])
@@ -29,15 +30,7 @@ def parse_formatted_number(formatted_str):
         'тыс': 1e3,
         'млн': 1e6,
         'млрд': 1e9,
-        'трлн': 1e12,
-        'квадр': 1e15,
-        'квинт': 1e18,
-        'секст': 1e21,
-        'септил': 1e24,
-        'октил': 1e27,
-        'нонил': 1e30,
-        'децил': 1e33,
-        'андец': 1e36
+        'трлн': 1e12
     }
 
     try:

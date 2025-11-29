@@ -5,41 +5,25 @@ from heroes import open_artifacts_popup
 from create_artifacts import workshop
 
 def format_number(number):
-    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
+    """Форматирует число с добавлением приставок (тыс., млн., млрд.) и одним знаком после запятой"""
     if not isinstance(number, (int, float)):
         return str(number)
     if number == 0:
         return "0"
-
     absolute = abs(number)
     sign = -1 if number < 0 else 1
-
-    if absolute >= 1_000_000_000_000_000_000_000_000_000_000_000_000:  # 1e36
-        return f"{sign * absolute / 1e36:.1f} андец."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000_000:  # 1e33
-        return f"{sign * absolute / 1e33:.1f} децил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000_000:  # 1e30
-        return f"{sign * absolute / 1e30:.1f} нонил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000_000:  # 1e27
-        return f"{sign * absolute / 1e27:.1f} октил."
-    elif absolute >= 1_000_000_000_000_000_000_000_000:  # 1e24
-        return f"{sign * absolute / 1e24:.1f} септил."
-    elif absolute >= 1_000_000_000_000_000_000_000:  # 1e21
-        return f"{sign * absolute / 1e21:.1f} секст."
-    elif absolute >= 1_000_000_000_000_000_000:  # 1e18
-        return f"{sign * absolute / 1e18:.1f} квинт."
-    elif absolute >= 1_000_000_000_000_000:  # 1e15
-        return f"{sign * absolute / 1e15:.1f} квадр."
-    elif absolute >= 1_000_000_000_000:  # 1e12
-        return f"{sign * absolute / 1e12:.1f} трлн."
-    elif absolute >= 1_000_000_000:  # 1e9
+    # Если абсолютное значение меньше 1000, просто округляем до одного знака после запятой
+    if absolute < 1000:
+        formatted_value = f"{number:.1f}"
+        return formatted_value
+    # Продолжаем форматирование с приставками для чисел >= 1000
+    if absolute >= 1_000_000_000:  # 1e9
         return f"{sign * absolute / 1e9:.1f} млрд."
     elif absolute >= 1_000_000:  # 1e6
         return f"{sign * absolute / 1e6:.1f} млн."
-    elif absolute >= 1_000:  # 1e3
+    elif absolute >= 1000:  # 1e3 (исправлено с 1_000 на 1000 для ясности, они равны)
         return f"{sign * absolute / 1e3:.1f} тыс."
-    else:
-        return f"{number}"
+    return f"{number:.1f}"
 
 
 def save_building_change(faction_name, city, building_type, delta, conn):
@@ -1416,14 +1400,14 @@ class Faction:
 
         # Генерация новой цены
         if current_turn == 1:  # Если это первый ход
-            self.current_raw_material_price = round(random.uniform(0.4, 9.5), 2)
+            self.current_raw_material_price = round(random.uniform(0.7, 32.7), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
         else:
             # Генерация изменения цены (дробное число)
             price_change = random.uniform(-1.5, 1.5)
             self.current_raw_material_price = self.raw_material_price_history[-1] + price_change
             # Ограничиваем диапазон
-            self.current_raw_material_price = round(max(0.4, min(9.5, self.current_raw_material_price)), 2)
+            self.current_raw_material_price = round(max(0.7, min(32.7, self.current_raw_material_price)), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
 
         # Ограничение длины истории цен до 25 элементов

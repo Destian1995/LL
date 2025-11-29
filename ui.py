@@ -1,8 +1,26 @@
 from db_lerdon_connect import *
 
 from fight import fight
-from economic import format_number
 
+
+def format_number(number):
+    """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
+    if not isinstance(number, (int, float)):
+        return str(number)
+    if number == 0:
+        return "0"
+
+    absolute = abs(number)
+    sign = -1 if number < 0 else 1
+
+    if absolute >= 1_000_000_000:  # 1e9
+        return f"{sign * absolute / 1e9:.1f} млрд."
+    elif absolute >= 1_000_000:  # 1e6
+        return f"{sign * absolute / 1e6:.1f} млн."
+    elif absolute >= 1_000:  # 1e3
+        return f"{sign * absolute / 1e3:.1f} тыс."
+    else:
+        return f"{number}"
 
 class FortressInfoPopup(Popup):
     def __init__(self, ai_fraction, city_coords, player_fraction, conn, **kwargs):
