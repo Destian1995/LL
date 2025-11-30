@@ -1400,14 +1400,14 @@ class Faction:
 
         # Генерация новой цены
         if current_turn == 1:  # Если это первый ход
-            self.current_raw_material_price = round(random.uniform(0.7, 32.7), 2)
+            self.current_raw_material_price = round(random.uniform(16.7, 99.7), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
         else:
             # Генерация изменения цены (дробное число)
-            price_change = random.uniform(-1.5, 1.5)
+            price_change = random.uniform(-4.5, 4.5)
             self.current_raw_material_price = self.raw_material_price_history[-1] + price_change
             # Ограничиваем диапазон
-            self.current_raw_material_price = round(max(0.7, min(32.7, self.current_raw_material_price)), 2)
+            self.current_raw_material_price = round(max(16.7, min(99.7, self.current_raw_material_price)), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
 
         # Ограничение длины истории цен до 25 элементов
