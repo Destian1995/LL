@@ -1052,7 +1052,7 @@ class Faction:
         self.taxes_info = int(self.calculate_tax_income())
 
         # Рассчитываем базовый прирост Кристаллов (до бонусов городов)
-        base_raw_material_production = (self.factories * 100) - (self.population * coeffs['food_loss'])
+        base_raw_material_production = (self.factories * 30) - (self.population * coeffs['food_loss'])
         self.food_info = int(base_raw_material_production) - self.current_consumption
 
         # Загружаем коэффициенты kf_crystal для городов фракции
@@ -1400,14 +1400,14 @@ class Faction:
 
         # Генерация новой цены
         if current_turn == 1:  # Если это первый ход
-            self.current_raw_material_price = round(random.uniform(16.7, 99.7), 2)
+            self.current_raw_material_price = round(random.uniform(26.3, 114.7), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
         else:
             # Генерация изменения цены (дробное число)
             price_change = random.uniform(-4.5, 4.5)
             self.current_raw_material_price = self.raw_material_price_history[-1] + price_change
             # Ограничиваем диапазон
-            self.current_raw_material_price = round(max(16.7, min(99.7, self.current_raw_material_price)), 2)
+            self.current_raw_material_price = round(max(26.3, min(114.7, self.current_raw_material_price)), 2)
             self.raw_material_price_history.append(self.current_raw_material_price)
 
         # Ограничение длины истории цен до 25 элементов
@@ -1421,7 +1421,7 @@ class Faction:
         """
         Торговля Кристаллым через таблицу resources.
         :param action: Действие ('buy' для покупки, 'sell' для продажи).
-        :param quantity: Количество лотов (1 лот = 10,000 единиц Кристаллы).
+        :param quantity: Количество лотов (1 лот = 100 единиц Кристаллы).
         """
         # Преобразуем количество лотов в единицы Кристаллы
         total_quantity = quantity * 100
