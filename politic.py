@@ -765,7 +765,7 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
     # Описание
     description_label = Label(
         text="Обмен культурными ценностями повышает доверие между фракциями (+7% к отношениям).\n"
-             "Стоимость: от 5 млн. крон.",
+             "Стоимость: от 50 тыс. крон.",
         size_hint=(1, None),
         height=font_size * 4,
         font_size=font_size,
@@ -832,7 +832,7 @@ def show_cultural_exchange_form(faction, game_area, class_faction, conn):
             target_city_count = cursor2.fetchone()[0]
 
             # Стоимость договора
-            cost = 1_000_000 + (4_000_000 * target_city_count)
+            cost = 10000 + (40000 * target_city_count)
 
             # Баланс игрока
             current_balance = political_cash.resources["Кроны"]
@@ -1313,7 +1313,7 @@ def show_alliance_form(faction, game_area, class_faction, conn):
         target_city_count = cursor.fetchone()[0]
 
         # Стоимость альянса
-        alliance_cost = 10_000_000 + (30_000_000 * target_city_count)
+        alliance_cost = 100_000 + (300_000 * target_city_count)
 
         # Баланс игрока
         political_cash = PoliticalCash(faction, class_faction)
@@ -1599,10 +1599,10 @@ def show_declare_war_form(faction, conn):
     # Уникальные фразы для фракций
     faction_phrases = {
         "Эльфы": "Еще один решил что может гадить в наших лесах!",
-        "Север": "Ты знаешь что такое 12 калибр? Сейчас узнаешь...",
-        "Адепты": "С нами Бог!",
-        "Элины": "Повелитель песка Вас уничтожит...",
-        "Вампиры": "Кажется у нас будет новый слуга...кто бы это мог быть?"
+        "Север": "Грядет холодный ветер перемен...",
+        "Адепты": "Смерть еретикам!",
+        "Элины": "Песок поглотит Вас...",
+        "Вампиры": "Что с головушкой совсем беда? Ну ничего....исправим.."
     }
 
     # Контент Popup
