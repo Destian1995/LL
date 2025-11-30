@@ -1052,7 +1052,7 @@ class Faction:
         self.taxes_info = int(self.calculate_tax_income())
 
         # Рассчитываем базовый прирост Кристаллов (до бонусов городов)
-        base_raw_material_production = (self.factories * 30) - (self.population * coeffs['food_loss'])
+        base_raw_material_production = (self.factories * 105) - (self.population * coeffs['food_loss'])
         self.food_info = int(base_raw_material_production) - self.current_consumption
 
         # Загружаем коэффициенты kf_crystal для городов фракции
