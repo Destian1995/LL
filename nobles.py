@@ -374,7 +374,7 @@ def get_events_count_from_history(conn):
 
 def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_main_list_callback):
     """Показывает всплывающее окно для Тайной службы с выбором цели (табличный формат)."""
-    COST_SECRET_SERVICE = 200_000  # Константа стоимости
+    COST_SECRET_SERVICE = 140_000  # Константа стоимости
 
     # --- Проверка баланса ---
     cash_player.load_resources()
@@ -471,7 +471,7 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     # --- Создаем попап ---
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
     title_label = Label(
-        text="Санкция на физическое устранение (200 тыс. крон)",
+        text="Санкция на физическое устранение (140 тыс. крон)",
         font_size=font_title,
         bold=True,
         size_hint_y=None,
@@ -907,7 +907,7 @@ def show_nobles_window(conn, faction, class_faction):
     )
 
     secret_service_btn = styled_btn(
-        "Тайная служба\n(200 тыс.)",
+        "Тайная служба\n(140 тыс.)",
         lambda btn: show_secret_service_popup(conn, on_secret_service_result, cash_player, refresh_nobles_list),
         bg_color=(0.8, 0.5, 0.5, 1)
     )
