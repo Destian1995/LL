@@ -105,19 +105,19 @@ def calculate_coefficient(rel):
     if rel < 15:
         return 0
     if 15 <= rel < 25:
-        return 0.08
+        return 0.1
     if 25 <= rel < 35:
-        return 0.3
+        return 0.4
     if 35 <= rel < 50:
-        return 0.8
+        return 0.9
     if 50 <= rel < 60:
-        return 1.0
+        return 1.5
     if 60 <= rel < 75:
-        return 1.4
+        return 2
     if 75 <= rel < 90:
-        return 2.0
+        return 3.1
     if 90 <= rel <= 100:
-        return 2.9
+        return 4
     return 0
 
 
@@ -544,19 +544,19 @@ def show_trade_agreement_form(faction, game_area, conn):
         if rel < 15:
             return 0
         if 15 <= rel < 25:
-            return 0.08
+            return 0.1
         if 25 <= rel < 35:
-            return 0.3
+            return 0.4
         if 35 <= rel < 50:
-            return 0.8
+            return 0.9
         if 50 <= rel < 60:
-            return 1.0
+            return 1.5
         if 60 <= rel < 75:
-            return 1.4
+            return 2
         if 75 <= rel < 90:
-            return 2.0
+            return 3.1
         if 90 <= rel <= 100:
-            return 2.9
+            return 4
         return 0
 
     def update_sliders(*args):
