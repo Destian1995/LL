@@ -375,25 +375,24 @@ class AdvisorView(FloatLayout):
 
     def calculate_coefficient(self, relation_level):
         """Рассчитывает коэффициент на основе уровня отношений"""
-        relation_level = int(relation_level)
-        if relation_level < 15:
+        rel = int(relation_level)
+        if rel < 15:
             return 0
-        elif 15 <= relation_level < 25:
-            return 0.08
-        elif 25 <= relation_level < 35:
-            return 0.3
-        elif 35 <= relation_level < 50:
-            return 0.8
-        elif 50 <= relation_level < 60:
-            return 1.0
-        elif 60 <= relation_level < 75:
-            return 1.4
-        elif 75 <= relation_level < 90:
-            return 2.0
-        elif 90 <= relation_level <= 100:
-            return 2.9
-        else:
-            return 0
+        if 15 <= rel < 25:
+            return 0.1
+        if 25 <= rel < 35:
+            return 0.4
+        if 35 <= rel < 50:
+            return 0.9
+        if 50 <= rel < 60:
+            return 1.5
+        if 60 <= rel < 75:
+            return 2
+        if 75 <= rel < 90:
+            return 3.1
+        if 90 <= rel <= 100:
+            return 4
+        return 0
 
     def load_combined_relations(self):
         """
@@ -814,19 +813,19 @@ class AdvisorView(FloatLayout):
 
     def get_relation_trade_color(self, value):
         """Возвращает цвет в зависимости от значения коэффициента"""
-        if value <= 0.09:
+        if value <= 0.1:
             return (0.8, 0.1, 0.1, 1)  # Красный
-        elif 0.09 < value <= 0.2:
+        elif 0.1 < value <= 0.4:
             return (1.0, 0.5, 0.0, 1)  # Оранжевый
-        elif 0.2 < value <= 0.8:
+        elif 0.4 < value <= 0.9:
             return (1.0, 0.8, 0.0, 1)  # Желтый
-        elif 0.8 < value <= 1.0:
+        elif 0.9 < value <= 1.5:
             return (0.2, 0.7, 0.3, 1)  # Зеленый
-        elif 1.0 < value <= 1.4:
+        elif 1.5 < value <= 2:
             return (0.0, 0.8, 0.8, 1)  # Голубой
-        elif 1.4 < value <= 2.0:
+        elif 2 < value <= 3.1:
             return (0.0, 0.6, 1.0, 1)  # Синий
-        elif 2.0 < value <= 3.1:
+        elif 3.1 < value <= 4:
             return (0.1, 0.3, 0.9, 1)  # Темно-синий
         else:
             return (1, 1, 1, 1)  # Белый
