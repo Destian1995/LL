@@ -521,11 +521,13 @@ class GameScreen(Screen):
             'different': 'files/status/ideology/un_red.png'     # Другая (Смирение)
         }
     }
-    def __init__(self, selected_faction, cities, conn=None, **kwargs):
+    def __init__(self, selected_faction, cities, conn=None, player_ideology=None, player_allies=None, **kwargs):
         super(GameScreen, self).__init__(**kwargs)
         self.selected_faction = selected_faction
         self.cities = cities
         self.conn = conn
+        self.player_ideology = player_ideology
+        self.player_allies = player_allies
 
         # --- Словарь для хранения таймеров ---
         self.scheduled_events = {}
