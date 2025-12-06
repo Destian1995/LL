@@ -22,7 +22,7 @@ author = Vladislav Lerdon Team
 # ---------------------------------
 
 
-requirements = python3==3.11.0, kivy==2.1.0, kivymd, pyjnius==1.5.0, cython==0.29.36, ffpyplayer, ffmpeg, sdl2, sdl2_image, sdl2_mixer, sdl2_ttf
+requirements = python3==3.11.0, kivy==2.2.0, kivymd, pyjnius==1.5.0, cython==0.29.36, ffpyplayer, ffmpeg, sdl2, sdl2_image, sdl2_mixer, sdl2_ttf
 
 # Для python-for-android (p4a)
 p4a.python_version = 3.11.0
