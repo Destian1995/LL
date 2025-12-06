@@ -212,6 +212,7 @@ def clear_tables(conn):
         "artifacts",
         "artifacts_ai",
         "artifact_effects_log",
+        "player_allies",
         "player_choices",
     ]
 
@@ -535,6 +536,7 @@ class LoadingScreen(FloatLayout):
     def step_restore_backup(self):
         print("Шаг 3: Восстановление из бэкапа...")
         self.update_progress(20)
+        restore_from_backup(self.conn)
         Clock.schedule_once(self.run_next_step, 0.5)
 
     def step_load_assets(self):
@@ -609,7 +611,6 @@ class MapWidget(Widget):
             # Отменяем задачу update_cities, если она была запланирована
             if self.update_cities_event:
                 Clock.unschedule(self.update_cities_event)
-                print(f"[MapWidget] Задача update_cities отменена при удалении виджета.")
             # Сброс ссылки на задачу
             self.update_cities_event = None
 
@@ -1971,8 +1972,7 @@ class KingdomSelectionWidget(MDFloatLayout):
                 # Создаем виджет карты
                 map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom, conn=self.conn)
                 # Загружаем города (нужно реализовать load_cities_from_db)
-                # cities = load_cities_from_db(self.conn, selected_kingdom)
-                cities = []  # Заглушка - замените на реальную загрузку городов
+                cities = load_cities_from_db(self.conn, selected_kingdom)
                 # Создаем экран игры
                 game_screen = GameScreen(
                     selected_kingdom,
