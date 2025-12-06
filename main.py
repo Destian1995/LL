@@ -995,347 +995,6 @@ class ModernSpinner(Spinner):
         Animation(background_color=self.bg_color, duration=0.2).start(self)
 
 
-class IdeologySelectionScreen(Screen):
-    """Экран выбора идеологии и количества союзников"""
-
-    def __init__(self, selected_faction, conn, **kwargs):
-        super().__init__(**kwargs)
-        self.selected_faction = selected_faction
-        self.conn = conn
-        self.selected_ideology = None
-        self.selected_allies = None
-        self.init_ui()
-
-    def init_ui(self):
-        # Фоновое изображение или видео
-        self.bg = Image(
-            source='files/menu/choice.mp4' if os.path.exists('files/menu/choice.mp4') else 'files/null.png',
-            allow_stretch=True,
-            keep_ratio=False,
-            size_hint=(1, 1)
-        )
-        if self.bg.source.endswith('.mp4'):
-            self.bg.state = 'play'
-            self.bg.options = {'eos': 'loop'}
-        self.add_widget(self.bg)
-
-        # Главный контейнер
-        main_container = BoxLayout(
-            orientation='vertical',
-            padding=dp(20),
-            spacing=dp(20),
-            size_hint=(0.8, 0.8),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
-        )
-
-        # Заголовок
-        title = Label(
-            text=f"Настройки для {self.selected_faction}",
-            font_size='32sp',
-            bold=True,
-            color=(1, 1, 1, 1),
-            outline_color=(0, 0, 0, 1),
-            outline_width=2,
-            size_hint_y=None,
-            height=dp(60)
-        )
-        main_container.add_widget(title)
-
-        # === ВЫБОР ИДЕОЛОГИИ ===
-        ideology_container = BoxLayout(
-            orientation='vertical',
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(200)
-        )
-
-        ideology_label = Label(
-            text="Идеология:",
-            font_size='24sp',
-            color=(1, 1, 1, 1),
-            size_hint_y=None,
-            height=dp(40)
-        )
-        ideology_container.add_widget(ideology_label)
-
-        # Кнопки выбора идеологии
-        ideology_buttons = BoxLayout(
-            orientation='horizontal',
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(60)
-        )
-
-        self.ideology_random_btn = ToggleButton(
-            text="Случайная",
-            group='ideology',
-            size_hint=(0.33, 1),
-            background_normal='',
-            background_color=(0.3, 0.3, 0.3, 1),
-            color=(1, 1, 1, 1)
-        )
-        self.ideology_random_btn.bind(on_press=lambda x: self.select_ideology('random'))
-
-        self.ideology_submission_btn = ToggleButton(
-            text="Смирение\n(Прирост крон от налогов)",
-            group='ideology',
-            size_hint=(0.33, 1),
-            background_normal='',
-            background_color=(0.2, 0.5, 0.8, 1),
-            color=(1, 1, 1, 1),
-            halign='center',
-            valign='middle'
-        )
-        self.ideology_submission_btn.bind(on_press=lambda x: self.select_ideology('Смирение'))
-
-        self.ideology_struggle_btn = ToggleButton(
-            text="Борьба\n(Прирост кристаллов от фабрик)",
-            group='ideology',
-            size_hint=(0.34, 1),
-            background_normal='',
-            background_color=(0.8, 0.2, 0.2, 1),
-            color=(1, 1, 1, 1),
-            halign='center',
-            valign='middle'
-        )
-        self.ideology_struggle_btn.bind(on_press=lambda x: self.select_ideology('Борьба'))
-
-        ideology_buttons.add_widget(self.ideology_random_btn)
-        ideology_buttons.add_widget(self.ideology_submission_btn)
-        ideology_buttons.add_widget(self.ideology_struggle_btn)
-        ideology_container.add_widget(ideology_buttons)
-
-        # Информация о выбранной идеологии
-        self.ideology_info = Label(
-            text="Выберите идеологию",
-            font_size='16sp',
-            color=(1, 1, 1, 1),
-            size_hint_y=None,
-            height=dp(40)
-        )
-        ideology_container.add_widget(self.ideology_info)
-
-        main_container.add_widget(ideology_container)
-
-        # === ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ===
-        allies_container = BoxLayout(
-            orientation='vertical',
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(200)
-        )
-
-        allies_label = Label(
-            text="Единомышленники:",
-            font_size='24sp',
-            color=(1, 1, 1, 1),
-            size_hint_y=None,
-            height=dp(40)
-        )
-        allies_container.add_widget(allies_label)
-
-        # Кнопки выбора количества союзников
-        allies_buttons = BoxLayout(
-            orientation='horizontal',
-            spacing=dp(10),
-            size_hint_y=None,
-            height=dp(60)
-        )
-
-        self.allies_random_btn = ToggleButton(
-            text="Случайное количество",
-            group='allies',
-            size_hint=(0.33, 1),
-            background_normal='',
-            background_color=(0.3, 0.3, 0.3, 1),
-            color=(1, 1, 1, 1)
-        )
-        self.allies_random_btn.bind(on_press=lambda x: self.select_allies('random'))
-
-        self.allies_one_btn = ToggleButton(
-            text="1 союзник",
-            group='allies',
-            size_hint=(0.33, 1),
-            background_normal='',
-            background_color=(0.2, 0.6, 0.3, 1),
-            color=(1, 1, 1, 1)
-        )
-        self.allies_one_btn.bind(on_press=lambda x: self.select_allies(1))
-
-        self.allies_two_btn = ToggleButton(
-            text="2 союзника",
-            group='allies',
-            size_hint=(0.34, 1),
-            background_normal='',
-            background_color=(0.2, 0.6, 0.3, 1),
-            color=(1, 1, 1, 1)
-        )
-        self.allies_two_btn.bind(on_press=lambda x: self.select_allies(2))
-
-        allies_buttons.add_widget(self.allies_random_btn)
-        allies_buttons.add_widget(self.allies_one_btn)
-        allies_buttons.add_widget(self.allies_two_btn)
-        allies_container.add_widget(allies_buttons)
-
-        # Информация о выбранном количестве союзников
-        self.allies_info = Label(
-            text="Выберите количество союзников",
-            font_size='16sp',
-            color=(1, 1, 1, 1),
-            size_hint_y=None,
-            height=dp(40)
-        )
-        allies_container.add_widget(self.allies_info)
-
-        main_container.add_widget(allies_container)
-
-        # === КНОПКИ УПРАВЛЕНИЯ ===
-        buttons_container = BoxLayout(
-            orientation='horizontal',
-            spacing=dp(20),
-            size_hint_y=None,
-            height=dp(60)
-        )
-
-        back_btn = Button(
-            text="Назад",
-            size_hint=(0.4, 1),
-            background_normal='',
-            background_color=(0.8, 0.2, 0.2, 1),
-            color=(1, 1, 1, 1),
-            font_size='18sp'
-        )
-        back_btn.bind(on_press=self.go_back)
-
-        start_btn = Button(
-            text="Начать игру",
-            size_hint=(0.6, 1),
-            background_normal='',
-            background_color=(0.2, 0.8, 0.2, 1),
-            color=(1, 1, 1, 1),
-            font_size='18sp',
-            disabled=True
-        )
-        self.start_game_btn = start_btn
-        start_btn.bind(on_press=self.start_game)
-
-        buttons_container.add_widget(back_btn)
-        buttons_container.add_widget(start_btn)
-        main_container.add_widget(buttons_container)
-
-        self.add_widget(main_container)
-
-    def select_ideology(self, ideology):
-        """Выбор идеологии"""
-        self.selected_ideology = ideology
-
-        if ideology == 'random':
-            self.ideology_info.text = "Идеология будет выбрана случайно"
-        elif ideology == 'Смирение':
-            self.ideology_info.text = "Выбрано Смирение: +775% к доходам от налогов"
-        elif ideology == 'Борьба':
-            self.ideology_info.text = "Выбрана Борьба: +510% к добыче кристаллов"
-
-        self.check_selection()
-
-    def select_allies(self, allies):
-        """Выбор количества союзников"""
-        self.selected_allies = allies
-
-        if allies == 'random':
-            self.allies_info.text = "Количество союзников будет выбрано случайно (1 или 2)"
-        elif allies == 1:
-            self.allies_info.text = "Будет 1 союзник с такой же идеологией"
-        elif allies == 2:
-            self.allies_info.text = "Будет 2 союзника с такой же идеологией"
-
-        self.check_selection()
-
-    def check_selection(self):
-        """Проверяем, можно ли активировать кнопку начала игры"""
-        if self.selected_ideology is not None and self.selected_allies is not None:
-            self.start_game_btn.disabled = False
-
-    def go_back(self, instance):
-        """Возврат к выбору фракции"""
-        from kivy.app import App
-        app = App.get_running_app()
-        app.root.current = 'kingdom_selection'
-
-    def start_game(self, instance):
-        """Сохранение выбора и начало игры"""
-        if self.selected_ideology is None or self.selected_allies is None:
-            return
-
-        # Сохраняем выбор игрока в БД
-        self.save_player_choices()
-
-        # Переходим к игре
-        from kivy.app import App
-        app = App.get_running_app()
-
-        # Создаем экран игры с переданными параметрами
-        try:
-            # Останавливаем фоновое видео если есть
-            if hasattr(self.bg, 'state'):
-                self.bg.state = 'stop'
-
-            # Загружаем города
-            cities = load_cities_from_db(self.conn, self.selected_faction)
-            if not cities:
-                print("Города не найдены.")
-                return
-
-            # Создаем GameScreen с выбранными параметрами
-            game_screen = GameScreen(
-                self.selected_faction,
-                cities,
-                conn=self.conn,
-                player_ideology=self.selected_ideology,
-                player_allies=self.selected_allies
-            )
-
-            # Переходим к игре
-            app.root.clear_widgets()
-            app.root.add_widget(game_screen)
-
-        except Exception as e:
-            print(f"Ошибка при запуске игры: {e}")
-
-    def save_player_choices(self):
-        """Сохраняет выбор игрока в БД"""
-        cursor = self.conn.cursor()
-
-        try:
-            # Создаем таблицу для хранения выбора игрока, если ее нет
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS player_choices (
-                    faction TEXT PRIMARY KEY,
-                    ideology TEXT,
-                    allies_count INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Удаляем старые записи для этой фракции
-            cursor.execute("DELETE FROM player_choices WHERE faction = ?", (self.selected_faction,))
-
-            # Сохраняем выбор
-            cursor.execute("""
-                INSERT INTO player_choices (faction, ideology, allies_count) 
-                VALUES (?, ?, ?)
-            """, (self.selected_faction,
-                  self.selected_ideology if self.selected_ideology != 'random' else None,
-                  self.selected_allies if self.selected_allies != 'random' else None))
-
-            self.conn.commit()
-            print(f"Выбор игрока сохранен: идеология={self.selected_ideology}, союзников={self.selected_allies}")
-
-        except sqlite3.Error as e:
-            print(f"Ошибка при сохранении выбора игрока: {e}")
-            self.conn.rollback()
-
-
 class KingdomSelectionWidget(MDFloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
         super(KingdomSelectionWidget, self).__init__(**kwargs)
@@ -1693,46 +1352,64 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.settings_content_container.add_widget(self.faction_info_container)
         self.main_container.add_widget(self.settings_panel_container)
 
-        # ======== КНОПКА «Начать игру» (внизу по центру) ========
-        # Убираем жесткое позиционирование, используем layout для предотвращения наезда
-        self.start_game_button = ModernButton(
-            text="Начать игру",
-            size_hint=(0.25, None),
-            height=dp(45),
-            font_size=self.base_font_size * 1.1,
-            bold=True,
-            color=(1, 1, 1, 1),
-            background_color=(0.2, 0.6, 0.2, 1),
-            # Убираем pos_hint и размещаем через контейнер
-            # pos_hint={'center_x': 0.5, 'y': 0.02},
-            opacity=1
-        )
-        self.start_game_button.bind(on_release=self.start_game)
+        # ======== КНОПКА «Начать игру» и «Назад» (слева внизу) ========
+        # Создаем контейнер для кнопок с фиксированной шириной, не превышающей ширину панели фракций
+        buttons_container_width = 0.4  # Такая же ширина как у панели фракций
 
-        # ======== КНОПКА «Вернуться в главное меню» (слева внизу) ========
+        # Контейнер для кнопок
+        self.bottom_buttons_container = MDBoxLayout(
+            orientation='horizontal',
+            size_hint=(None, None),
+            size=(Window.width * buttons_container_width, dp(50)),  # Фиксируем ширину
+            spacing=dp(10),
+            padding=[dp(5), 0, dp(5), 0]
+        )
+
+        # ======== КНОПКА «Начать игру» и «Назад» (слева внизу) ========
+        # Создаем контейнер для кнопок с фиксированной шириной, не превышающей ширину панели фракций
+        buttons_container_width = 0.4  # Такая же ширина как у панели фракций
+
+        # Контейнер для кнопок
+        self.bottom_buttons_container = MDBoxLayout(
+            orientation='horizontal',
+            size_hint=(None, None),
+            size=(Window.width * buttons_container_width, dp(50)),  # Фиксируем ширину
+            spacing=dp(10),
+            padding=[dp(5), 0, dp(5), 0]
+        )
+
+        # Позиционируем контейнер с кнопками под панелью фракций и по левому краю
+        # Используем ту же позицию по X, что и у панели фракций (0.05 от ширины окна)
+        self.bottom_buttons_container.pos_hint = {'x': 0.05, 'y': 0.02}
+
+        # КНОПКА «Вернуться в главное меню»
         self.back_btn = ModernButton(
-            text="Вернуться в главное меню",
-            size_hint=(0.25, None),
-            height=dp(40),
-            # pos_hint={'x': 0.02, 'y': 0.02}, # Убираем жесткое позиционирование
+            text="В меню",
+            size_hint=(None, None),
+            size=(dp(100), dp(45)),  # Фиксированный размер
             color=(1, 1, 1, 1),
             font_size=self.base_font_size * 0.9,
             background_color=(0.6, 0.2, 0.2, 1)
         )
         self.back_btn.bind(on_release=self.back_to_menu)
 
-        # ======== НОВЫЙ КОНТЕЙНЕР ДЛЯ КНОПОК В НИЗУ ========
-        # Создаем горизонтальный контейнер для нижних кнопок
-        self.bottom_buttons_container = MDBoxLayout(
-            orientation='horizontal',
-            size_hint=(0.8, None),
-            height=dp(50),
-            pos_hint={'center_x': 0.5, 'y': 0.02},
-            spacing=dp(10)  # Отступ между кнопками
+        # КНОПКА «Начать игру»
+        self.start_game_button = ModernButton(
+            text="Начать игру",
+            size_hint=(None, None),
+            size=(dp(190), dp(45)),  # Фиксированный размер
+            font_size=self.base_font_size * 1.2,
+            bold=True,
+            color=(1, 1, 1, 1),
+            background_color=(0.2, 0.6, 0.2, 1),
+            opacity=1
         )
-        # Добавляем кнопки в контейнер
+        self.start_game_button.bind(on_release=self.start_game)
+
+        # Добавляем кнопки в контейнер (сначала "Назад", потом "Начать игру")
         self.bottom_buttons_container.add_widget(self.back_btn)
         self.bottom_buttons_container.add_widget(self.start_game_button)
+
         # Добавляем контейнер в основной контейнер
         self.main_container.add_widget(self.bottom_buttons_container)
 
