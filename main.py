@@ -212,6 +212,7 @@ def clear_tables(conn):
         "artifacts",
         "artifacts_ai",
         "artifact_effects_log",
+        "player_choices",
     ]
 
     cursor = conn.cursor()
@@ -1973,9 +1974,9 @@ class KingdomSelectionWidget(MDFloatLayout):
                 game_screen = GameScreen(
                     selected_kingdom,
                     cities,
-                    conn=self.conn,
                     player_ideology=self.selected_ideology,
-                    player_allies=self.selected_allies
+                    player_allies=self.selected_allies,
+                    conn=self.conn
                 )
                 app.root.clear_widgets()
                 app.root.add_widget(map_widget)
