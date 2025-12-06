@@ -1349,6 +1349,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Определяем базовый размер шрифта в зависимости от высоты экрана
         screen_height = Window.height
         self.base_font_size = max(dp(14), min(dp(24), screen_height * 0.03))
+
         # ======== ФОН ВИДЕО ========
         self.bg_video = Video(
             source='files/menu/choice.mp4',
@@ -1361,9 +1362,11 @@ class KingdomSelectionWidget(MDFloatLayout):
         )
         self.bg_video.bind(on_eos=self.loop_video)
         self.add_widget(self.bg_video)
+
         # ======== ОБЩИЙ КОНТЕЙНЕР ДЛЯ ВСЕХ ЭЛЕМЕНТОВ ========
         self.main_container = MDFloatLayout()
         self.add_widget(self.main_container)
+
         # ======== ЗАГОЛОВОК «Выберите сторону» ========
         label_size = self.base_font_size * 1.5  # Увеличиваем размер для заголовка
         self.select_side_label = MDLabel(
@@ -1377,9 +1380,11 @@ class KingdomSelectionWidget(MDFloatLayout):
             valign='middle',
             size_hint=(0.8, None),
             height=dp(60),
-            pos_hint={'center_x': 0.5, 'top': 0.97}
+            # Позиционируем над левой панелью
+            pos_hint={'center_x': 0.27, 'top': 0.97}  # Смещено влево, чтобы не перекрывать правую панель
         )
         self.add_widget(self.select_side_label)  # Добавляем поверх всех элементов
+
         # ======== ПАНЕЛЬ КНОПОК ФРАКЦИЙ (левая часть) ========
         self.faction_panel_container = MDFloatLayout(
             size_hint=(0.4, 0.6),
@@ -1399,8 +1404,10 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.faction_bg.size = instance.size
 
         self.faction_panel_container.bind(pos=update_faction_bg, size=update_faction_bg)
+
         # ======== ЗАГРУЗКА ДАННЫХ ИЗ БД ========
         self.faction_data = self.load_factions_from_db()
+
         # ======== КНОПКИ ФРАКЦИЙ ========
         button_height = dp(45)  # Увеличенная высота кнопок
         spacing_val = dp(5)  # Уменьшенный отступ между кнопками
@@ -1435,6 +1442,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             print(f"Ошибка при создании кнопок фракций: {e}")
         self.faction_panel_container.add_widget(self.kingdom_buttons)
         self.main_container.add_widget(self.faction_panel_container)
+
         # ======== ПАНЕЛЬ НАСТРОЕК (правая часть) ========
         self.settings_panel_container = MDFloatLayout(
             size_hint=(0.4, 0.6),
@@ -1454,6 +1462,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.settings_bg.size = instance.size
 
         self.settings_panel_container.bind(pos=update_settings_bg, size=update_settings_bg)
+
         # Рассчитываем высоту для каждого контейнера в настройках
         ideology_container_height = dp(120)  # Увеличили для добавления бонусов
         allies_container_height = dp(120)  # Увеличили для добавления бонусов
@@ -1466,6 +1475,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.settings_panel_container.height = total_settings_height
         # Центрируем по Y
         self.settings_panel_container.pos_hint = {'right': 0.95, 'center_y': 0.5}
+
         # Основной контейнер для вертикального расположения всех блоков
         self.settings_content_container = MDBoxLayout(
             orientation='vertical',
@@ -1474,6 +1484,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
         self.settings_panel_container.add_widget(self.settings_content_container)
+
         # ======== ВЫБОР ИДЕОЛОГИИ ========
         ideology_container = MDBoxLayout(
             orientation='vertical',
@@ -1554,6 +1565,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.ideology_bonus_container.add_widget(ideology_bonus_layout)
         ideology_container.add_widget(self.ideology_bonus_container)
         self.settings_content_container.add_widget(ideology_container)
+
         # ======== ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ========
         allies_container = MDBoxLayout(
             orientation='vertical',
@@ -1624,6 +1636,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.allies_info_container.add_widget(allies_info_layout)
         allies_container.add_widget(self.allies_info_container)
         self.settings_content_container.add_widget(allies_container)
+
         # ======== ИНФОРМАЦИЯ О ФРАКЦИИ ========
         self.faction_info_container = MDBoxLayout(
             orientation='vertical',
@@ -1679,7 +1692,9 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.stats_labels[stat_name] = icons_box
         self.settings_content_container.add_widget(self.faction_info_container)
         self.main_container.add_widget(self.settings_panel_container)
+
         # ======== КНОПКА «Начать игру» (внизу по центру) ========
+        # Убираем жесткое позиционирование, используем layout для предотвращения наезда
         self.start_game_button = ModernButton(
             text="Начать игру",
             size_hint=(0.25, None),
@@ -1688,23 +1703,39 @@ class KingdomSelectionWidget(MDFloatLayout):
             bold=True,
             color=(1, 1, 1, 1),
             background_color=(0.2, 0.6, 0.2, 1),
-            pos_hint={'center_x': 0.5, 'y': 0.02},
+            # Убираем pos_hint и размещаем через контейнер
+            # pos_hint={'center_x': 0.5, 'y': 0.02},
             opacity=1
         )
         self.start_game_button.bind(on_release=self.start_game)
-        self.main_container.add_widget(self.start_game_button)
+
         # ======== КНОПКА «Вернуться в главное меню» (слева внизу) ========
         self.back_btn = ModernButton(
             text="Вернуться в главное меню",
             size_hint=(0.25, None),
             height=dp(40),
-            pos_hint={'x': 0.02, 'y': 0.02},
+            # pos_hint={'x': 0.02, 'y': 0.02}, # Убираем жесткое позиционирование
             color=(1, 1, 1, 1),
             font_size=self.base_font_size * 0.9,
             background_color=(0.6, 0.2, 0.2, 1)
         )
         self.back_btn.bind(on_release=self.back_to_menu)
-        self.main_container.add_widget(self.back_btn)
+
+        # ======== НОВЫЙ КОНТЕЙНЕР ДЛЯ КНОПОК В НИЗУ ========
+        # Создаем горизонтальный контейнер для нижних кнопок
+        self.bottom_buttons_container = MDBoxLayout(
+            orientation='horizontal',
+            size_hint=(0.8, None),
+            height=dp(50),
+            pos_hint={'center_x': 0.5, 'y': 0.02},
+            spacing=dp(10)  # Отступ между кнопками
+        )
+        # Добавляем кнопки в контейнер
+        self.bottom_buttons_container.add_widget(self.back_btn)
+        self.bottom_buttons_container.add_widget(self.start_game_button)
+        # Добавляем контейнер в основной контейнер
+        self.main_container.add_widget(self.bottom_buttons_container)
+
         # ======== Запускаем анимацию появления ========
         Clock.schedule_once(lambda dt: self.animate_in(), 0.3)
 
