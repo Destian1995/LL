@@ -1836,6 +1836,9 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         # Обновление информации о фракции
         self.update_faction_stats(kingdom_name)
+        from kivy.app import App
+        app = App.get_running_app()
+        app.selected_kingdom = kingdom_name
 
     def update_faction_stats(self, kingdom):
         """Обновляет статистику выбранной фракции"""

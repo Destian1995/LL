@@ -545,8 +545,6 @@ class GameScreen(Screen):
         # Инициализация политических данных
         self.initialize_political_data()
         self.prev_diplomacy_state = {}
-        # --- атрибут для хранения идеологии игрока ---
-        self.player_ideology = self.get_player_ideology(self.conn)
 
         # Инициализируем таблицу season
         self.season_manager = SeasonManager()
@@ -1297,8 +1295,8 @@ class GameScreen(Screen):
     def initialize_political_data(self):
         """
         Инициализирует таблицу political_systems с учетом выбора игрока.
-        Использует self.gamer_ideology и self.gamer_allies для определения распределения идеологий.
-        Если self.gamer_ideology не установлен, используется случайное распределение.
+        Использует self.player_ideology и self.player_allies для определения распределения идеологий.
+        Если self.player_ideology не установлен, используется случайное распределение.
         """
         cursor = self.conn.cursor()
         try:
@@ -1314,12 +1312,12 @@ class GameScreen(Screen):
                 self._determine_player_ideology_and_allies()
 
                 # Если игрок не выбрал идеологию - используем случайное распределение
-                if not hasattr(self, 'gamer_ideology') or self.gamer_ideology is None:
+                if not hasattr(self, 'player_ideology') or self.player_ideology is None:
                     print("Идеология игрока не выбрана, используем случайное распределение")
                     self._initialize_random_political_systems(cursor, factions)
                 else:
                     print(
-                        f"Инициализация с идеологией игрока: {self.gamer_ideology}, союзников: {getattr(self, 'gamer_allies', 1)}")
+                        f"Инициализация с идеологией игрока: {self.player_ideology}, союзников: {getattr(self, 'player_allies', 1)}")
                     self._initialize_player_based_political_systems(cursor, factions)
 
                 self.conn.commit()
@@ -1338,17 +1336,15 @@ class GameScreen(Screen):
         Может быть расширена для получения значений из внешнего источника (например, экрана выбора).
         """
         # Проверяем, были ли установлены значения извне
-        if not hasattr(self, 'gamer_ideology'):
+        if not hasattr(self, 'player_ideology'):
             # Можно получить из сохраненных данных или использовать случайную
-            self.gamer_ideology = None
+            self.player_ideology = None
 
-        if not hasattr(self, 'gamer_allies'):
-            self.gamer_allies = 1  # Значение по умолчанию
+        if not hasattr(self, 'player_allies'):
+            self.player_allies = 1  # Значение по умолчанию
 
         # Если идеология не выбрана, можно предложить случайную
-        if self.gamer_ideology is None:
-            # Или получить из сохраненных данных игрока
-            # Например, из предыдущей сессии или настроек
+        if self.player_ideology is None:
             pass
 
     def _initialize_random_political_systems(self, cursor, factions):
@@ -1385,8 +1381,8 @@ class GameScreen(Screen):
         Остальные фракции получают противоположную идеологию.
         """
         # Получаем параметры игрока
-        player_ideology = self.gamer_ideology
-        allies_count = getattr(self, 'gamer_allies', 1)  # По умолчанию 1 союзник
+        player_ideology = self.player_ideology
+        allies_count = getattr(self, 'player_allies', 1)  # По умолчанию 1 союзник
 
         # Проверяем корректность значений
         if player_ideology not in ["Смирение", "Борьба"]:
@@ -1920,11 +1916,6 @@ class GameScreen(Screen):
                 # --- Логика для определения, принадлежит ли город игроку ---
                 is_player_city = (city_faction == self.selected_faction)
                 # --- Конец логики принадлежности ---
-
-
-                # --- Сохранение данных ---
-                # Обновляем кортеж, добавляя ideology_icon_path, crystal_icon_count и is_player_city
-                # Порядок: (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city)
                 new_dict[city_name] = (star_level, icon_x, icon_y, city_name, has_hero, ideology_icon_path, crystal_icon_count, is_player_city)
 
         self.city_star_levels = new_dict
