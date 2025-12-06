@@ -1105,13 +1105,13 @@ def show_peace_form(player_faction, conn):
             if player_points > enemy_points:
                 superiority_percentage = ((player_points - enemy_points) / max(enemy_points, 1)) * 100
                 if superiority_percentage >= 70:
-                    response = "Какой дебил нас сюда послал?.."
+                    response = "Ваша милость наконец соизволила нас пощадить.."
                 elif 50 <= superiority_percentage < 70:
-                    response = "Нихера себе повоевали...."
+                    response = "Мы уже сдаемся, что Вам еще надо?..."
                 elif 20 <= superiority_percentage < 50:
-                    response = "Мы похоже вас недооценили..."
+                    response = "У нас не осталось тех кто готов сопротивляться..."
                 elif 5 <= superiority_percentage < 20:
-                    response = "Вам не стыдно слабых обижать?"
+                    response = "Это геноцид...мы врят ли когда-то сможем воевать..."
                 else:
                     response = "В следующий раз мы будем лучше готовы"
 

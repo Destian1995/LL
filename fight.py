@@ -266,15 +266,15 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
     headers_row.add_widget(Label(size_hint_x=0.05))  # отступ слева
 
     # Левая сторона (ИИ)
-    headers_row.add_widget(make_label("Юнит", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2, bold=True))
-    headers_row.add_widget(make_label("Потери | Осталось", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25, bold=True))
+    headers_row.add_widget(make_label("Юнит", font_sp=18 if not is_small else 16, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2, bold=True))
+    headers_row.add_widget(make_label("Потери | Осталось", font_sp=18 if not is_small else 16, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25, bold=True))
 
     # Промежуток
     headers_row.add_widget(Label(size_hint_x=0.1))
 
     # Правая сторона (Игрок)
-    headers_row.add_widget(make_label("Юнит", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2, bold=True))
-    headers_row.add_widget(make_label("Потери | Осталось", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25, bold=True))
+    headers_row.add_widget(make_label("Юнит", font_sp=18 if not is_small else 16, markup=True, halign='left', height_dp=header_h, size_hint_x=0.2, bold=True))
+    headers_row.add_widget(make_label("Потери | Осталось", font_sp=18 if not is_small else 16, markup=True, halign='left', height_dp=header_h, size_hint_x=0.25, bold=True))
 
     headers_row.add_widget(Label(size_hint_x=0.05))  # отступ справа
     table_container.add_widget(headers_row)
@@ -302,11 +302,11 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
                 remaining_color = "#4CAF50" if fin > 0 else "#FF5733"  # зеленый если есть выжившие, иначе красный
                 status = f"[color={losses_color}]{losses}[/color] | [color={remaining_color}]{fin}[/color]"
 
-            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2, bold=True)
-            status_lbl = make_label(status, font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.25, bold=True)
+            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2, bold=True)
+            status_lbl = make_label(status, font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=row_h, size_hint_x=0.25, bold=True)
         else:
-            unit_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.2)
-            status_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.25)
+            unit_lbl = make_label("", font_sp=16 if not is_small else 14, height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label("", font_sp=16 if not is_small else 14, height_dp=row_h, size_hint_x=0.25)
         row.add_widget(unit_lbl)
         row.add_widget(status_lbl)
 
@@ -331,11 +331,11 @@ def show_battle_report(report_data, is_user_involved=False, user_faction=None, c
                 remaining_color = "#4CAF50" if fin > 0 else "#FF5733"  # зеленый если есть выжившие, иначе красный
                 status = f"[color={losses_color}]{losses}[/color] | [color={remaining_color}]{fin}[/color]"
 
-            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2, bold=True)
-            status_lbl = make_label(status, font_sp=14 if not is_small else 12, markup=True, halign='left', height_dp=row_h, size_hint_x=0.25, bold=True)
+            unit_lbl = make_label(f"[b]{name}[/b]", font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=row_h, size_hint_x=0.2, bold=True)
+            status_lbl = make_label(status, font_sp=16 if not is_small else 14, markup=True, halign='left', height_dp=row_h, size_hint_x=0.25, bold=True)
         else:
-            unit_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.2)
-            status_lbl = make_label("", font_sp=14 if not is_small else 12, height_dp=row_h, size_hint_x=0.25)
+            unit_lbl = make_label("", font_sp=16 if not is_small else 14, height_dp=row_h, size_hint_x=0.2)
+            status_lbl = make_label("", font_sp=16 if not is_small else 14, height_dp=row_h, size_hint_x=0.25)
         row.add_widget(unit_lbl)
         row.add_widget(status_lbl)
 
