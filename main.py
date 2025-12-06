@@ -922,6 +922,30 @@ class MapWidget(Widget):
         self.check_fortress_click(touch)
 
 
+class ModernButton(Button):
+    """Стилизованная кнопка с современным дизайном"""
+
+    bg_color = ListProperty([0.2, 0.3, 0.4, 1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+
+        # Анимация при наведении (для ПК)
+        if platform != 'android' and platform != 'ios':
+            self.bind(
+                on_enter=self.on_hover_enter,
+                on_leave=self.on_hover_leave
+            )
+
+    def on_hover_enter(self, *args):
+        Animation(background_color=[c * 1.2 for c in self.bg_color[:3]] + [1], duration=0.2).start(self)
+
+    def on_hover_leave(self, *args):
+        Animation(background_color=self.bg_color, duration=0.2).start(self)
+
+
 class RectangularButton(Button):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -945,14 +969,384 @@ class RectangularButton(Button):
         self.border_rect_color.a = 1 if show else 0
 
 
-class KingdomSelectionWidget(FloatLayout):
+class ModernSpinner(Spinner):
+    """Стилизованный выпадающий список"""
+    bg_color = ListProperty([0.2, 0.3, 0.4, 1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+        self.background_color = self.bg_color
+
+        # Анимация при наведении (для ПК)
+        if platform != 'android' and platform != 'ios':
+            self.bind(
+                on_enter=self.on_hover_enter,
+                on_leave=self.on_hover_leave
+            )
+
+    def on_hover_enter(self, *args):
+        Animation(background_color=[c * 1.2 for c in self.bg_color[:3]] + [1], duration=0.2).start(self)
+
+    def on_hover_leave(self, *args):
+        Animation(background_color=self.bg_color, duration=0.2).start(self)
+
+
+class IdeologySelectionScreen(Screen):
+    """Экран выбора идеологии и количества союзников"""
+
+    def __init__(self, selected_faction, conn, **kwargs):
+        super().__init__(**kwargs)
+        self.selected_faction = selected_faction
+        self.conn = conn
+        self.selected_ideology = None
+        self.selected_allies = None
+        self.init_ui()
+
+    def init_ui(self):
+        # Фоновое изображение или видео
+        self.bg = Image(
+            source='files/menu/choice.mp4' if os.path.exists('files/menu/choice.mp4') else 'files/null.png',
+            allow_stretch=True,
+            keep_ratio=False,
+            size_hint=(1, 1)
+        )
+        if self.bg.source.endswith('.mp4'):
+            self.bg.state = 'play'
+            self.bg.options = {'eos': 'loop'}
+        self.add_widget(self.bg)
+
+        # Главный контейнер
+        main_container = BoxLayout(
+            orientation='vertical',
+            padding=dp(20),
+            spacing=dp(20),
+            size_hint=(0.8, 0.8),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+
+        # Заголовок
+        title = Label(
+            text=f"Настройки для {self.selected_faction}",
+            font_size='32sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2,
+            size_hint_y=None,
+            height=dp(60)
+        )
+        main_container.add_widget(title)
+
+        # === ВЫБОР ИДЕОЛОГИИ ===
+        ideology_container = BoxLayout(
+            orientation='vertical',
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(200)
+        )
+
+        ideology_label = Label(
+            text="Идеология:",
+            font_size='24sp',
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(40)
+        )
+        ideology_container.add_widget(ideology_label)
+
+        # Кнопки выбора идеологии
+        ideology_buttons = BoxLayout(
+            orientation='horizontal',
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(60)
+        )
+
+        self.ideology_random_btn = ToggleButton(
+            text="Случайная",
+            group='ideology',
+            size_hint=(0.33, 1),
+            background_normal='',
+            background_color=(0.3, 0.3, 0.3, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.ideology_random_btn.bind(on_press=lambda x: self.select_ideology('random'))
+
+        self.ideology_submission_btn = ToggleButton(
+            text="Смирение\n(Прирост крон от налогов)",
+            group='ideology',
+            size_hint=(0.33, 1),
+            background_normal='',
+            background_color=(0.2, 0.5, 0.8, 1),
+            color=(1, 1, 1, 1),
+            halign='center',
+            valign='middle'
+        )
+        self.ideology_submission_btn.bind(on_press=lambda x: self.select_ideology('Смирение'))
+
+        self.ideology_struggle_btn = ToggleButton(
+            text="Борьба\n(Прирост кристаллов от фабрик)",
+            group='ideology',
+            size_hint=(0.34, 1),
+            background_normal='',
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1),
+            halign='center',
+            valign='middle'
+        )
+        self.ideology_struggle_btn.bind(on_press=lambda x: self.select_ideology('Борьба'))
+
+        ideology_buttons.add_widget(self.ideology_random_btn)
+        ideology_buttons.add_widget(self.ideology_submission_btn)
+        ideology_buttons.add_widget(self.ideology_struggle_btn)
+        ideology_container.add_widget(ideology_buttons)
+
+        # Информация о выбранной идеологии
+        self.ideology_info = Label(
+            text="Выберите идеологию",
+            font_size='16sp',
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(40)
+        )
+        ideology_container.add_widget(self.ideology_info)
+
+        main_container.add_widget(ideology_container)
+
+        # === ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ===
+        allies_container = BoxLayout(
+            orientation='vertical',
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(200)
+        )
+
+        allies_label = Label(
+            text="Единомышленники:",
+            font_size='24sp',
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(40)
+        )
+        allies_container.add_widget(allies_label)
+
+        # Кнопки выбора количества союзников
+        allies_buttons = BoxLayout(
+            orientation='horizontal',
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(60)
+        )
+
+        self.allies_random_btn = ToggleButton(
+            text="Случайное количество",
+            group='allies',
+            size_hint=(0.33, 1),
+            background_normal='',
+            background_color=(0.3, 0.3, 0.3, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.allies_random_btn.bind(on_press=lambda x: self.select_allies('random'))
+
+        self.allies_one_btn = ToggleButton(
+            text="1 союзник",
+            group='allies',
+            size_hint=(0.33, 1),
+            background_normal='',
+            background_color=(0.2, 0.6, 0.3, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.allies_one_btn.bind(on_press=lambda x: self.select_allies(1))
+
+        self.allies_two_btn = ToggleButton(
+            text="2 союзника",
+            group='allies',
+            size_hint=(0.34, 1),
+            background_normal='',
+            background_color=(0.2, 0.6, 0.3, 1),
+            color=(1, 1, 1, 1)
+        )
+        self.allies_two_btn.bind(on_press=lambda x: self.select_allies(2))
+
+        allies_buttons.add_widget(self.allies_random_btn)
+        allies_buttons.add_widget(self.allies_one_btn)
+        allies_buttons.add_widget(self.allies_two_btn)
+        allies_container.add_widget(allies_buttons)
+
+        # Информация о выбранном количестве союзников
+        self.allies_info = Label(
+            text="Выберите количество союзников",
+            font_size='16sp',
+            color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(40)
+        )
+        allies_container.add_widget(self.allies_info)
+
+        main_container.add_widget(allies_container)
+
+        # === КНОПКИ УПРАВЛЕНИЯ ===
+        buttons_container = BoxLayout(
+            orientation='horizontal',
+            spacing=dp(20),
+            size_hint_y=None,
+            height=dp(60)
+        )
+
+        back_btn = Button(
+            text="Назад",
+            size_hint=(0.4, 1),
+            background_normal='',
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1),
+            font_size='18sp'
+        )
+        back_btn.bind(on_press=self.go_back)
+
+        start_btn = Button(
+            text="Начать игру",
+            size_hint=(0.6, 1),
+            background_normal='',
+            background_color=(0.2, 0.8, 0.2, 1),
+            color=(1, 1, 1, 1),
+            font_size='18sp',
+            disabled=True
+        )
+        self.start_game_btn = start_btn
+        start_btn.bind(on_press=self.start_game)
+
+        buttons_container.add_widget(back_btn)
+        buttons_container.add_widget(start_btn)
+        main_container.add_widget(buttons_container)
+
+        self.add_widget(main_container)
+
+    def select_ideology(self, ideology):
+        """Выбор идеологии"""
+        self.selected_ideology = ideology
+
+        if ideology == 'random':
+            self.ideology_info.text = "Идеология будет выбрана случайно"
+        elif ideology == 'Смирение':
+            self.ideology_info.text = "Выбрано Смирение: +775% к доходам от налогов"
+        elif ideology == 'Борьба':
+            self.ideology_info.text = "Выбрана Борьба: +510% к добыче кристаллов"
+
+        self.check_selection()
+
+    def select_allies(self, allies):
+        """Выбор количества союзников"""
+        self.selected_allies = allies
+
+        if allies == 'random':
+            self.allies_info.text = "Количество союзников будет выбрано случайно (1 или 2)"
+        elif allies == 1:
+            self.allies_info.text = "Будет 1 союзник с такой же идеологией"
+        elif allies == 2:
+            self.allies_info.text = "Будет 2 союзника с такой же идеологией"
+
+        self.check_selection()
+
+    def check_selection(self):
+        """Проверяем, можно ли активировать кнопку начала игры"""
+        if self.selected_ideology is not None and self.selected_allies is not None:
+            self.start_game_btn.disabled = False
+
+    def go_back(self, instance):
+        """Возврат к выбору фракции"""
+        from kivy.app import App
+        app = App.get_running_app()
+        app.root.current = 'kingdom_selection'
+
+    def start_game(self, instance):
+        """Сохранение выбора и начало игры"""
+        if self.selected_ideology is None or self.selected_allies is None:
+            return
+
+        # Сохраняем выбор игрока в БД
+        self.save_player_choices()
+
+        # Переходим к игре
+        from kivy.app import App
+        app = App.get_running_app()
+
+        # Создаем экран игры с переданными параметрами
+        try:
+            # Останавливаем фоновое видео если есть
+            if hasattr(self.bg, 'state'):
+                self.bg.state = 'stop'
+
+            # Загружаем города
+            cities = load_cities_from_db(self.conn, self.selected_faction)
+            if not cities:
+                print("Города не найдены.")
+                return
+
+            # Создаем GameScreen с выбранными параметрами
+            game_screen = GameScreen(
+                self.selected_faction,
+                cities,
+                conn=self.conn,
+                player_ideology=self.selected_ideology,
+                player_allies=self.selected_allies
+            )
+
+            # Переходим к игре
+            app.root.clear_widgets()
+            app.root.add_widget(game_screen)
+
+        except Exception as e:
+            print(f"Ошибка при запуске игры: {e}")
+
+    def save_player_choices(self):
+        """Сохраняет выбор игрока в БД"""
+        cursor = self.conn.cursor()
+
+        try:
+            # Создаем таблицу для хранения выбора игрока, если ее нет
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS player_choices (
+                    faction TEXT PRIMARY KEY,
+                    ideology TEXT,
+                    allies_count INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Удаляем старые записи для этой фракции
+            cursor.execute("DELETE FROM player_choices WHERE faction = ?", (self.selected_faction,))
+
+            # Сохраняем выбор
+            cursor.execute("""
+                INSERT INTO player_choices (faction, ideology, allies_count) 
+                VALUES (?, ?, ?)
+            """, (self.selected_faction,
+                  self.selected_ideology if self.selected_ideology != 'random' else None,
+                  self.selected_allies if self.selected_allies != 'random' else None))
+
+            self.conn.commit()
+            print(f"Выбор игрока сохранен: идеология={self.selected_ideology}, союзников={self.selected_allies}")
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при сохранении выбора игрока: {e}")
+            self.conn.rollback()
+
+
+class KingdomSelectionWidget(MDFloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
         super(KingdomSelectionWidget, self).__init__(**kwargs)
         is_android = platform == 'android'
         self.selected_map = selected_map
-        # Инициализируем selected_button
         self.selected_button = None
-
+        self.conn = conn
+        # Инициализируем выборы игрока
+        self.selected_ideology = 'random'
+        self.selected_allies = 'random'
+        # Определяем базовый размер шрифта в зависимости от высоты экрана
+        screen_height = Window.height
+        self.base_font_size = max(dp(14), min(dp(24), screen_height * 0.03))
         # ======== ФОН ВИДЕО ========
         self.bg_video = Video(
             source='files/menu/choice.mp4',
@@ -965,176 +1359,424 @@ class KingdomSelectionWidget(FloatLayout):
         )
         self.bg_video.bind(on_eos=self.loop_video)
         self.add_widget(self.bg_video)
-
+        # ======== ОБЩИЙ КОНТЕЙНЕР ДЛЯ ВСЕХ ЭЛЕМЕНТОВ ========
+        self.main_container = MDFloatLayout()
+        self.add_widget(self.main_container)
         # ======== ЗАГОЛОВОК «Выберите сторону» ========
-        label_size = '36sp' if is_android else '40sp'
-        self.select_side_label = Label(
+        label_size = self.base_font_size * 1.5  # Увеличиваем размер для заголовка
+        self.select_side_label = MDLabel(
             text="Выберите сторону",
-            font_size=label_size,
-            color=(1, 1, 1, 1),
+            font_style="H5",
+            theme_text_color="Custom",
+            text_color=(1, 1, 1, 1),
             outline_color=(0, 0, 0, 1),
             outline_width=2,
-            markup=True,
             halign='center',
             valign='middle',
             size_hint=(0.8, None),
-            height=dp(80) if is_android else 80,
-            pos_hint={'center_x': 0.75, 'top': 0.97}
+            height=dp(60),
+            pos_hint={'center_x': 0.5, 'top': 0.97}
         )
-        self.add_widget(self.select_side_label)
-
-        self.buttons_container = FloatLayout()
-        self.add_widget(self.buttons_container)
-
-        # PNG-рамка поверх кнопок:
-        self.border_image = Image(
-            source='files/pict/menu/border.png',
-            size_hint=(None, None),
-            size=(0, 0),
-            pos=(0, 0),
-            opacity=0
+        self.add_widget(self.select_side_label)  # Добавляем поверх всех элементов
+        # ======== ПАНЕЛЬ КНОПОК ФРАКЦИЙ (левая часть) ========
+        self.faction_panel_container = MDFloatLayout(
+            size_hint=(0.4, 0.6),
+            pos_hint={'x': 0.05, 'center_y': 0.5}
         )
-        self.border_image.disabled = True  # не мешаем кликам на кнопку
-        # _ВАЖНО_: добавляем рамку **в buttons_container**, после kingdom_buttons
-        self.buttons_container.add_widget(self.border_image)
+        # Фон для панели фракций
+        with self.faction_panel_container.canvas.before:
+            Color(0.1, 0.1, 0.15, 0.8)
+            self.faction_bg = RoundedRectangle(
+                pos=self.faction_panel_container.pos,
+                size=self.faction_panel_container.size,
+                radius=[15]
+            )
 
-        # ======== ИНФО О ФРАКЦИИ ========
-        self.faction_info_container = BoxLayout(
-            orientation='vertical',
-            size_hint=(0.15, None),
-            height=dp(120),
-            pos_hint={'center_x': 0.73, 'center_y': 0.4},
-            spacing=dp(8)
-        )
-        self.add_widget(self.faction_info_container)
+        def update_faction_bg(instance, value):
+            self.faction_bg.pos = instance.pos
+            self.faction_bg.size = instance.size
 
-        # ======== ИЗОБРАЖЕНИЕ СОВЕТНИКА ========
-        advisor_size = (0.3, 0.3)
-        self.advisor_image = Image(
-            source='files/null.png',
-            size_hint=advisor_size,
-            pos_hint={'center_x': 0.75, 'center_y': 0.6}
-        )
-        self.add_widget(self.advisor_image)
-
-        # ======== КОНТЕЙНЕР ДЛЯ КНОПОК ========
-        self.buttons_container = FloatLayout()
-        self.add_widget(self.buttons_container)
-
+        self.faction_panel_container.bind(pos=update_faction_bg, size=update_faction_bg)
         # ======== ЗАГРУЗКА ДАННЫХ ИЗ БД ========
-        self.conn = conn
         self.faction_data = self.load_factions_from_db()
-
-        # ======== ПАНЕЛЬ КНОПОК ФРАКЦИЙ (изначально скрыта) ========
-        panel_width = 0.10
-        button_height = dp(35) if is_android else 35
-        spacing_val = dp(35) if is_android else 35
-        padding = [dp(20), dp(20), dp(20), dp(20)] if is_android else [20, 20, 20, 20]
-
-        total_height = self.calculate_panel_height(button_height, spacing_val, padding)
-
-        # Здесь смещаем начальную позицию по Y чуть выше (0.6 вместо 0.5):
-        initial_y = Window.height * 0.6 - total_height / 2
-
-        self.kingdom_buttons = BoxLayout(
+        # ======== КНОПКИ ФРАКЦИЙ ========
+        button_height = dp(45)  # Увеличенная высота кнопок
+        spacing_val = dp(5)  # Уменьшенный отступ между кнопками
+        # Рассчитываем общую высоту для панели
+        total_height = button_height * len(self.faction_data) + spacing_val * (len(self.faction_data) - 1) + dp(30)
+        self.kingdom_buttons = MDBoxLayout(
             orientation='vertical',
             spacing=spacing_val,
-            size_hint=(panel_width, None),
+            size_hint=(0.85, None),  # Увеличили ширину кнопок
             height=total_height,
-            pos=(-Window.width * 0.7, initial_y),  # был 0.5, заменили на 0.6
-            opacity=1
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
-
+        # Сохраняем кнопки в словаре для быстрого доступа
+        self.kingdom_button_widgets = {}
         try:
             for faction in self.faction_data:
                 kingdom = faction.get('name', 'Неизвестная фракция')
-                btn = RectangularButton(
+                btn = ModernButton(
                     text=kingdom,
                     size_hint_y=None,
-                    height=dp(35),
-                    font_size='18sp',
-                    opacity=1  # Делаем кнопки сразу видимыми
+                    height=dp(45),  # Увеличенная высота
+                    font_size=self.base_font_size,
+                    background_color=(0.2, 0.3, 0.4, 1),
+                    background_normal='',
+                    color=(1, 1, 1, 1),
+                    opacity=1
                 )
                 btn.bind(on_release=self.select_kingdom)
                 self.kingdom_buttons.add_widget(btn)
+                self.kingdom_button_widgets[kingdom] = btn
         except Exception as e:
             print(f"Ошибка при создании кнопок фракций: {e}")
+        self.faction_panel_container.add_widget(self.kingdom_buttons)
+        self.main_container.add_widget(self.faction_panel_container)
+        # ======== ПАНЕЛЬ НАСТРОЕК (правая часть) ========
+        self.settings_panel_container = MDFloatLayout(
+            size_hint=(0.4, 0.6),
+            pos_hint={'right': 0.95, 'center_y': 0.5}
+        )
+        # Фон для панели настроек
+        with self.settings_panel_container.canvas.before:
+            Color(0.1, 0.1, 0.15, 0.8)
+            self.settings_bg = RoundedRectangle(
+                pos=self.settings_panel_container.pos,
+                size=self.settings_panel_container.size,
+                radius=[15]
+            )
 
-        # ======== КНОПКА «Начать игру» (сразу видна) ========
-        self.start_game_button = RoundedButton(
+        def update_settings_bg(instance, value):
+            self.settings_bg.pos = instance.pos
+            self.settings_bg.size = instance.size
+
+        self.settings_panel_container.bind(pos=update_settings_bg, size=update_settings_bg)
+        # Рассчитываем высоту для каждого контейнера в настройках
+        ideology_container_height = dp(120)  # Увеличили для добавления бонусов
+        allies_container_height = dp(120)  # Увеличили для добавления бонусов
+        faction_info_container_height = dp(100)
+        # Общая высота панели настроек
+        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(
+            60)
+        # Устанавливаем высоту панели настроек
+        self.settings_panel_container.size_hint_y = None
+        self.settings_panel_container.height = total_settings_height
+        # Центрируем по Y
+        self.settings_panel_container.pos_hint = {'right': 0.95, 'center_y': 0.5}
+        # Основной контейнер для вертикального расположения всех блоков
+        self.settings_content_container = MDBoxLayout(
+            orientation='vertical',
+            spacing=dp(15),  # Отступ между блоками
+            size_hint=(0.85, 0.9),  # Оставляем отступы по краям
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        self.settings_panel_container.add_widget(self.settings_content_container)
+        # ======== ВЫБОР ИДЕОЛОГИИ ========
+        ideology_container = MDBoxLayout(
+            orientation='vertical',
+            spacing=dp(8),
+            size_hint=(1, None),
+            height=ideology_container_height,
+        )
+        # Заголовок идеологии
+        ideology_label = MDLabel(
+            text="Идеология:",
+            font_style="Body1",
+            theme_text_color="Custom",
+            text_color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(25),
+            halign='left'
+        )
+        ideology_label.bind(size=ideology_label.setter('text_size'))
+        ideology_container.add_widget(ideology_label)
+        # Выпадающий список идеологии
+        self.ideology_spinner = ModernSpinner(
+            text='Случайная',
+            values=('Случайная', 'Смирение', 'Борьба'),
+            size_hint=(1, None),
+            height=dp(40),
+            background_color=(0.2, 0.3, 0.4, 1),
+            color=(1, 1, 1, 1),
+            font_size=self.base_font_size * 0.8
+        )
+        self.ideology_spinner.bind(text=self.on_ideology_selected)
+        ideology_container.add_widget(self.ideology_spinner)
+        # КОНТЕЙНЕР ДЛЯ БОНУСОВ ИДЕОЛОГИИ
+        self.ideology_bonus_container = MDFloatLayout(
+            size_hint=(1, None),
+            height=dp(40),
+        )
+        # Фон для бонуса
+        with self.ideology_bonus_container.canvas.before:
+            Color(0.15, 0.2, 0.25, 0.7)
+            self.ideology_bonus_bg = RoundedRectangle(
+                pos=self.ideology_bonus_container.pos,
+                size=self.ideology_bonus_container.size,
+                radius=[8]
+            )
+
+        def update_ideology_bonus_bg(instance, value):
+            self.ideology_bonus_bg.pos = instance.pos
+            self.ideology_bonus_bg.size = instance.size
+
+        self.ideology_bonus_container.bind(pos=update_ideology_bonus_bg, size=update_ideology_bonus_bg)
+        # Иконка и текст бонуса
+        ideology_bonus_layout = MDBoxLayout(
+            orientation='horizontal',
+            spacing=dp(10),
+            size_hint=(0.95, 0.8),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        # Создаем Image-виджет для иконки бонуса
+        self.ideology_bonus_icon = Image(
+            source='files/pict/menu/bonus_icon.png',  # Иконка по умолчанию
+            size_hint=(None, None),
+            size=(dp(25), dp(25)),
+            allow_stretch=True,  # Разрешаем растягивание, если нужно
+            keep_ratio=True  # Сохраняем пропорции изображения
+        )
+        # --- ИСПРАВЛЕНИЕ: Присваиваем как атрибут класса ---
+        self.ideology_bonus_label = MDLabel(
+            text="Бонус не выбран",
+            font_style="Caption",
+            theme_text_color="Custom",
+            text_color=(0.8, 0.9, 1.0, 1),
+            halign='left',
+            valign='middle'
+        )
+        self.ideology_bonus_label.bind(size=self.ideology_bonus_label.setter('text_size'))
+        ideology_bonus_layout.add_widget(self.ideology_bonus_icon)
+        ideology_bonus_layout.add_widget(self.ideology_bonus_label)
+        self.ideology_bonus_container.add_widget(ideology_bonus_layout)
+        ideology_container.add_widget(self.ideology_bonus_container)
+        self.settings_content_container.add_widget(ideology_container)
+        # ======== ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ========
+        allies_container = MDBoxLayout(
+            orientation='vertical',
+            spacing=dp(8),
+            size_hint=(1, None),
+            height=allies_container_height,
+        )
+        # Заголовок союзников
+        allies_label = MDLabel(
+            text="Единомышленники:",
+            font_style="Body1",
+            theme_text_color="Custom",
+            text_color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(25),
+            halign='left'
+        )
+        allies_label.bind(size=allies_label.setter('text_size'))
+        allies_container.add_widget(allies_label)
+        # Выпадающий список союзников
+        self.allies_spinner = ModernSpinner(
+            text='Случайное количество',
+            values=('Случайное количество', '1', '2'),
+            size_hint=(1, None),
+            height=dp(40),
+            background_color=(0.2, 0.3, 0.4, 1),
+            color=(1, 1, 1, 1),
+            font_size=self.base_font_size * 0.8
+        )
+        self.allies_spinner.bind(text=self.on_allies_selected)
+        allies_container.add_widget(self.allies_spinner)
+        # КОНТЕЙНЕР ДЛЯ ИНФОРМАЦИИ О СОЮЗНИКАХ
+        self.allies_info_container = MDFloatLayout(
+            size_hint=(1, None),
+            height=dp(40),
+        )
+        # Фон для информации о союзниках
+        with self.allies_info_container.canvas.before:
+            Color(0.15, 0.2, 0.25, 0.7)
+            self.allies_info_bg = RoundedRectangle(
+                pos=self.allies_info_container.pos,
+                size=self.allies_info_container.size,
+                radius=[8]
+            )
+
+        def update_allies_info_bg(instance, value):
+            self.allies_info_bg.pos = instance.pos
+            self.allies_info_bg.size = instance.size
+
+        self.allies_info_container.bind(pos=update_allies_info_bg, size=update_allies_info_bg)
+        # Иконки и текст союзников
+        allies_info_layout = MDBoxLayout(
+            orientation='horizontal',
+            spacing=dp(10),
+            size_hint=(0.95, 0.8),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}
+        )
+        self.allies_count_label = MDLabel(
+            text="Случайно 1 или 2 союзника",
+            font_style="Caption",
+            theme_text_color="Custom",
+            text_color=(0.8, 0.9, 1.0, 1),
+            halign='left',
+            valign='middle'
+        )
+        self.allies_count_label.bind(size=self.allies_count_label.setter('text_size'))
+        allies_info_layout.add_widget(self.allies_count_label)
+        self.allies_info_container.add_widget(allies_info_layout)
+        allies_container.add_widget(self.allies_info_container)
+        self.settings_content_container.add_widget(allies_container)
+        # ======== ИНФОРМАЦИЯ О ФРАКЦИИ ========
+        self.faction_info_container = MDBoxLayout(
+            orientation='vertical',
+            spacing=dp(5),
+            size_hint=(1, None),
+            height=faction_info_container_height,
+        )
+        info_title = MDLabel(
+            text="Характеристики фракции:",
+            font_style="Body1",
+            theme_text_color="Custom",
+            text_color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=dp(25),
+            halign='left'
+        )
+        info_title.bind(size=info_title.setter('text_size'))
+        self.faction_info_container.add_widget(info_title)
+        self.stats_labels = {}
+        stats_names = ["Доход Крон:", "Доход Кристаллов:", "Армия:"]
+        for stat_name in stats_names:
+            stat_row = MDBoxLayout(
+                orientation='horizontal',
+                size_hint_y=None,
+                height=dp(20),
+                spacing=dp(5)
+            )
+            label = MDLabel(
+                text=stat_name,
+                font_style="Caption",
+                theme_text_color="Custom",
+                text_color=(0.9, 0.9, 0.9, 1),
+                size_hint_x=0.6,
+                halign='left'
+            )
+            label.bind(size=label.setter('text_size'))
+            icons_box = MDBoxLayout(
+                orientation='horizontal',
+                size_hint_x=0.4,
+                spacing=dp(3)
+            )
+            # Заполняем серыми иконками по умолчанию
+            for i in range(3):
+                img = Image(
+                    source='files/pict/menu/grey.png',
+                    size_hint=(None, None),
+                    size=(dp(14), dp(14))
+                )
+                icons_box.add_widget(img)
+            stat_row.add_widget(label)
+            stat_row.add_widget(icons_box)
+            self.faction_info_container.add_widget(stat_row)
+            self.stats_labels[stat_name] = icons_box
+        self.settings_content_container.add_widget(self.faction_info_container)
+        self.main_container.add_widget(self.settings_panel_container)
+        # ======== КНОПКА «Начать игру» (внизу по центру) ========
+        self.start_game_button = ModernButton(
             text="Начать игру",
-            size_hint=(0.3, None),
-            height=button_height,
-            font_size='18sp' if is_android else '16sp',
+            size_hint=(0.25, None),
+            height=dp(45),
+            font_size=self.base_font_size * 1.1,
             bold=True,
             color=(1, 1, 1, 1),
-            background_color=(0.2, 0.8, 0.2, 1),
-            pos_hint={'center_x': 0.75, 'y': 0.1},
+            background_color=(0.2, 0.6, 0.2, 1),
+            pos_hint={'center_x': 0.5, 'y': 0.02},
             opacity=1
         )
         self.start_game_button.bind(on_release=self.start_game)
-
-        # ======== КНОПКА «Вернуться в главное меню» (сразу видна) ========
-        self.back_btn = RoundedButton(
+        self.main_container.add_widget(self.start_game_button)
+        # ======== КНОПКА «Вернуться в главное меню» (слева внизу) ========
+        self.back_btn = ModernButton(
             text="Вернуться в главное меню",
-            size_hint=(0.34, 0.08),
-            pos_hint={'x': 0.005, 'y': 0.05},
+            size_hint=(0.25, None),
+            height=dp(40),
+            pos_hint={'x': 0.02, 'y': 0.02},
             color=(1, 1, 1, 1),
-            font_size='16sp',
-            background_color=(0.8, 0.2, 0.2, 1),
-            opacity=1
+            font_size=self.base_font_size * 0.9,
+            background_color=(0.6, 0.2, 0.2, 1)
         )
         self.back_btn.bind(on_release=self.back_to_menu)
-        self.buttons_container.add_widget(self.kingdom_buttons)
-        self.buttons_container.add_widget(self.start_game_button)
-        self.buttons_container.add_widget(self.back_btn)
-
-        # ======== Запускаем анимацию появления кнопок-фракций ========
+        self.main_container.add_widget(self.back_btn)
+        # ======== Запускаем анимацию появления ========
         Clock.schedule_once(lambda dt: self.animate_in(), 0.3)
 
+    def on_ideology_selected(self, spinner, text):
+        """Обработка выбора идеологии"""
+        if text == 'Случайная':
+            self.selected_ideology = 'random'
+            # Обновляем текст, цвет и иконку
+            self.ideology_bonus_label.text = "Идеология будет выбрана случайно"
+            self.ideology_bonus_label.color = (0.8, 0.8, 0.8, 1)
+            # Устанавливаем иконку по умолчанию или оставляем текущей
+            # self.ideology_bonus_icon.source = 'files/pict/menu/bonus_icon.png' # Пример иконки по умолчанию
+            # Если не хотите менять иконку для 'Случайная', просто не изменяйте self.ideology_bonus_icon.source
+        elif text == 'Смирение':
+            self.selected_ideology = 'Смирение'
+            # Обновляем текст, цвет и иконку
+            self.ideology_bonus_label.text = "+775% к доходам от налогов"
+            self.ideology_bonus_label.color = (0.5, 0.8, 1.0, 1)  # Голубой цвет
+            self.ideology_bonus_icon.source = 'files/status/resource_box/coin.png'
+            # Важно: перезагрузить текстуру изображения
+            self.ideology_bonus_icon.reload()
+        elif text == 'Борьба':
+            self.selected_ideology = 'Борьба'
+            # Обновляем текст, цвет и иконку
+            self.ideology_bonus_label.text = "+510% к добыче кристаллов"
+            self.ideology_bonus_label.color = (1.0, 0.5, 0.5, 1)  # Красноватый цвет
+            self.ideology_bonus_icon.source = 'files/status/resource_box/crystal.png'
+            # Важно: перезагрузить текстуру изображения
+            self.ideology_bonus_icon.reload()
+        print(f"Выбрана идеология: {self.selected_ideology}")
+
+    def on_allies_selected(self, spinner, text):
+        """Обработка выбора количества союзников"""
+        if text == 'Случайное количество':
+            self.selected_allies = 'random'
+            # Обновляем текст и цвет в self.allies_count_label
+            self.allies_count_label.text = "Случайно 1 или 2 союзника"
+            self.allies_count_label.color = (0.8, 0.8, 0.8, 1)
+        elif text == '1':
+            self.selected_allies = 1
+            # Обновляем текст и цвет в self.allies_count_label
+            self.allies_count_label.text = "1 фракция с такой же идеологией"
+            self.allies_count_label.color = (0.5, 1.0, 0.5, 1)  # Зеленый
+        elif text == '2':
+            self.selected_allies = 2
+            # Обновляем текст и цвет в self.allies_count_label
+            self.allies_count_label.text = "2 фракции с такой же идеологией"
+            self.allies_count_label.color = (0.5, 1.0, 0.5, 1)  # Зеленый
+        print(f"Выбрано союзников: {self.selected_allies}")
+
     def animate_in(self):
-        """
-        1) Ставим панель в финальную позицию (выше),
-        2) Поочерёдно проявляем opacity каждой кнопки-фракции,
-        3) Кнопки «Начать игру» и «Вернуться» уже видны.
-        """
-        # Смещаем финальную позицию панели по Y (тоже выше):
-        final_x_panel = Window.width * 0.1
-        final_y_panel = Window.height * 0.6 - self.kingdom_buttons.height / 2  # было 0.5, заменили на 0.6
-        self.kingdom_buttons.pos = (final_x_panel, final_y_panel)
-
-        # Список всех кнопок-фракций внутри BoxLayout, сверху вниз:
+        """Анимация появления элементов"""
+        # Начальные позиции для анимации
+        self.faction_panel_container.pos_hint = {'x': -0.5, 'center_y': 0.5}
+        self.settings_panel_container.pos_hint = {'right': 1.5, 'center_y': 0.5}
+        self.start_game_button.opacity = 0
+        self.back_btn.opacity = 0
+        # Анимация панелей
+        anim_faction = Animation(pos_hint={'x': 0.05, 'center_y': 0.5}, duration=0.8, t='out_back')
+        anim_settings = Animation(pos_hint={'right': 0.95, 'center_y': 0.5}, duration=0.8, t='out_back')
+        anim_faction.start(self.faction_panel_container)
+        anim_settings.start(self.settings_panel_container)
+        # Появление кнопок
+        Clock.schedule_once(lambda dt: Animation(opacity=1, duration=0.5).start(self.start_game_button), 0.8)
+        Clock.schedule_once(lambda dt: Animation(opacity=1, duration=0.5).start(self.back_btn), 0.9)
+        # Появление кнопок фракций
         faction_buttons = list(self.kingdom_buttons.children)[::-1]
-        delay_between = 0.15
-
         for idx, btn in enumerate(faction_buttons):
             Clock.schedule_once(
-                lambda dt, widget=btn: Animation(opacity=1, duration=0.4).start(widget),
-                idx * delay_between
+                lambda dt, widget=btn: Animation(opacity=1, duration=0.3).start(widget),
+                0.5 + idx * 0.1
             )
-
-        total_delay = (len(faction_buttons) - 1) * delay_between + 0.4
         self.buttons_locked = True
-        Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), total_delay)
-        Clock.schedule_once(self.store_coords, 0)
-
-    def store_coords(self, dt):
-        cur = self.conn.cursor()
-        now = datetime.now().isoformat()
-        screen_section = 'kingdom_selection'
-        for btn in self.kingdom_buttons.children:
-            # Получаем абсолютные координаты кнопки
-            abs_pos = btn.to_window(*btn.pos)
-            abs_x, abs_y = abs_pos[0], abs_pos[1]
-            width = btn.width
-            height = btn.height
-            element_name = btn.text
-            cur.execute("""
-                INSERT INTO interface_coord 
-                    (element_name, screen_section, x, y, width, height, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (element_name, screen_section, abs_x, abs_y, width, height, now, now))
-        self.conn.commit()
+        Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), 1.5)
 
     def loop_video(self, instance):
         instance.state = 'stop'
@@ -1147,185 +1789,104 @@ class KingdomSelectionWidget(FloatLayout):
     def back_to_menu(self, instance):
         if getattr(self, 'buttons_locked', False):
             return
-
-        # --- Добавляем строку для остановки фонового видео ---
+        # Останавливаем видео
         if hasattr(self, 'bg_video'):
             self.bg_video.state = 'stop'
-            print("Фоновое видео choice.mp4 остановлено при возврате в меню.")
-
+        from kivy.app import App
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
 
     def load_factions_from_db(self):
-        """
-        Загружает список уникальных фракций из таблицы diplomacies_default.
-        Исключает фракцию "Мятежники".
-        :return: Список словарей с информацией о фракциях.
-        """
+        """Загрузка фракций из БД"""
         factions = []
         try:
             cursor = self.conn.cursor()
-            # Выполняем запрос к таблице diplomacies_default, исключая "Мятежники"
             cursor.execute("""
                 SELECT DISTINCT faction1 
                 FROM diplomacies_default
                 WHERE faction1 != 'Мятежники'
             """)
             rows = cursor.fetchall()
-
-            # Обрабатываем результаты запроса
             for row in rows:
                 faction_name = row[0]
                 if faction_name:
                     factions.append({"name": faction_name})
-
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке данных из базы данных: {e}")
-
         return factions
 
     def select_kingdom(self, instance):
-        """
-        При клике на кнопку-фракцию: показываем PNG-рамку
-        ровно по координатам из interface_coord.
-        """
-        cur = self.conn.cursor()
-        self.stop_border_animation()  # останавливает предыдущую анимацию
+        """Выбор фракции"""
         if getattr(self, 'buttons_locked', False):
             return
 
+        # Сбрасываем цвет предыдущей выбранной кнопки (если была)
+        if self.selected_button:
+            # Возвращаем исходный цвет
+            Animation(background_color=(0.2, 0.3, 0.4, 1), duration=0.3).start(self.selected_button)
+
+        # Устанавливаем новую выбранную кнопку
         self.selected_button = instance
         kingdom_name = instance.text
 
-        # === Обновление изображения советника ===
-        kingdom_rename = {
-            "Север": "people",
-            "Эльфы": "elfs",
-            "Адепты": "adept",
-            "Вампиры": "vampire",
-            "Элины": "poly"
-        }
-        app = App.get_running_app()
-        app.selected_kingdom = kingdom_name
-        eng = kingdom_rename.get(kingdom_name, kingdom_name).lower()
-        adv_path = f'files/sov/{eng}.jpg'
-        if os.path.exists(adv_path):
-            self.advisor_image.source = adv_path
-            self.advisor_image.reload()
+        # Подсвечиваем выбранную кнопку зеленым цветом
+        Animation(background_color=(0.2, 0.8, 0.2, 1), duration=0.3).start(instance)
 
-        # === ПОЗИЦИОНИРОВАНИЕ PNG-РАМКИ НА ОСНОВЕ ДАННЫХ ИЗ БД ===
-        padding = dp(30)
+        # Обновление информации о фракции
+        self.update_faction_stats(kingdom_name)
 
-        cur.execute("""
-            SELECT x, y, width, height 
-            FROM interface_coord 
-            WHERE element_name=? AND screen_section=?
-            ORDER BY id DESC LIMIT 1
-        """, (kingdom_name, 'kingdom_selection'))
-
-        row = cur.fetchone()
-        if not row:
-            return
-
-        btn_x, btn_y, btn_width, btn_height = map(float, row)
-
-        # Растягиваем рамку чуть больше кнопки
-        self.border_image.size_hint = (None, None)
-        self.border_image.size = (btn_width + padding * 2, btn_height + padding * 2)
-        self.border_image.pos = (btn_x - padding, btn_y - padding)
-        self.border_image.opacity = 0
-        self.border_image.allow_stretch = True
-        self.border_image.keep_ratio = False
-
-        def pulse_loop(*args):
-            anim = Animation(opacity=1, duration=0.5) + Animation(opacity=0.4, duration=0.5)
-            anim.repeat = True
-            anim.start(self.border_image)
-
-        Clock.schedule_once(pulse_loop, 0)
-
-        # === Обновление инфо-панели справа ===
-        self.get_kingdom_info(kingdom_name)
-
-
-    def stop_border_animation(self):
-        Animation.stop_all(self.border_image)
-        self.border_image.opacity = 0
-
-    def hex_to_rgba(self, hex_color):
-        # Вставьте здесь свою логику конвертации
-        return (0, 0.3, 0.4, 1)
-
-    def generate_icons_layout(self, value, max_value=3):
-        layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(20))
-        for i in range(max_value):
-            img_path = 'files/pict/menu/full.png' if i < value else 'files/pict/menu/grey.png'
-            img = Image(source=img_path, size_hint=(None, None), size=('16dp', '16dp'))
-            layout.add_widget(img)
-        return layout
-
-    def get_kingdom_info(self, kingdom):
-        full_img = 'files/pict/menu/full.png'
-        empty_img = 'files/pict/menu/grey.png'
-        if not os.path.exists(full_img) or not os.path.exists(empty_img):
-            return
-
+    def update_faction_stats(self, kingdom):
+        """Обновляет статистику выбранной фракции"""
         stats = {
-            "Север": {"Доход Крон": 3, "Доход Кристаллов": 1, "Армия": 2},
-            "Эльфы": {"Доход Крон": 2, "Доход Кристаллов": 2, "Армия": 2},
-            "Вампиры": {"Доход Крон": 2, "Доход Кристаллов": 2, "Армия": 3},
-            "Элины": {"Доход Крон": 1, "Доход Кристаллов": 3, "Армия": 1},
-            "Адепты": {"Доход Крон": 1, "Доход Кристаллов": 2, "Армия": 2}
+            "Север": {"Доход Крон:": 3, "Доход Кристаллов:": 1, "Армия:": 2},
+            "Эльфы": {"Доход Крон:": 2, "Доход Кристаллов:": 2, "Армия:": 2},
+            "Вампиры": {"Доход Крон:": 2, "Доход Кристаллов:": 2, "Армия:": 3},
+            "Элины": {"Доход Крон:": 1, "Доход Кристаллов:": 3, "Армия:": 1},
+            "Адепты": {"Доход Крон:": 1, "Доход Кристаллов:": 2, "Армия:": 2}
         }
         data = stats.get(kingdom)
         if not data:
             return
+        # Обновляем иконки для каждой характеристики
+        for stat_name, icons_box in self.stats_labels.items():
+            value = data.get(stat_name, 0)
+            # Очищаем старые иконки
+            icons_box.clear_widgets()
+            # Добавляем новые иконки
+            for i in range(3):
+                if i < value:
+                    img = Image(
+                        source='files/pict/menu/full.png',
+                        size_hint=(None, None),
+                        size=(dp(16), dp(16))
+                    )
+                else:
+                    img = Image(
+                        source='files/pict/menu/grey.png',
+                        size_hint=(None, None),
+                        size=(dp(16), dp(16))
+                    )
+                icons_box.add_widget(img)
 
-        self.faction_info_container.clear_widgets()
-
-        spacing = dp(20)  # Расстояние между надписью и иконками
-
-        crown_row = BoxLayout(size_hint_y=None, height=dp(20))
-        crown_row.add_widget(Label(text="Доход Крон:", size_hint_x=None, width=dp(100)))
-        crown_row.add_widget(Widget(size_hint_x=None, width=spacing))  # Пробел
-        crown_row.add_widget(self.generate_icons_layout(data["Доход Крон"]))
-        self.faction_info_container.add_widget(crown_row)
-
-        resource_row = BoxLayout(size_hint_y=None, height=dp(20))
-        resource_row.add_widget(Label(text="Доход Кристаллов:", size_hint_x=None, width=dp(100)))
-        resource_row.add_widget(Widget(size_hint_x=None, width=spacing))  # Пробел
-        resource_row.add_widget(self.generate_icons_layout(data["Доход Кристаллов"]))
-        self.faction_info_container.add_widget(resource_row)
-
-        army_row = BoxLayout(size_hint_y=None, height=dp(20))
-        army_row.add_widget(Label(text="Армия:", size_hint_x=None, width=dp(100)))
-        army_row.add_widget(Widget(size_hint_x=None, width=spacing))  # Пробел
-        army_row.add_widget(self.generate_icons_layout(data["Армия"]))
-        self.faction_info_container.add_widget(army_row)
-
-    # Найди функцию start_game внутри класса KingdomSelectionWidget
     def start_game(self, instance):
+        """Начало игры с сохранением выбора игрока"""
         if getattr(self, 'buttons_locked', False):
             return
-
         if not getattr(self, 'selected_button', None):
             print("Фракция не выбрана.")
             return
-
-        # === Блокируем все кнопки ===
+        # Блокируем кнопки
         self.disable_all_buttons(True)
-
-        # --- Добавляем строку для остановки фонового видео ---
+        # Останавливаем фоновое видео
         if hasattr(self, 'bg_video'):
             self.bg_video.state = 'stop'
-            print("Фоновое видео choice.mp4 остановлено перед запуском start_game.mp4.")
-
-        # === Создаём Overlay и запускаем видео ===
-        overlay = FloatLayout(size=Window.size)
+        # Сохраняем выбор игрока в БД
+        self.save_player_choices()
+        # Создаем оверлей с видео
+        overlay = MDFloatLayout(size=Window.size)
         self.overlay = overlay
         self.add_widget(overlay)
-
         self.start_video = Video(
             source='files/menu/start_game.mp4',
             state='play',
@@ -1336,58 +1897,114 @@ class KingdomSelectionWidget(FloatLayout):
             pos=(0, 0)
         )
         overlay.add_widget(self.start_video)
-
-        # Привязываем on_eos, чтобы при окончании видео сразу запустить игру:
         self.start_video.bind(on_eos=self.on_start_video_end)
-
-        # Резервный таймер на 3 секунды, если on_eos по какой-то причине не сработает:
         Clock.schedule_once(self.force_start_game, 3)
 
+    def save_player_choices(self):
+        """Сохраняет выбор игрока в БД"""
+        cursor = self.conn.cursor()
+        try:
+            # Создаем таблицу если её нет
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS player_choices (
+                    faction TEXT PRIMARY KEY,
+                    ideology TEXT,
+                    allies_count INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            # Получаем выбранную фракцию
+            from kivy.app import App
+            app = App.get_running_app()
+            selected_faction = app.selected_kingdom
+            # Удаляем старые записи
+            cursor.execute("DELETE FROM player_choices WHERE faction = ?", (selected_faction,))
+            # Сохраняем новые значения
+            cursor.execute("""
+                INSERT INTO player_choices (faction, ideology, allies_count) 
+                VALUES (?, ?, ?)
+            """, (
+                selected_faction,
+                self.selected_ideology if self.selected_ideology != 'random' else None,
+                self.selected_allies if self.selected_allies != 'random' else None
+            ))
+            self.conn.commit()
+            print(f"Выбор игрока сохранен: {selected_faction}, идеология={self.selected_ideology}, союзников={self.selected_allies}")
+        except sqlite3.Error as e:
+            print(f"Ошибка при сохранении выбора игрока: {e}")
+            self.conn.rollback()
+
     def on_start_video_end(self, instance, value):
-        # Когда видео завершено (или state == 'stop'), начинаем игру
         if value or (self.start_video and self.start_video.state == 'stop'):
-            print("Видео завершено (on_eos), начинаем игру...")
+            print("Видео завершено, начинаем игру...")
             self.cleanup_and_start_game()
 
     def force_start_game(self, dt):
-        # Если on_eos не сработал за 3, сек, форсируем запуск игры
-        print("Резервный таймер сработал — завершаем видео и запускаем игру")
+        print("Резервный таймер сработал")
         if self.start_video:
             self.start_video.state = 'stop'
         self.cleanup_and_start_game()
 
     def cleanup_and_start_game(self):
-        # --- Добавляем эту строку для остановки фонового видео ---
-        if hasattr(self, 'bg_video'):
-            self.bg_video.state = 'stop'
-            print("Фоновое видео choice.mp4 остановлено.")
-
-        # Убираем оверлей с начального видео (если он есть)
+        """Очистка и запуск игры"""
+        # Очищаем оверлей
         if hasattr(self, 'overlay') and self.overlay in self.children:
             self.remove_widget(self.overlay)
         self.disable_all_buttons(False)
-
         try:
+            from kivy.app import App
             app = App.get_running_app()
-            restore_from_backup(self.conn)
             selected_kingdom = app.selected_kingdom
-            map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom, conn=self.conn)
-            cities = load_cities_from_db(self.conn, selected_kingdom)
-            if not cities:
-                print("Города не найдены.")
-                return
-
-            game_screen = GameScreen(selected_kingdom, cities, conn=self.conn)
-            app.root.clear_widgets()
-            app.root.add_widget(map_widget)
-            app.root.add_widget(game_screen)
-            Clock.schedule_once(lambda dt: map_widget.blink_player_city_icon(), 1.0)
+            MapWidget = globals().get('MapWidget')
+            GameScreen = globals().get('GameScreen')
+            if not MapWidget or not GameScreen:
+                # Попробуем импортировать из текущего модуля
+                import sys
+                current_module = sys.modules[__name__]
+                MapWidget = getattr(current_module, 'MapWidget', None)
+                GameScreen = getattr(current_module, 'GameScreen', None)
+            if MapWidget and GameScreen:
+                # Создаем виджет карты
+                map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom, conn=self.conn)
+                # Загружаем города (нужно реализовать load_cities_from_db)
+                # cities = load_cities_from_db(self.conn, selected_kingdom)
+                cities = []  # Заглушка - замените на реальную загрузку городов
+                # Создаем экран игры
+                game_screen = GameScreen(
+                    selected_kingdom,
+                    cities,
+                    conn=self.conn,
+                    player_ideology=self.selected_ideology,
+                    player_allies=self.selected_allies
+                )
+                app.root.clear_widgets()
+                app.root.add_widget(map_widget)
+                app.root.add_widget(game_screen)
+                # Запускаем анимацию мигания города
+                if hasattr(map_widget, 'blink_player_city_icon'):
+                    Clock.schedule_once(lambda dt: map_widget.blink_player_city_icon(), 1.0)
+            else:
+                print("Ошибка: не найден MapWidget или GameScreen")
+                # Создаем простой экран игры без карты
+                cities = []
+                game_screen = GameScreen(
+                    selected_kingdom,
+                    cities,
+                    conn=self.conn,
+                    player_ideology=self.selected_ideology,
+                    player_allies=self.selected_allies
+                )
+                app.root.clear_widgets()
+                app.root.add_widget(game_screen)
         except Exception as e:
             print(f"Ошибка при запуске игры: {e}")
+            import traceback
+            traceback.print_exc()
 
     def disable_all_buttons(self, disabled=True):
-        for child in self.buttons_container.walk():
-            if isinstance(child, RoundedButton):
+        """Блокировка/разблокировка всех кнопок"""
+        for child in self.main_container.walk():
+            if isinstance(child, (ModernButton, MDFlatButton, ModernSpinner)):
                 child.disabled = disabled
 
 
@@ -1417,20 +2034,419 @@ class RoundedButton(Button):
             )
 
 
+from kivy.graphics import Color, RoundedRectangle, Line, Ellipse, Rectangle
+from kivy.graphics.context_instructions import PushMatrix, PopMatrix
+from kivy.animation import Animation
+from kivy.clock import Clock
+from kivy.properties import ListProperty, NumericProperty, BooleanProperty
+import math
+import random
+
+
+class GameButton(Button):
+    """Стильная игровая кнопка для мобильных устройств (тач-интерфейс)"""
+
+    # Свойства Kivy для анимаций
+    base_color = ListProperty([0.15, 0.15, 0.35, 0.95])
+    accent_color = ListProperty([0.3, 0.6, 0.9, 1])
+    hover_scale = NumericProperty(1.0)
+    glow_intensity = NumericProperty(0.0)
+    press_depth = NumericProperty(0.0)
+    is_touched = BooleanProperty(False)
+
+    def __init__(self, **kwargs):
+        # Извлекаем button_type из kwargs
+        self.button_type = kwargs.pop('button_type', 'default')
+
+        # Устанавливаем цвета в зависимости от типа кнопки
+        self.set_colors_by_type()
+
+        super().__init__(**kwargs)
+
+        # Настройки кнопки С ЧЕРНОЙ ОБВОДКОЙ
+        self.background_normal = ''
+        self.background_color = (0, 0, 0, 0)
+        self.color = (1, 1, 1, 1)  # Белый текст
+        self.font_size = '20sp'
+        self.bold = True
+
+        # НАСТРОЙКИ ОБВОДКИ ТЕКСТА
+        self.outline_color = (0, 0, 0, 1)  # ЧЕРНАЯ обводка
+        self.outline_width = 2  # Толщина обводки
+
+        # Для эффектов
+        self.energy = 0.0
+        self.particles = []
+        self.active_particles = []
+        self.touch_ripples = []
+
+        # Для мобильного интерфейса
+        self.touch_down_time = 0
+        self.is_long_press = False
+
+        self.bind(
+            pos=self.update_canvas,
+            size=self.update_canvas
+        )
+
+        # Создаем начальные частицы
+        self.create_particles()
+
+        # Отключаем hover-эффекты для мобильных
+        self.always_release = True
+
+    def set_colors_by_type(self):
+        """Устанавливаем цвета в зависимости от типа кнопки"""
+        color_schemes = {
+            "start": {
+                "base": [0.15, 0.25, 0.45, 0.95],
+                "accent": [0.4, 0.7, 1.0, 1]
+            },
+            "rating": {
+                "base": [0.15, 0.35, 0.25, 0.95],
+                "accent": [0.4, 0.9, 0.6, 1]
+            },
+            "help": {
+                "base": [0.35, 0.25, 0.15, 0.95],
+                "accent": [1.0, 0.8, 0.4, 1]
+            },
+            "author": {
+                "base": [0.35, 0.15, 0.35, 0.95],
+                "accent": [0.9, 0.4, 0.9, 1]
+            },
+            "exit": {
+                "base": [0.35, 0.15, 0.15, 0.95],
+                "accent": [1.0, 0.4, 0.4, 1]
+            },
+            "default": {
+                "base": [0.15, 0.15, 0.35, 0.95],
+                "accent": [0.3, 0.6, 0.9, 1]
+            }
+        }
+
+        scheme = color_schemes.get(self.button_type, color_schemes["default"])
+        self.base_color = scheme["base"]
+        self.accent_color = scheme["accent"]
+
+    def create_particles(self):
+        """Создаем фоновые частицы"""
+        for _ in range(6):
+            particle = {
+                'x': random.uniform(0.1, 0.9),
+                'y': random.uniform(0.1, 0.9),
+                'size': random.uniform(2, 4),
+                'speed_x': random.uniform(-0.1, 0.1),
+                'speed_y': random.uniform(-0.1, 0.1),
+                'color': (
+                    random.uniform(0.3, 0.7),
+                    random.uniform(0.3, 0.7),
+                    random.uniform(0.7, 1.0),
+                    random.uniform(0.05, 0.15)
+                ),
+                'phase': random.uniform(0, math.pi * 2)
+            }
+            self.particles.append(particle)
+
+    def on_touch_down(self, touch):
+        """Обработка касания"""
+        if self.collide_point(*touch.pos):
+            self.touch_down_time = Clock.get_time()
+            self.is_touched = True
+
+            # Анимация нажатия
+            anim = Animation(
+                press_depth=0.95,
+                glow_intensity=0.7,
+                duration=0.1,
+                t='out_quad'
+            )
+            anim.start(self)
+
+            # Эффект волны
+            self.create_touch_ripple(touch.x, touch.y)
+
+            # Лёгкий выброс частиц
+            self.emit_touch_particles(touch.x, touch.y)
+
+            # Вибрация (если поддерживается)
+            if hasattr(self, 'vibrate'):
+                self.vibrate(10)
+
+            return super().on_touch_down(touch)
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        """Обработка отпускания"""
+        if self.is_touched:
+            self.is_touched = False
+
+            # Проверяем не долгое ли это нажатие
+            touch_duration = Clock.get_time() - self.touch_down_time
+            self.is_long_press = touch_duration > 0.5
+
+            # Анимация отпускания
+            if self.collide_point(*touch.pos):
+                # Если палец все еще на кнопке - эффект клика
+                Animation(
+                    press_depth=1.0,
+                    glow_intensity=0.3,
+                    duration=0.15,
+                    t='out_back'
+                ).start(self)
+
+                # Усиленный выброс частиц при клике
+                self.explode_particles(touch.x, touch.y)
+
+                # Звук клика (если есть)
+                if hasattr(self, 'play_click_sound'):
+                    self.play_click_sound()
+            else:
+                # Если палец ушел с кнопки - просто возвращаем
+                Animation(
+                    press_depth=1.0,
+                    glow_intensity=0.0,
+                    duration=0.2
+                ).start(self)
+
+        return super().on_touch_up(touch)
+
+    def create_touch_ripple(self, x, y):
+        """Эффект волны от касания"""
+        ripple = {
+            'x': x,
+            'y': y,
+            'radius': 5,
+            'max_radius': min(self.width, self.height) * 0.7,
+            'alpha': 0.6,
+            'color': self.accent_color[:],
+            'width': 1.5
+        }
+        self.touch_ripples.append(ripple)
+
+        Clock.schedule_once(lambda dt: self.remove_ripple(ripple), 0.6)
+
+    def remove_ripple(self, ripple):
+        """Удаление эффекта волны"""
+        if ripple in self.touch_ripples:
+            self.touch_ripples.remove(ripple)
+            self.update_canvas()
+
+    def emit_touch_particles(self, x, y):
+        """Лёгкий выброс частиц при касании"""
+        for _ in range(4):
+            angle = random.uniform(0, math.pi * 2)
+            speed = random.uniform(0.5, 1.5)
+
+            particle = {
+                'x': x,
+                'y': y,
+                'size': random.uniform(2, 4),
+                'speed_x': math.cos(angle) * speed,
+                'speed_y': math.sin(angle) * speed,
+                'color': (
+                    self.accent_color[0] + random.uniform(-0.1, 0.1),
+                    self.accent_color[1] + random.uniform(-0.1, 0.1),
+                    self.accent_color[2] + random.uniform(-0.1, 0.1),
+                    0.8
+                ),
+                'life': 1.0,
+                'decay': random.uniform(0.02, 0.04)
+            }
+            self.active_particles.append(particle)
+
+    def explode_particles(self, x, y):
+        """Выброс частиц при клике"""
+        for _ in range(8):
+            angle = random.uniform(0, math.pi * 2)
+            speed = random.uniform(1, 3)
+
+            particle = {
+                'x': x,
+                'y': y,
+                'size': random.uniform(3, 6),
+                'speed_x': math.cos(angle) * speed,
+                'speed_y': math.sin(angle) * speed,
+                'color': (
+                    self.accent_color[0] + random.uniform(-0.2, 0.2),
+                    self.accent_color[1] + random.uniform(-0.2, 0.2),
+                    self.accent_color[2] + random.uniform(-0.2, 0.2),
+                    random.uniform(0.7, 1.0)
+                ),
+                'life': 1.0,
+                'decay': random.uniform(0.03, 0.06)
+            }
+            self.active_particles.append(particle)
+
+    def update_canvas(self, *args):
+        """Отрисовка кнопки"""
+        self.canvas.before.clear()
+        self.canvas.after.clear()
+
+        # Координаты с учетом анимаций
+        scale = self.hover_scale * self.press_depth
+        width = self.width * scale
+        height = self.height * scale
+        x = self.center_x - width / 2
+        y = self.center_y - height / 2
+
+        with self.canvas.before:
+            # ===== ОСНОВНОЙ ФОН =====
+
+            # Тень
+            if self.press_depth >= 0.98:
+                PushMatrix()
+                Color(0, 0, 0, 0.2)
+                RoundedRectangle(
+                    pos=(x - 2, y - 5),
+                    size=(width, height),
+                    radius=[25]
+                )
+                PopMatrix()
+
+            # Основной цвет
+            Color(*self.base_color)
+            RoundedRectangle(
+                pos=(x, y),
+                size=(width, height),
+                radius=[25]
+            )
+
+            # Градиент сверху
+            r, g, b, a = self.base_color
+            Color(r + 0.1, g + 0.1, b + 0.1, a * 0.5)
+            RoundedRectangle(
+                pos=(x, y + height * 0.6),
+                size=(width, height * 0.4),
+                radius=[25, 25, 0, 0]
+            )
+
+            # Акцентная полоса
+            Color(*self.accent_color)
+            Rectangle(
+                pos=(x + width * 0.15, y + height * 0.8),
+                size=(width * 0.7, height * 0.1)
+            )
+
+            # Фоновые частицы
+            time = Clock.get_time()
+            for particle in self.particles:
+                px = x + particle['x'] * width
+                py = y + particle['y'] * height
+
+                # Плавное движение
+                px += math.sin(time * 0.5 + particle['phase']) * 2
+                py += math.cos(time * 0.7 + particle['phase']) * 2
+
+                Color(*particle['color'])
+                Ellipse(
+                    pos=(px - particle['size']/2, py - particle['size']/2),
+                    size=(particle['size'], particle['size'])
+                )
+
+        with self.canvas.after:
+            # ===== ЭФФЕКТЫ =====
+
+            # Эффекты волн от касаний
+            for ripple in self.touch_ripples:
+                Color(ripple['color'][0], ripple['color'][1],
+                      ripple['color'][2], ripple['alpha'])
+                Line(
+                    circle=(ripple['x'], ripple['y'], ripple['radius']),
+                    width=ripple['width']
+                )
+
+                # Анимация волны
+                ripple['radius'] += 3
+                ripple['alpha'] -= 0.02
+
+            # Свечение
+            if self.glow_intensity > 0:
+                Color(
+                    self.accent_color[0],
+                    self.accent_color[1],
+                    self.accent_color[2],
+                    self.glow_intensity * 0.3
+                )
+                Line(
+                    rounded_rectangle=(
+                        x - 3, y - 3,
+                        width + 6, height + 6,
+                        28
+                    ),
+                    width=2
+                )
+
+            # Активные частицы
+            for particle in list(self.active_particles):
+                Color(*particle['color'])
+                Ellipse(
+                    pos=(
+                        particle['x'] - particle['size']/2,
+                        particle['y'] - particle['size']/2
+                    ),
+                    size=(particle['size'], particle['size'])
+                )
+
+                # Обновление частиц
+                particle['x'] += particle['speed_x']
+                particle['y'] += particle['speed_y']
+                particle['life'] -= particle['decay']
+                particle['size'] *= 0.97
+
+                # Замедление
+                particle['speed_x'] *= 0.92
+                particle['speed_y'] *= 0.92
+
+            # Удаление старых частиц
+            self.active_particles = [
+                p for p in self.active_particles
+                if p['life'] > 0.1 and p['size'] > 0.3
+            ]
+
+            # Контур кнопки
+            Color(1, 1, 1, 0.4)
+            Line(
+                rounded_rectangle=(x, y, width, height, 25),
+                width=1
+            )
+
+            # Внутренняя тень для объема
+            Color(0, 0, 0, 0.15)
+            Line(
+                rounded_rectangle=(
+                    x + 1, y + 1,
+                    width - 2, height - 2,
+                    24
+                ),
+                width=0.8
+            )
+
+    def on_is_touched(self, instance, value):
+        """Обновление canvas при изменении состояния касания"""
+        self.update_canvas()
+
+
 class AnimatedLabel(Label):
+    """Метка с анимацией и черной обводкой"""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.animation = None
+        # Устанавливаем черную обводку по умолчанию
+        if 'outline_color' not in kwargs:
+            self.outline_color = (0, 0, 0, 1)  # Черная обводка
+        if 'outline_width' not in kwargs:
+            self.outline_width = 3  # Толстая обводка для заголовка
 
     def start_glow_animation(self):
         if self.animation:
             self.animation.cancel(self)
 
+        # Анимация с черной обводкой, которая становится светлее
         anim = Animation(
-            outline_color=(0.8, 0.8, 1, 1),
+            outline_color=(0.8, 0.8, 1, 1),  # Светло-синее свечение
             duration=2.0
         ) + Animation(
-            outline_color=(0.2, 0.2, 0.4, 1),
+            outline_color=(0, 0, 0, 1),  # Возврат к черной обводке
             duration=2.0
         )
         anim.repeat = True
@@ -1441,12 +2457,11 @@ class MenuWidget(FloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
         super(MenuWidget, self).__init__(**kwargs)
         self.conn = conn
-        self.buttons_locked = True  # Инициализируем сразу
+        self.buttons_locked = True
 
         # Хранение идентификаторов запланированных задач
         self.background_anim_event = None
         self.float_anim_event = None
-        # Счетчик для анимации фона (чтобы не запускать лишние задачи)
         self._anim_scheduled = False
 
         # ======== Фоновые изображения ========
@@ -1468,17 +2483,16 @@ class MenuWidget(FloatLayout):
         self.add_widget(self.bg_image_1)
         self.add_widget(self.bg_image_2)
 
-        # ======== Инициализация переменных для анимации фона ========
         self.current_image = self.bg_image_1
         self.next_image = self.bg_image_2
 
-        # ======== Логотип / Заголовок с анимацией ========
+        # ======== Логотип с ЧЕРНОЙ ОБВОДКОЙ ========
         self.title_label = AnimatedLabel(
             text="Легенды Лэрдона",
             font_size='48sp',
             bold=True,
-            color=(1, 1, 1, 1),
-            outline_color=(0.2, 0.2, 0.4, 1),
+            color=(1, 1, 1, 1),  # Белый текст
+            outline_color=(0, 0, 0, 1),  # ЧЕРНАЯ обводка
             outline_width=3,
             halign='center',
             valign='middle',
@@ -1492,27 +2506,33 @@ class MenuWidget(FloatLayout):
         self.button_container = FloatLayout(size_hint=(1, 0.7), pos_hint={'center_x': 0.5, 'y': 0.15})
         self.add_widget(self.button_container)
 
-        # ======== Создаём стилизованные кнопки ========
+        # ======== Создаём кнопки С ЧЕРНОЙ ОБВОДКОЙ ТЕКСТА ========
         button_configs = [
-            {"text": "В Лэрдон", "y_pos": 0.75, "color": (0.2, 0.6, 0.9, 1), "action": self.start_game},
-            {"text": "Рейтинг", "y_pos": 0.58, "color": (0.3, 0.8, 0.5, 1), "action": self.open_dossier},
-            {"text": "Как играть", "y_pos": 0.41, "color": (0.9, 0.7, 0.2, 1), "action": self.open_how_to_play},
-            {"text": "Автор", "y_pos": 0.24, "color": (0.8, 0.4, 0.8, 1), "action": self.open_author},
-            {"text": "Выход", "y_pos": 0.07, "color": (0.9, 0.3, 0.3, 1), "action": self.exit_game}
+            {"text": "В Лэрдон", "y_pos": 0.75, "type": "start", "action": self.start_game},
+            {"text": "Рейтинг", "y_pos": 0.58, "type": "rating", "action": self.open_dossier},
+            {"text": "Как играть", "y_pos": 0.41, "type": "help", "action": self.open_how_to_play},
+            {"text": "Автор", "y_pos": 0.24, "type": "author", "action": self.open_author},
+            {"text": "Выход", "y_pos": 0.07, "type": "exit", "action": self.exit_game}
         ]
         self.buttons = []
         for config in button_configs:
-            btn = RoundedButton(
+            btn = GameButton(
+                button_type=config["type"],
                 text=config["text"],
                 size_hint=(0.5, 0.12),
                 pos_hint={'center_x': 0.5, 'y': config["y_pos"]},
-                color=(1, 1, 1, 1),
-                font_size='18sp',
+                color=(1, 1, 1, 1),  # Белый текст
+                font_size='22sp',  # Чуть больше для мобильных
                 bold=True,
                 opacity=0
             )
-            # Сохраняем цвет для использования в анимациях
-            btn.base_color = config["color"]
+
+            # Дополнительно настраиваем обводку текста
+            # В Kivy Label (от которого наследуется Button) есть свойства:
+            # outline_color и outline_width для обводки текста
+            btn.outline_color = (0, 0, 0, 1)  # Черная обводка
+            btn.outline_width = 1.5  # Толщина обводки
+
             btn.bind(on_release=config["action"])
             self.buttons.append(btn)
             self.button_container.add_widget(btn)
@@ -1524,37 +2544,31 @@ class MenuWidget(FloatLayout):
         # ======== Анимации ========
         Clock.schedule_once(self.animate_title, 0.2)
         Clock.schedule_once(self.animate_buttons_in, 0.4)
-        # Запланируем анимацию фона *только один раз* и сохраним событие
+
         if not self._anim_scheduled:
             self.background_anim_event = Clock.schedule_interval(self.animate_background, 5)
             self._anim_scheduled = True
-        # Запланируем анимацию плавания кнопок и сохраним событие
-        self.float_anim_event = Clock.schedule_interval(self.float_animation, 0.05) # ~60 FPS для плавности
+
+        self.float_anim_event = Clock.schedule_interval(self.float_animation, 0.05)
 
     def on_parent(self, widget, parent):
-        """
-        Вызывается Kivy при изменении родительского элемента виджета.
-        Используется для отмены задач Clock при удалении виджета.
-        """
-        # Если виджет удаляется (parent становится None)
+        """Отмена задач Clock при удалении виджета"""
         if parent is None:
-            # Отменяем задачи, связанные с этим виджетом
             if self.background_anim_event:
                 Clock.unschedule(self.background_anim_event)
-                print(f"[MenuWidget] Задача animate_background отменена при удалении виджета.")
             if self.float_anim_event:
                 Clock.unschedule(self.float_anim_event)
-                print(f"[MenuWidget] Задача float_animation отменена при удалении виджета.")
-            # Сброс флага, чтобы при следующем создании можно было снова запланировать
             self._anim_scheduled = False
 
     def add_decoration(self):
-        """Добавляем декоративные элементы"""
+        """Декоративные элементы с черной обводкой"""
         for i in range(6):
             particle = Label(
                 text="✦",
                 font_size='20sp',
-                color=(1, 1, 1, 0),
+                color=(1, 1, 1, 1),  # Белый
+                outline_color=(0, 0, 0, 0.8),  # Полупрозрачная черная обводка
+                outline_width=1,
                 opacity=0
             )
             self.particles.append(particle)
@@ -1574,36 +2588,44 @@ class MenuWidget(FloatLayout):
         for i, particle in enumerate(self.particles):
             if i < len(positions):
                 particle.pos_hint = positions[i]
-                anim = Animation(opacity=0.6, duration=2.0) + Animation(opacity=0.2, duration=2.0)
+                # Анимация с черной обводкой
+                anim = (
+                        Animation(opacity=0.8, outline_color=(0, 0, 0, 1), duration=1.5) +
+                        Animation(opacity=0.3, outline_color=(0, 0, 0, 0.5), duration=1.5)
+                )
                 anim.repeat = True
-                # Важно: не сохраняем ссылку на эту анимацию, так как она привязана к Label
-                # и отменяется при его удалении. Но если бы мы сохраняли, нужно было бы отменять.
                 Clock.schedule_once(lambda dt, p=particle, a=anim: a.start(p), i * 0.3)
 
     def animate_buttons_in(self, dt):
-        """Анимированное появление кнопок с эффектом волны"""
-        # Сначала показываем декоративные элементы
+        """Анимированное появление кнопок"""
         self.animate_particles()
-        # Анимация кнопок с эффектом "волны"
+
         for i, btn in enumerate(self.buttons):
-            # Начальная позиция - смещены вправо
             original_y = btn.pos_hint['y']
-            btn.pos_hint = {'center_x': 1.5, 'y': original_y}
-            # Анимация движения и появления
-            anim = Animation(
-                pos_hint={'center_x': 0.5, 'y': original_y},
-                duration=0.7,
-                transition='out_back'
-            ) & Animation(
-                opacity=1,
-                duration=0.5
+            btn.pos_hint = {'center_x': 0.5, 'y': -0.2}
+            btn.opacity = 0
+
+            # Также делаем обводку текста невидимой в начале
+            btn.outline_color = (0, 0, 0, 0)
+
+            delay = i * 0.15
+
+            # Анимация появления кнопки и обводки текста
+            anim = (
+                    Animation(
+                        pos_hint={'center_x': 0.5, 'y': original_y},
+                        opacity=1,
+                        duration=0.6,
+                        t='out_back'
+                    ) & Animation(
+                outline_color=(0, 0, 0, 1),  # Появление черной обводки
+                duration=0.4
             )
-            Clock.schedule_once(
-                lambda dt, widget=btn, animation=anim: animation.start(widget),
-                i * 0.12
             )
-        # Разблокировка кнопок после анимации
-        total_delay = len(self.buttons) * 0.12 + 0.8
+
+            Clock.schedule_once(lambda dt, b=btn, a=anim: a.start(b), delay)
+
+        total_delay = len(self.buttons) * 0.15 + 0.7
         Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), total_delay)
 
     def float_animation(self, dt):
@@ -1614,8 +2636,8 @@ class MenuWidget(FloatLayout):
         for i, btn in enumerate(self.buttons):
             if not hasattr(btn, 'original_y'):
                 btn.original_y = btn.pos_hint['y']
-            # Плавное движение вверх-вниз
-            float_offset = math.sin(current_time * 2 + i * 0.5) * 0.003
+
+            float_offset = math.sin(current_time * 1.5 + i * 0.7) * 0.0015
             new_y = btn.original_y + float_offset
             btn.pos_hint = {'center_x': 0.5, 'y': new_y}
 
@@ -1623,18 +2645,23 @@ class MenuWidget(FloatLayout):
         """Анимация при нажатии на кнопку"""
         if getattr(self, 'buttons_locked', True):
             return
-        # Анимация нажатия
-        anim = Animation(
-            size_hint=(0.48, 0.115),
-            duration=0.08
-        ) + Animation(
+
+        # Анимация с эффектом черной обводки
+        anim = (
+                Animation(
+                    size_hint=(0.48, 0.115),
+                    outline_color=(0, 0, 0, 0.7),  # Обводка темнеет при нажатии
+                    duration=0.08
+                ) + Animation(
             size_hint=(0.5, 0.12),
+            outline_color=(0, 0, 0, 1),  # Возврат к черной обводке
             duration=0.08
+        )
         )
         anim.start(instance)
 
     def animate_background(self, dt):
-        """Фоновая подмена изображений с плавным переходом"""
+        """Смена фона"""
         new_source = random.choice([
             'files/menu/people.jpg',
             'files/menu/elfs.jpg',
@@ -1642,7 +2669,7 @@ class MenuWidget(FloatLayout):
             'files/menu/poly.jpg',
             'files/menu/adept.jpg'
         ])
-        # Гарантируем, что источник изменится
+
         while new_source == self.next_image.source:
             new_source = random.choice([
                 'files/menu/people.jpg',
@@ -1651,14 +2678,19 @@ class MenuWidget(FloatLayout):
                 'files/menu/poly.jpg',
                 'files/menu/adept.jpg'
             ])
+
         self.next_image.source = new_source
         fade_out = Animation(opacity=0, duration=2.0)
         fade_in = Animation(opacity=1, duration=2.0)
         fade_out.start(self.current_image)
         fade_in.start(self.next_image)
-        # Меняем указатели для следующей анимации
         self.current_image, self.next_image = self.next_image, self.current_image
-    # === Обёртки для обработчиков кнопок с анимацией ===
+
+    # === Остальные методы остаются без изменений ===
+    def button_action_wrapper(self, action_func, instance):
+        self.create_button_animation(instance)
+        Clock.schedule_once(lambda dt: action_func(instance), 0.16)
+
     def open_dossier(self, instance):
         self.button_action_wrapper(self._open_dossier, instance)
 
@@ -1673,11 +2705,6 @@ class MenuWidget(FloatLayout):
 
     def exit_game(self, instance):
         self.button_action_wrapper(self._exit_game, instance)
-
-    def button_action_wrapper(self, action_func, instance):
-        """Обёртка для добавления анимации к действиям кнопок"""
-        self.create_button_animation(instance)
-        Clock.schedule_once(lambda dt: action_func(instance), 0.16)
 
     def _open_dossier(self, instance):
         if getattr(self, 'buttons_locked', True):
@@ -2246,7 +3273,7 @@ class HowToPlayScreen(Screen):
         app.root.add_widget(MenuWidget(self.conn))
 
 
-class Lerdon(App):
+class Lerdon(MDApp):
     def __init__(self, **kwargs):
         super(Lerdon, self).__init__(**kwargs)
         print("app starting...")

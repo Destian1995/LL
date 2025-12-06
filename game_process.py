@@ -1294,44 +1294,219 @@ class GameScreen(Screen):
 
     def initialize_political_data(self):
         """
-        Инициализирует таблицу political_systems значениями по умолчанию,
-        если она пуста. Политическая система для каждой фракции выбирается случайным образом.
-        Условие: не может быть меньше 2 и больше 3 стран с одним политическим строем.
+        Инициализирует таблицу political_systems с учетом выбора игрока.
+        Использует self.gamer_ideology и self.gamer_allies для определения распределения идеологий.
+        Если self.gamer_ideology не установлен, используется случайное распределение.
         """
         cursor = self.conn.cursor()
         try:
             # Проверяем, есть ли записи в таблице
             cursor.execute("SELECT COUNT(*) FROM political_systems")
             count = cursor.fetchone()[0]
+
             if count == 0:
                 # Список всех фракций
                 factions = ["Север", "Эльфы", "Вампиры", "Адепты", "Элины"]
 
-                # Список возможных политических систем
-                systems = ["Смирение", "Борьба"]
+                # Определяем выбор игрока
+                self._determine_player_ideology_and_allies()
 
-                # Функция для проверки распределения
-                def is_valid_distribution(distribution):
-                    counts = {system: distribution.count(system) for system in systems}
-                    return all(2 <= count <= 3 for count in counts.values())
+                # Если игрок не выбрал идеологию - используем случайное распределение
+                if not hasattr(self, 'gamer_ideology') or self.gamer_ideology is None:
+                    print("Идеология игрока не выбрана, используем случайное распределение")
+                    self._initialize_random_political_systems(cursor, factions)
+                else:
+                    print(
+                        f"Инициализация с идеологией игрока: {self.gamer_ideology}, союзников: {getattr(self, 'gamer_allies', 1)}")
+                    self._initialize_player_based_political_systems(cursor, factions)
 
-                # Генерация случайного распределения
-                while True:
-                    default_systems = [(faction, random.choice(systems)) for faction in factions]
-                    distribution = [system for _, system in default_systems]
-
-                    if is_valid_distribution(distribution):
-                        break
-
-                # Вставляем данные в таблицу
-                cursor.executemany(
-                    "INSERT INTO political_systems (faction, system) VALUES (?, ?)",
-                    default_systems
-                )
                 self.conn.commit()
-                print("Таблица political_systems инициализирована случайными значениями.")
+                print("Таблица political_systems успешно инициализирована.")
+
+                # Обновляем атрибут player_ideology после инициализации
+                self._update_player_ideology_attribute()
+
         except sqlite3.Error as e:
             print(f"Ошибка при инициализации таблицы political_systems: {e}")
+            self.conn.rollback()
+
+    def _determine_player_ideology_and_allies(self):
+        """
+        Определяет выбор игрока из атрибутов или использует значения по умолчанию.
+        Может быть расширена для получения значений из внешнего источника (например, экрана выбора).
+        """
+        # Проверяем, были ли установлены значения извне
+        if not hasattr(self, 'gamer_ideology'):
+            # Можно получить из сохраненных данных или использовать случайную
+            self.gamer_ideology = None
+
+        if not hasattr(self, 'gamer_allies'):
+            self.gamer_allies = 1  # Значение по умолчанию
+
+        # Если идеология не выбрана, можно предложить случайную
+        if self.gamer_ideology is None:
+            # Или получить из сохраненных данных игрока
+            # Например, из предыдущей сессии или настроек
+            pass
+
+    def _initialize_random_political_systems(self, cursor, factions):
+        """
+        Случайное распределение идеологий (старая логика).
+        Условие: не может быть меньше 2 и больше 3 стран с одним политическим строем.
+        """
+        systems = ["Смирение", "Борьба"]
+
+        def is_valid_distribution(distribution):
+            counts = {system: distribution.count(system) for system in systems}
+            return all(2 <= count <= 3 for count in counts.values())
+
+        # Генерация случайного распределения
+        import random
+        while True:
+            default_systems = [(faction, random.choice(systems)) for faction in factions]
+            distribution = [system for _, system in default_systems]
+
+            if is_valid_distribution(distribution):
+                break
+
+        # Вставляем данные в таблицу
+        cursor.executemany(
+            "INSERT INTO political_systems (faction, system) VALUES (?, ?)",
+            default_systems
+        )
+        print("Таблица political_systems инициализирована случайными значениями.")
+
+    def _initialize_player_based_political_systems(self, cursor, factions):
+        """
+        Распределение идеологий на основе выбора игрока.
+        Игрок получает выбранную идеологию, указанное количество союзников - тоже.
+        Остальные фракции получают противоположную идеологию.
+        """
+        # Получаем параметры игрока
+        player_ideology = self.gamer_ideology
+        allies_count = getattr(self, 'gamer_allies', 1)  # По умолчанию 1 союзник
+
+        # Проверяем корректность значений
+        if player_ideology not in ["Смирение", "Борьба"]:
+            print(f"Некорректная идеология: {player_ideology}, используем 'Смирение'")
+            player_ideology = "Смирение"
+
+        if allies_count not in [1, 2]:
+            print(f"Некорректное количество союзников: {allies_count}, используем 1")
+            allies_count = 1
+
+        # Определяем противоположную идеологию
+        opposite_ideology = "Борьба" if player_ideology == "Смирение" else "Смирение"
+
+        # Получаем список всех фракций кроме игрока
+        player_faction = self.selected_faction
+        other_factions = [f for f in factions if f != player_faction]
+
+        # Случайным образом выбираем союзников
+        import random
+        random.shuffle(other_factions)
+
+        # Выбираем союзников (максимально доступное количество)
+        max_allies = min(allies_count, len(other_factions))
+        allies = other_factions[:max_allies]
+        enemies = other_factions[max_allies:]
+
+        # Создаем список для вставки в БД
+        political_systems = []
+
+        # 1. Идеология игрока
+        political_systems.append((player_faction, player_ideology))
+
+        # 2. Идеологии союзников
+        for ally in allies:
+            political_systems.append((ally, player_ideology))
+
+        # 3. Идеологии врагов
+        for enemy in enemies:
+            political_systems.append((enemy, opposite_ideology))
+
+        # Вставляем данные в таблицу
+        cursor.executemany(
+            "INSERT INTO political_systems (faction, system) VALUES (?, ?)",
+            political_systems
+        )
+
+        # Сохраняем информацию о союзниках в отдельной таблице для быстрого доступа
+        self._save_allies_info(cursor, player_faction, allies)
+
+        # Логируем результат
+        print(f"Распределение идеологий:")
+        print(f"  Игрок ({player_faction}): {player_ideology}")
+        print(f"  Союзники ({len(allies)} из {allies_count}): {', '.join(allies) if allies else 'нет'}")
+        print(f"  Враги: {', '.join(enemies) if enemies else 'нет'}")
+
+    def _save_allies_info(self, cursor, player_faction, allies):
+        """
+        Сохраняет информацию о союзниках в отдельной таблице.
+        """
+        try:
+            # Создаем таблицу для союзников, если её нет
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS player_allies (
+                    player_faction TEXT,
+                    ally_faction TEXT,
+                    PRIMARY KEY (player_faction, ally_faction)
+                )
+            """)
+
+            # Очищаем старые записи для текущего игрока
+            cursor.execute("DELETE FROM player_allies WHERE player_faction = ?", (player_faction,))
+
+            # Добавляем новых союзников
+            for ally in allies:
+                cursor.execute(
+                    "INSERT INTO player_allies (player_faction, ally_faction) VALUES (?, ?)",
+                    (player_faction, ally)
+                )
+
+            print(f"Информация о {len(allies)} союзниках сохранена в таблицу player_allies")
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при сохранении информации о союзниках: {e}")
+
+    def _update_player_ideology_attribute(self):
+        """
+        Обновляет атрибут player_ideology после инициализации таблицы.
+        """
+        try:
+            self.player_ideology = self.get_player_ideology(self.conn)
+            if self.player_ideology:
+                print(f"Идеология игрока установлена: {self.player_ideology}")
+            else:
+                print("Не удалось установить идеологию игрока")
+        except Exception as e:
+            print(f"Ошибка при обновлении атрибута player_ideology: {e}")
+
+    def get_player_ideology(self, conn):
+        """
+        Получает идеологию выбранной фракции игрока из таблицы political_systems.
+        Возвращает 'player_submission' для Смирение, 'player_struggle' для Борьба.
+        """
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT system FROM political_systems WHERE faction = ?", (self.selected_faction,))
+            result = cursor.fetchone()
+            if result:
+                ideology = result[0]
+                # Приводим к внутреннему формату, используемому в IDEOLOGY_ICONS
+                if ideology == "Смирение":
+                    return "player_submission"
+                elif ideology == "Борьба":
+                    return "player_struggle"
+                else:
+                    print(f"Неизвестная идеология в БД: {ideology}")
+                    return None
+            else:
+                print(f"Не найдена идеология для фракции {self.selected_faction}")
+                return None
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении идеологии игрока из БД: {e}")
+            return None
 
     def update_cash(self, dt):
         """Обновление текущего капитала фракции через каждые 1 секунду."""
@@ -1431,29 +1606,6 @@ class GameScreen(Screen):
             print("Флаги check_attack успешно сброшены на False.")
         except sqlite3.Error as e:
             print(f"Ошибка при сбросе флагов check_attack: {e}")
-
-    def get_player_ideology(self, conn):
-        """Получает идеологию выбранной фракции игрока из таблицы political_systems."""
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT system FROM political_systems WHERE faction = ?", (self.selected_faction,))
-            result = cursor.fetchone()
-            if result:
-                ideology = result[0]
-                # Приводим к внутреннему формату, используемому в IDEOLOGY_ICONS
-                if ideology == "Смирение":
-                    return "player_submission"
-                elif ideology == "Борьба":
-                    return "player_struggle"
-                else:
-                    print(f"Неизвестная идеология в БД: {ideology}")
-                    return None
-            else:
-                print(f"Не найдена идеология для фракции {self.selected_faction}")
-                return None
-        except sqlite3.Error as e:
-            print(f"Ошибка при получении идеологии игрока из БД: {e}")
-            return None
 
     def update_army_rating(self, dt=None):
         """Обновляет рейтинг армии и отрисовывает звёзды над городами."""

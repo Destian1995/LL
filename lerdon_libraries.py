@@ -90,8 +90,20 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.graphics import Color, Rectangle, Line, RoundedRectangle
 from kivy.metrics import dp, sp
 from kivy.utils import get_color_from_hex
-from kivy.app import App
+from kivymd.app import MDApp
 from kivy.resources import resource_find
-
+from kivymd.uix.floatlayout import MDFloatLayout
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.label import MDLabel
+from kivymd.uix.button import MDFlatButton
+from kivy.clock import Clock
+from kivy.animation import Animation
+from kivy.graphics import Color, RoundedRectangle, Line
+from kivy.uix.image import Image
+from kivy.uix.video import Video
+from kivy.properties import ListProperty
+from kivy.lang import Builder
+from kivy import platform
+from kivy.uix.spinner import Spinner
 
 # kivymd libraries
