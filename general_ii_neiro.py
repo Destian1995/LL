@@ -9,10 +9,10 @@ from enum import Enum
 
 class AIPersonality(Enum):
     """4 типа личности для каждой фракции"""
-    FRIENDLY = "friendly"      # Союзник (отношения > 50)
-    NEUTRAL = "neutral"       # Нейтрал (отношения 0-50)
-    HOSTILE = "hostile"       # Враждебный (отношения -50-0)
-    ENEMY = "enemy"          # Враг (отношения < -50)
+    FRIENDLY = "friendly"      # Союзник (отношения > 60)
+    NEUTRAL = "neutral"       # Нейтрал (отношения 30-60)
+    HOSTILE = "hostile"       # Враждебный (отношения 10-30)
+    ENEMY = "enemy"          # Враг (отношения 0-10 )
 
 class NeuralAICore:
     """
@@ -122,11 +122,11 @@ class NeuralAICore:
             relation = result[0] if result else 0
 
             # Определяем личность
-            if relation > 50:
+            if relation > 60:
                 return AIPersonality.FRIENDLY
-            elif relation > 0:
+            elif relation > 30-60:
                 return AIPersonality.NEUTRAL
-            elif relation > -50:
+            elif relation > 10-30:
                 return AIPersonality.HOSTILE
             else:
                 return AIPersonality.ENEMY
@@ -612,7 +612,7 @@ class NeuralAICore:
             AIPersonality.FRIENDLY: {
                 'greeting': "Приветствую, друг! Как поживают твои земли?",
                 'trade': "Я открыт для торговли. Что ты предлагаешь?",
-                'threat': "Я надеюсь, нам не придется сражаться. Давай обсудим мирно.",
+                'threat': "Я надеюсь, нам не придется сражаться. Давай обсудим.",
                 'default': "Я слушаю тебя. Что ты хочешь обсудить?"
             },
             AIPersonality.NEUTRAL: {
@@ -628,8 +628,8 @@ class NeuralAICore:
                 'default': "Не трать мое время."
             },
             AIPersonality.ENEMY: {
-                'greeting': "Ты осмелился обратиться ко мне? Говори, пока я терплю.",
-                'trade': "С тобой я не торгую, только воюю.",
+                'greeting': "Ты осмелился обратиться ко мне?.",
+                'trade': "Ты пошутил или что?.",
                 'threat': "Готовься к войне. Твои дни сочтены.",
                 'default': "Убирайся с моих глаз."
             }
