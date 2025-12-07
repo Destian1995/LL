@@ -10,7 +10,7 @@ from seasons import SeasonManager
 from nobles_generator import generate_initial_nobles
 from nobles_generator import process_nobles_turn
 from kivy.core.audio import SoundLoader
-
+from neural_ai_integration import NeuralAIIntegration
 
 # Новые кастомные виджеты
 class ModernButton(Button):
@@ -556,6 +556,8 @@ class GameScreen(Screen):
         # Инициализируем таблицу season
         self.season_manager = SeasonManager()
         self.initialize_season_table(self.conn)
+        # Инициализация нейро ИИ
+        self.neural_ai = NeuralAIIntegration(selected_faction, conn)
         # Инициализация AI-контроллеров
         self.ai_controllers = {}
         # Инициализация EventManager
@@ -593,7 +595,7 @@ class GameScreen(Screen):
         """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
         for faction in FACTIONS:
             if faction != self.selected_faction:
-                self.ai_controllers[faction] = AIController(faction, self.conn, self.season_manager)
+                self.ai_controllers[faction] = self.neural_ai.create_controller_for_faction(faction)
 
     def save_selected_faction_to_db(self):
         conn = self.conn
@@ -886,16 +888,24 @@ class GameScreen(Screen):
 
         # Проверяем, есть ли Мятежники в городах, и создаём ИИ для них
         self.ensure_rebellion_ai_controller()
+        # Обновляем данные для нейронной сети перед выполнением ходов ИИ
+        self.neural_ai.update_game_state(self.turn_counter, self.selected_faction)
         # Выполнение хода для всех ИИ
-        for ai_controller in self.ai_controllers.values():
-            ai_controller.make_turn()
+        for faction, ai_controller in self.ai_controllers.items():
+            if hasattr(ai_controller, 'make_neural_turn'):
+                ai_controller.make_neural_turn()
+            else:
+                ai_controller.make_turn()
         # Удаляем лишних героев 2, 3, 4 классов которых мог наплодить ИИ
         self.enforce_garrison_hero_limits()
         # Обновляем статус уничтоженных фракций
         self.update_destroyed_factions()
         # Обновляем статус ходов
         self.reset_check_attack_flags()
-
+        # Обучаем нейронную сеть на основе результатов хода
+        self.train_neural_ai()
+        # Обновляем данные нейронной сети
+        self.neural_ai.update_after_turn(self.turn_counter)
         process_nobles_turn(self.conn, self.turn_counter)
         self.initialize_turn_check_move()
         # Обновляем текущий сезон
@@ -926,6 +936,57 @@ class GameScreen(Screen):
             print("Фракция 'Мятежники' обнаружена в городах. Создаём AIController.")
             self.ai_controllers['Мятежники'] = AIController('Мятежники', self.conn)
 
+    def train_neural_ai(self):
+        """Обучение нейронной сети на основе текущего состояния игры"""
+        if hasattr(self, 'neural_ai'):
+            # Собираем данные для обучения
+            game_data = {
+                'turn': self.turn_counter,
+                'player_faction': self.selected_faction,
+                'resources': self.faction.get_resources(),
+                'cities': self.get_city_data(),
+                'diplomacy': self.get_diplomacy_data()
+            }
+
+            # Обучаем нейросеть
+            self.neural_ai.train_on_game_data(game_data)
+
+    def get_city_data(self):
+        """Получение данных о городах для нейронной сети"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name, faction, population, defense FROM cities")
+        cities = cursor.fetchall()
+
+        # Преобразуем в формат для нейросети
+        city_data = {}
+        for city in cities:
+            name, faction, population, defense = city
+            city_data[name] = {
+                'faction': faction,
+                'population': population,
+                'defense': defense
+            }
+
+        return city_data
+
+    def get_diplomacy_data(self):
+        """Получение дипломатических данных для нейронной сети"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT faction1, faction2, relationship FROM diplomacies")
+        diplomacies = cursor.fetchall()
+
+        diplomacy_data = {}
+        for faction1, faction2, relationship in diplomacies:
+            key = f"{faction1}_{faction2}"
+            diplomacy_data[key] = relationship
+
+        return diplomacy_data
+
+    def update_neural_ai_with_result(self, result, reason):
+        """Обновление нейронной сети с результатами игры"""
+        if hasattr(self, 'neural_ai'):
+            self.neural_ai.update_with_game_result(result, reason, self.turn_counter)
+
     def cleanup(self):
         """Очистка ресурсов: таймеры, привязки, анимации."""
         print("Очистка GameScreen...")
@@ -951,6 +1012,9 @@ class GameScreen(Screen):
         if self.resource_box:
             self.resource_box.cleanup() # Вызываем cleanup у ResourceBox, если он реализован там
 
+        # Сохраняем модель нейронной сети при завершении
+        if hasattr(self, 'neural_ai'):
+            self.neural_ai.save_model()
         print("Очистка GameScreen завершена.")
 
 

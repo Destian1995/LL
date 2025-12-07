@@ -1,6 +1,6 @@
-
 from fight import fight
 from db_lerdon_connect import *
+
 
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд., трлн., квадр., квинт., секст., септил., октил., нонил., децил., андец.)"""
@@ -39,8 +39,18 @@ def format_number(number):
     else:
         return f"{number}"
 
+
+try:
+    from neural_ai_integration import AIAdapter
+
+    NEURAL_AI_AVAILABLE = True
+except ImportError:
+    NEURAL_AI_AVAILABLE = False
+    print("[INFO] Нейро-ИИ модуль не найден, используем стандартную логику")
+
+
 class AIController:
-    def __init__(self, faction, conn=None, season_manager=None):
+    def __init__(self, faction, conn=None, season_manager=None, use_neural_ai=True):
         """
 
         :type season_manager: экземпляр SeasonManager из game_process.py
@@ -52,6 +62,7 @@ class AIController:
         self.cursor = self.db_connection.cursor()
         self.garrison = self.load_garrison()
         self.relations = self.load_relations()
+        self.use_neural_ai = use_neural_ai and NEURAL_AI_AVAILABLE
         self.previous_crowns = 0
         self.previous_raw = 0
         self.buildings = {}
@@ -87,6 +98,13 @@ class AIController:
             'Текущее потребление': self.total_consumption,
             'Лимит армии': self.army_limit
         }
+        if self.use_neural_ai:
+            try:
+                self.neural_adapter = AIAdapter(faction, conn, self)
+                print(f"[НЕЙРО-ИИ] Адаптер инициализирован для {faction}")
+            except Exception as e:
+                print(f"[ОШИБКА] Не удалось инициализировать нейро-ИИ: {e}")
+                self.use_neural_ai = False
 
     # Методы загрузки данных из БД
     def load_resources(self):
@@ -510,7 +528,6 @@ class AIController:
         # Списываем кроны
         self.resources['Кроны'] -= total_cost
         print(f"Построено {count_to_build} {building_type} в городе {target_city}")
-
 
         return True
 
@@ -2536,7 +2553,6 @@ class AIController:
         except sqlite3.Error as e:
             print(f"Ошибка при обработке запросов: {e}")
 
-
     def clear_queries_table(self):
         """
         Очищает таблицу queries.
@@ -2673,7 +2689,6 @@ class AIController:
         except Exception as e:
             print(f"Ошибка при усилении обороны: {e}")
 
-
     def apply_political_system_bonus(self):
         """
         Применяет бонусы от политической системы.
@@ -2738,7 +2753,6 @@ class AIController:
             self.db_connection.commit()
         except sqlite3.Error as e:
             print(f"Ошибка при обновлении отношений для фракции {faction}: {e}")
-
 
     def update_economic_efficiency(self, efficiency_value):
         try:
@@ -2850,51 +2864,155 @@ class AIController:
         except Exception as e:
             print(f"Ошибка при атаке вражеских городов: {e}")
 
+    # Добавим метод для обработки сообщений от игрока
+    def process_player_dialogue(self, message: str) -> str:
+        """
+        Обрабатывает диалог с игроком
+        Возвращает ответ ИИ
+        """
+        if self.use_neural_ai and hasattr(self, 'neural_adapter'):
+            return self.neural_adapter.process_player_message(message)
+        else:
+            # Простой rule-based ответ
+            responses = {
+                'привет': f"Здравствуй, игрок. Я {self.faction}.",
+                'торгов': f"Я слушаю твоё торговое предложение.",
+                'война': f"Ты ищешь войны? Подумай ещё раз.",
+                'союз': f"Союз? Покажи сначала свою надежность.",
+                'помощь': f"Что тебе нужно?",
+                'default': f"Я слушаю тебя, игрок."
+            }
+
+            message_lower = message.lower()
+
+            if 'привет' in message_lower:
+                return responses['привет']
+            elif any(word in message_lower for word in ['торгов', 'сделк', 'обмен']):
+                return responses['торгов']
+            elif any(word in message_lower for word in ['война', 'атака', 'нападу']):
+                return responses['война']
+            elif 'союз' in message_lower:
+                return responses['союз']
+            elif 'помощ' in message_lower:
+                return responses['помощь']
+            else:
+                return responses['default']
+
+    # Модифицируем check_and_declare_war для использования нейро-логики
+    def check_and_declare_war(self):
+        """
+        Проверяет уровень отношений с другими фракциями.
+        Использует нейро-логику для принятия решений о войне с игроком.
+        """
+        try:
+            # Если используем нейро-ИИ, дипломатия с игроком обрабатывается там
+            if self.use_neural_ai and self.faction != "Мятежники":
+                print(f"[ДИПЛОМАТИЯ] Нейро-ИИ обрабатывает дипломатию с игроком")
+                # Для не-игровых фракций используем стандартную логику
+                self.check_and_declare_war_other_factions()
+            else:
+                # Стандартная логика для всех фракций
+                self.check_and_declare_war_standard()
+
+        except Exception as e:
+            print(f"Ошибка при проверке и объявлении войны: {e}")
+
+    def check_and_declare_war_other_factions(self):
+        """
+        Логика войны для не-игровых фракций
+        """
+        try:
+            # Загружаем текущие отношения
+            self.relations = self.load_relations()
+            army_strength = self.calculate_army_strength()
+            our_strength = army_strength.get(self.faction, 0)
+
+            for faction, relationship in self.relations.items():
+                # Пропускаем игрока - его обрабатывает нейро-ИИ
+                if faction == 'Игрок':
+                    continue
+
+                # Стандартная логика для других фракций
+                if int(relationship) < 12:
+                    enemy_strength = army_strength.get(faction, 0)
+                    if our_strength > 1.4 * enemy_strength:
+                        print(f"Объявляем войну {faction}")
+                        self.update_diplomacy_status(faction, "война")
+                        self.notify_player_about_war(faction)
+
+                        target_city = self.find_nearest_city(faction)
+                        if target_city:
+                            self.attack_city(target_city, faction)
+
+        except Exception as e:
+            print(f"Ошибка в логике войны для других фракций: {e}")
+
+
     # ---------------------------------------------------------------------
 
     # Основная логика хода ИИ
     def make_turn(self):
         """
         Основная логика хода ИИ фракции.
-        Для фракции 'Мятежники' — только военные действия.
+        Использует нейро-ИИ если доступен.
         """
         print(f'---------ХОДИТ ФРАКЦИЯ: {self.faction}-------------------')
-        try:
-            # 0. Обнуляем использование героя на этом ходу
-            self.hero_used_in_turn = False
 
-            # Проверяем, является ли фракция "Мятежники"
-            if self.faction == "Мятежники":
-                print("Фракция 'Мятежники' выполняет только военные действия.")
-                # Выполняем атаки на вражеские города
-                self.attack_enemy_cities()
+        try:
+            # Если доступен нейро-ИИ, используем его
+            if self.use_neural_ai and hasattr(self, 'neural_adapter'):
+                print(f"[НЕЙРО-ИИ] Используем интеллектуальную логику")
+
+                # Выполняем ход через нейро-ИИ адаптер
+                report = self.neural_adapter.make_ai_turn()
+
+                # Увеличиваем счетчик ходов
+                self.turn += 1
+
+                print(f"[НЕЙРО-ИИ] Ход завершен: {report}")
+
             else:
-                # Для всех других фракций — полный ход
-                # 1. Обновляем ресурсы из базы данных
-                self.update_resources()
-                self.process_queries()
-                # 2. Проверяем и объявляем войну, если необходимо
-                self.check_and_declare_war()
-                # 3. Применяем бонусы от политической системы
-                self.apply_political_system_bonus()
-                # 4. Изменяем отношения на основе политической системы
-                self.update_relations_based_on_political_system()
-                # 5. Загружаем данные о зданиях
-                self.update_buildings_from_db()
-                # 6. Управление строительством (99% крон на строительство)
-                self.manage_buildings()
-                # 7. Продажа Кристаллы (99% Кристаллы, если его больше 1000)
-                self.sell_resources()
-                # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
-                if self.resources['Кроны'] > 0:
-                    self.hire_army()
-                # 9. (Новый пункт) Генерация и покупка артефактов ИИ (после 50 хода)
-                self.generate_and_buy_artifacts_for_ai_hero()
-            # 10. Сохраняем все изменения в базу данных
-            self.save_all_data()
-            # Увеличиваем счетчик ходов
-            self.turn += 1
+                # Стандартная логика (ваш текущий код)
+                print(f"[СТАНДАРТ] Используем стандартную логику")
+
+                # 0. Обнуляем использование героя на этом ходу
+                self.hero_used_in_turn = False
+
+                # Проверяем, является ли фракция "Мятежники"
+                if self.faction == "Мятежники":
+                    print("Фракция 'Мятежники' выполняет только военные действия.")
+                    # Выполняем атаки на вражеские города
+                    self.attack_enemy_cities()
+                else:
+                    # Для всех других фракций — полный ход
+                    # 1. Обновляем ресурсы из базы данных
+                    self.update_resources()
+                    self.process_queries()
+                    # 2. Проверяем и объявляем войну, если необходимо
+                    self.check_and_declare_war()
+                    # 3. Применяем бонусы от политической системы
+                    self.apply_political_system_bonus()
+                    # 4. Изменяем отношения на основе политической системы
+                    self.update_relations_based_on_political_system()
+                    # 5. Загружаем данные о зданиях
+                    self.update_buildings_from_db()
+                    # 6. Управление строительством (99% крон на строительство)
+                    self.manage_buildings()
+                    # 7. Продажа Кристаллы (99% Кристаллы, если его больше 1000)
+                    self.sell_resources()
+                    # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
+                    if self.resources['Кроны'] > 0:
+                        self.hire_army()
+                    # 9. (Новый пункт) Генерация и покупка артефактов ИИ (после 40 хода)
+                    self.generate_and_buy_artifacts_for_ai_hero()
+
+                # 10. Сохраняем все изменения в базу данных
+                self.save_all_data()
+                # Увеличиваем счетчик ходов
+                self.turn += 1
+
             print(f'-----------КОНЕЦ {self.turn} ХОДА----------------  ФРАКЦИИ', self.faction)
+
         except Exception as e:
             print(f"Ошибка при выполнении хода: {e}")
             import traceback
