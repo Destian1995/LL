@@ -4,69 +4,68 @@ import json
 import random
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-import threading
 from enum import Enum
 
 class AIPersonality(Enum):
-    """4 типа личности для каждой фракции"""
-    FRIENDLY = "friendly"      # Союзник (отношения > 60)
-    NEUTRAL = "neutral"       # Нейтрал (отношения 30-60)
-    HOSTILE = "hostile"       # Враждебный (отношения 10-30)
-    ENEMY = "enemy"          # Враг (отношения 0-10 )
+    """Типы личности ИИ"""
+    FRIENDLY = "friendly"      # Дружелюбный (отношения > 60)
+    NEUTRAL = "neutral"        # Нейтральный (отношения 30-60)
+    HOSTILE = "hostile"        # Враждебный (отношения 10-30)
+    ENEMY = "enemy"            # Враг (отношения < 10)
+
+class DiplomaticStage(Enum):
+    """Этапы переговоров"""
+    STAGE_1 = "stage_1"        # Просто предложение мира
+    STAGE_2 = "stage_2"        # 25% ресурсов
+    STAGE_3 = "stage_3"        # 60% ресурсов + союз
+
+class StrategicDecision(Enum):
+    """Типы стратегических решений"""
+    PEACE_PROPOSAL = "peace_proposal"
+    HELP_REQUEST = "help_request"
+    WAR_INVITATION = "war_invitation"
+    TRADE_OFFER = "trade_offer"
+    ALLIANCE_OFFER = "alliance_offer"
 
 class NeuralAICore:
     """
-    ЯДРО НЕЙРО-ИИ - главный мозг, который управляет ii.py
+    Основной класс нейро-ИИ для одной фракции
     """
-    def __init__(self, faction: str, db_connection: sqlite3.Connection):
-        self.faction = faction
-        self.db = db_connection
-        self.cursor = db_connection.cursor()
 
-        # Связь с исполнительным модулем ii.py
-        self.executive = None  # Будет установлен позже
+    def __init__(self, faction: str, conn: sqlite3.Connection):
+        self.faction = faction
+        self.conn = conn
+        self.cursor = conn.cursor()
 
         # Состояние ИИ
-        self.memory = self.load_memory()
         self.personality = self.determine_personality()
-        self.strategy_plan = {}
-        self.conversation_history = []
+        self.peace_proposals = {}  # {target_faction: stage}
+        self.memory = self.load_memory()
 
-        # Загрузка нейросети (опционально)
-        self.neural_model = self.load_neural_model()
-
-        # Конфигурация
-        self.config = {
-            'use_neural_for_dialogue': True,
-            'use_neural_for_strategy': True,
-            'max_response_time': 3.0,  # секунд
-            'model_path': 'models/tinyllama.q4.gguf'
+        # Пороговые значения
+        self.thresholds = {
+            'min_cities_for_help': 4,
+            'max_enemies_for_peace': 2,
+            'good_relation': 60,
+            'weak_army_ratio': 0.5,
+            'strong_army_ratio': 1.5
         }
 
-        print(f"[НЕЙРО-ИИ] Инициализирован для фракции: {faction}")
-
-    def connect_executive(self, executive_module):
-        """
-        Подключает исполнительный модуль ii.py
-        executive_module: экземпляр AIController из ii.py
-        """
-        self.executive = executive_module
-        print(f"[НЕЙРО-ИИ] Подключен исполнительный модуль для {self.faction}")
+        print(f"[ИИ] Инициализирован для {faction} ({self.personality.value})")
 
     def load_memory(self) -> Dict:
-        """Загружает долговременную память ИИ из БД"""
+        """Загружает память ИИ из БД"""
         try:
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS ai_memory (
                     faction TEXT PRIMARY KEY,
-                    memories TEXT,
-                    personality_history TEXT,
-                    last_updated TIMESTAMP
+                    data TEXT,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
 
             self.cursor.execute(
-                "SELECT memories FROM ai_memory WHERE faction = ?",
+                "SELECT data FROM ai_memory WHERE faction = ?",
                 (self.faction,)
             )
             result = self.cursor.fetchone()
@@ -75,636 +74,158 @@ class NeuralAICore:
                 return json.loads(result[0])
             else:
                 return {
-                    'player_interactions': [],
-                    'battles_won': 0,
-                    'battles_lost': 0,
-                    'trade_deals': [],
-                    'diplomatic_events': [],
-                    'goals_achieved': [],
-                    'grudges': [],  # Обиды и предательства
-                    'alliances': []  # Союзы и дружба
+                    'interactions': [],
+                    'decisions': [],
+                    'offers_sent': [],
+                    'requests_sent': []
                 }
+
         except Exception as e:
-            print(f"[ОШИБКА] Не удалось загрузить память: {e}")
-            return {}
+            print(f"[ИИ] Ошибка загрузки памяти: {e}")
+            return {'interactions': [], 'decisions': []}
 
     def save_memory(self):
-        """Сохраняет память ИИ в БД"""
+        """Сохраняет память ИИ"""
         try:
-            memories_json = json.dumps(self.memory, ensure_ascii=False)
+            data_json = json.dumps(self.memory, ensure_ascii=False)
 
             self.cursor.execute('''
-                INSERT OR REPLACE INTO ai_memory 
-                (faction, memories, personality_history, last_updated)
-                VALUES (?, ?, ?, ?)
-            ''', (
-                self.faction,
-                memories_json,
-                self.personality.value,
-                datetime.now().isoformat()
-            ))
+                INSERT OR REPLACE INTO ai_memory (faction, data)
+                VALUES (?, ?)
+            ''', (self.faction, data_json))
 
-            self.db.commit()
-            print(f"[НЕЙРО-ИИ] Память сохранена для {self.faction}")
+            self.conn.commit()
         except Exception as e:
-            print(f"[ОШИБКА] Не удалось сохранить память: {e}")
+            print(f"[ИИ] Ошибка сохранения памяти: {e}")
 
     def determine_personality(self) -> AIPersonality:
-        """Определяет текущую личность на основе отношений с игроком"""
+        """Определяет личность на основе отношений с игроком"""
         try:
-            # Получаем отношения с игроком
-            self.cursor.execute('''
-                SELECT relationship FROM relations 
-                WHERE faction1 = ? AND faction2 = 'Игрок'
-            ''', (self.faction,))
+            relation = self.get_relation_with_player()
 
-            result = self.cursor.fetchone()
-            relation = result[0] if result else 0
-
-            # Определяем личность
             if relation > 60:
                 return AIPersonality.FRIENDLY
-            elif relation > 30-60:
+            elif relation > 30:
                 return AIPersonality.NEUTRAL
-            elif relation > 10-30:
+            elif relation > 10:
                 return AIPersonality.HOSTILE
             else:
                 return AIPersonality.ENEMY
 
-        except Exception as e:
-            print(f"[ОШИБКА] Не удалось определить личность: {e}")
+        except Exception:
             return AIPersonality.NEUTRAL
 
-    def load_neural_model(self):
-        """Загружает нейросеть (опционально, для офлайн работы)"""
-        try:
-            # Проверяем, доступна ли нейросеть
-            from llama_cpp import Llama
-
-            print(f"[НЕЙРО-ИИ] Загрузка модели: {self.config['model_path']}")
-
-            model = Llama(
-                model_path=self.config['model_path'],
-                n_ctx=384,  # Уменьшенный контекст для экономии памяти
-                n_threads=2,  # Меньше потоков для Android
-                n_gpu_layers=0,  # Только CPU для совместимости
-                verbose=False
-            )
-
-            print("[НЕЙРО-ИИ] Модель загружена успешно")
-            return model
-
-        except ImportError:
-            print("[НЕЙРО-ИИ] Библиотека нейросети не найдена, используем rule-based")
-            return None
-        except Exception as e:
-            print(f"[НЕЙРО-ИИ] Ошибка загрузки модели: {e}")
-            return None
-
-    # ------------------------------------------------------------
-    # ОСНОВНОЙ ИНТЕРФЕЙС ДЛЯ УПРАВЛЕНИЯ ii.py
-    # ------------------------------------------------------------
-
-    def make_strategic_decision(self) -> Dict[str, Any]:
-        """
-        Главный метод: принимает стратегические решения на ход
-        Возвращает команды для исполнительного модуля ii.py
-        """
-        print(f"[НЕЙРО-ИИ] {self.faction} принимает стратегическое решение...")
-
-        # 1. Собираем информацию о состоянии
-        game_state = self.analyze_game_state()
-
-        # 2. Определяем приоритеты
-        priorities = self.determine_priorities(game_state)
-
-        # 3. Генерируем план действий (через нейросеть или rule-based)
-        if self.config['use_neural_for_strategy'] and self.neural_model:
-            plan = self.generate_neural_plan(game_state, priorities)
-        else:
-            plan = self.generate_rule_based_plan(game_state, priorities)
-
-        # 4. Формируем команды для ii.py
-        commands = self.create_commands_for_executive(plan)
-
-        # 5. Сохраняем в память
-        self.strategy_plan = plan
-        self.save_memory()
-
-        print(f"[НЕЙРО-ИИ] Сгенерировано {len(commands)} команд для выполнения")
-        return commands
-
-    def analyze_game_state(self) -> Dict[str, Any]:
-        """Анализирует текущее состояние игры"""
-        state = {
-            'resources': self.get_current_resources(),
-            'military': self.get_military_status(),
-            'diplomacy': self.get_diplomatic_status(),
-            'economy': self.get_economic_status(),
-            'threats': self.identify_threats(),
-            'opportunities': self.identify_opportunities(),
-            'player_status': self.get_player_status(),
-            'turn': self.get_current_turn()
-        }
-
-        # Добавляем исторический контекст из памяти
-        state['memory_context'] = {
-            'recent_battles': self.memory.get('recent_battles', []),
-            'player_interactions': self.memory.get('player_interactions', [])[-5:],
-            'grudges': self.memory.get('grudges', []),
-            'alliances': self.memory.get('alliances', [])
-        }
-
-        return state
-
-    def get_current_resources(self) -> Dict:
-        """Получает текущие ресурсы фракции"""
-        try:
-            self.cursor.execute('''
-                SELECT resource_type, amount FROM resources 
-                WHERE faction = ?
-            ''', (self.faction,))
-
-            resources = {row[0]: row[1] for row in self.cursor.fetchall()}
-
-            # Добавляем вычисляемые показатели
-            if self.executive:
-                resources.update({
-                    'army_limit': self.executive.army_limit,
-                    'current_consumption': self.executive.total_consumption,
-                    'city_count': self.executive.city_count
-                })
-
-            return resources
-        except Exception as e:
-            print(f"[ОШИБКА] Не удалось получить ресурсы: {e}")
-            return {}
-
-    def get_military_status(self) -> Dict:
-        """Анализирует военный статус"""
-        status = {
-            'total_strength': 0,
-            'unit_count': 0,
-            'heroes': [],
-            'garrison_distribution': {},
-            'attack_power': 0,
-            'defense_power': 0
-        }
-
-        try:
-            # Получаем все юниты фракции
-            self.cursor.execute('''
-                SELECT g.city_name, g.unit_name, g.unit_count, 
-                       u.attack, u.defense, u.unit_class
-                FROM garrisons g
-                JOIN units u ON g.unit_name = u.unit_name
-                WHERE u.faction = ?
-            ''', (self.faction,))
-
-            for city, unit_name, count, attack, defense, unit_class in self.cursor.fetchall():
-                status['unit_count'] += count
-                status['total_strength'] += (attack + defense) * count
-
-                if unit_class in ['2', '3', '4']:  # Герои
-                    status['heroes'].append({
-                        'name': unit_name,
-                        'class': unit_class,
-                        'city': city,
-                        'count': count
-                    })
-
-                # Распределение по городам
-                if city not in status['garrison_distribution']:
-                    status['garrison_distribution'][city] = 0
-                status['garrison_distribution'][city] += count
-
-                # Атакующая/оборонительная сила
-                if attack > defense:
-                    status['attack_power'] += attack * count
-                else:
-                    status['defense_power'] += defense * count
-
-        except Exception as e:
-            print(f"[ОШИБКА] Военный анализ: {e}")
-
-        return status
-
-    def determine_priorities(self, game_state: Dict) -> List[str]:
-        """Определяет приоритеты на основе состояния"""
-        priorities = []
-
-        # Экономические приоритеты
-        resources = game_state['resources']
-        if resources.get('Кроны', 0) < 1000:
-            priorities.append('ECONOMY_GROWTH')
-        if resources.get('Кристаллы', 0) < 500:
-            priorities.append('RESOURCE_PRODUCTION')
-
-        # Военные приоритеты
-        military = game_state['military']
-        if military['unit_count'] < 100:
-            priorities.append('ARMY_RECRUITMENT')
-
-        # Угрозы
-        threats = game_state['threats']
-        if any(t['severity'] == 'HIGH' for t in threats):
-            priorities.append('DEFENSE')
-
-        # Возможности для экспансии
-        opportunities = game_state['opportunities']
-        if any(o['type'] == 'WEAK_NEIGHBOR' for o in opportunities):
-            priorities.append('EXPANSION')
-
-        # Дипломатические цели
-        if self.personality == AIPersonality.FRIENDLY:
-            priorities.append('DIPLOMACY')
-        elif self.personality == AIPersonality.ENEMY:
-            priorities.append('CONQUEST')
-
-        return priorities[:3]  # Не более 3 главных приоритетов
-
-    def generate_neural_plan(self, game_state: Dict, priorities: List[str]) -> Dict:
-        """Генерирует план через нейросеть"""
-        try:
-            # Создаем промпт для нейросети
-            prompt = self.create_strategy_prompt(game_state, priorities)
-
-            # Получаем ответ от нейросети
-            response = self.neural_model(
-                prompt,
-                max_tokens=256,
-                temperature=0.5,
-                stop=["\n\n", "###", "Player:"]
-            )
-
-            plan_text = response['choices'][0]['text'].strip()
-
-            # Парсим ответ
-            plan = self.parse_neural_response(plan_text)
-
-            print(f"[НЕЙРО-ПЛАН] {plan.get('summary', 'Без названия')}")
-            return plan
-
-        except Exception as e:
-            print(f"[ОШИБКА] Нейросеть не сработала: {e}")
-            return self.generate_rule_based_plan(game_state, priorities)
-
-    def create_strategy_prompt(self, game_state: Dict, priorities: List[str]) -> str:
-        """Создает промпт для стратегического планирования"""
-        return f"""
-Ты - стратег фракции "{self.faction}" в стратегической игре.
-Твоя личность: {self.personality.value}
-
-ТЕКУЩЕЕ СОСТОЯНИЕ:
-- Ресурсы: {json.dumps(game_state['resources'], ensure_ascii=False)}
-- Военная сила: {game_state['military']['total_strength']}
-- Количество юнитов: {game_state['military']['unit_count']}
-- Города: {game_state['resources'].get('city_count', 0)}
-- Отношения с игроком: {self.get_relation_with_player()}/100
-
-ГЛАВНЫЕ ПРИОРИТЕТЫ: {', '.join(priorities)}
-УГРОЗЫ: {len(game_state['threats'])} обнаружено
-ВОЗМОЖНОСТИ: {len(game_state['opportunities'])} доступно
-
-ИСТОРИЧЕСКИЙ КОНТЕКСТ:
-{json.dumps(game_state['memory_context'], ensure_ascii=False)}
-
-Какие действия следует предпринять на этом ходу?
-Верни ответ в формате JSON:
-{{
-    "summary": "краткое описание стратегии",
-    "actions": [
-        {{"type": "BUILD", "target": "Больница/Фабрика", "intensity": 0-1}},
-        {{"type": "RECRUIT", "unit_class": "1/2/3/4", "priority": "HIGH/MEDIUM/LOW"}},
-        {{"type": "ATTACK", "target_faction": "имя", "target_city": "имя"}},
-        {{"type": "DIPLOMACY", "action": "TRADE/WAR/PEACE", "with_faction": "имя"}}
-    ],
-    "reasoning": "обоснование решений",
-    "expected_outcome": "чего ожидаем достичь"
-}}
-"""
-
-    def generate_rule_based_plan(self, game_state: Dict, priorities: List[str]) -> Dict:
-        """Генерирует rule-based план"""
-        plan = {
-            "summary": "",
-            "actions": [],
-            "reasoning": "",
-            "expected_outcome": ""
-        }
-
-        # Анализируем приоритеты
-        if 'ECONOMY_GROWTH' in priorities:
-            plan['summary'] = "Экономический рост"
-            plan['actions'].append({
-                "type": "BUILD",
-                "target": "Фабрика",
-                "intensity": 0.7,
-                "reason": "Увеличить производство Кристалл"
-            })
-
-        if 'ARMY_RECRUITMENT' in priorities:
-            plan['summary'] += " и военная экспансия"
-            plan['actions'].append({
-                "type": "RECRUIT",
-                "unit_class": "1",
-                "priority": "HIGH",
-                "reason": "Укрепить базовую армию"
-            })
-
-        if 'DEFENSE' in priorities:
-            plan['actions'].append({
-                "type": "BUILD",
-                "target": "Больница",
-                "intensity": 0.5,
-                "reason": "Укрепить оборону городов"
-            })
-
-        # Добавляем действия в зависимости от личности
-        if self.personality == AIPersonality.ENEMY:
-            weak_target = self.find_weakest_neighbor()
-            if weak_target:
-                plan['actions'].append({
-                    "type": "ATTACK",
-                    "target_faction": weak_target['faction'],
-                    "target_city": weak_target['city'],
-                    "reason": "Экспансия за счет слабого соседа"
-                })
-
-        plan['reasoning'] = f"Приоритеты: {', '.join(priorities)}"
-        plan['expected_outcome'] = "Укрепление позиций фракции"
-
-        return plan
-
-    def create_commands_for_executive(self, plan: Dict) -> List[Dict]:
-        """
-        Преобразует стратегический план в команды для ii.py
-        Каждая команда - это вызов метода AIController
-        """
-        commands = []
-
-        for action in plan.get('actions', []):
-            cmd = self.translate_action_to_command(action)
-            if cmd:
-                commands.append(cmd)
-
-        return commands
-
-    def translate_action_to_command(self, action: Dict) -> Optional[Dict]:
-        """Преобразует действие в команду для исполнительного модуля"""
-        action_type = action.get('type')
-
-        if action_type == "BUILD":
-            target = action.get('target')
-            intensity = action.get('intensity', 0.5)
-
-            return {
-                'command': 'BUILD_BUILDINGS',
-                'params': {
-                    'building_type': target,
-                    'intensity': intensity,
-                    'budget_percentage': intensity * 100
-                },
-                'description': f"Построить {target} с интенсивностью {intensity}"
-            }
-
-        elif action_type == "RECRUIT":
-            unit_class = action.get('unit_class', '1')
-            priority = action.get('priority', 'MEDIUM')
-
-            return {
-                'command': 'HIRE_ARMY',
-                'params': {
-                    'focus_class': unit_class,
-                    'priority': priority,
-                    'percentage_of_resources': 0.4 if priority == 'HIGH' else 0.2
-                },
-                'description': f"Нанять армию класса {unit_class} (приоритет: {priority})"
-            }
-
-        elif action_type == "ATTACK":
-            target_faction = action.get('target_faction')
-            target_city = action.get('target_city')
-
-            return {
-                'command': 'ATTACK_CITY',
-                'params': {
-                    'city_name': target_city,
-                    'target_faction': target_faction,
-                    'force_percentage': 0.6  # 60% сил на атаку
-                },
-                'description': f"Атаковать город {target_city} ({target_faction})"
-            }
-
-        elif action_type == "DIPLOMACY":
-            diplomacy_action = action.get('action')
-            target_faction = action.get('with_faction')
-
-            return {
-                'command': 'DIPLOMATIC_ACTION',
-                'params': {
-                    'action': diplomacy_action,
-                    'target_faction': target_faction,
-                    'intensity': 1.0
-                },
-                'description': f"Дипломатия: {diplomacy_action} с {target_faction}"
-            }
-
-        return None
-
-    # ------------------------------------------------------------
-    # ДИАЛОГОВАЯ СИСТЕМА
-    # ------------------------------------------------------------
-
-    def process_player_message(self, message: str, player_faction: str) -> str:
-        """
-        Обрабатывает сообщение от игрока и генерирует ответ
-        """
-        print(f"[ДИАЛОГ] Игрок ({player_faction}): {message}")
-
-        # Сохраняем в историю
-        self.conversation_history.append({
-            'sender': player_faction,
-            'message': message,
-            'timestamp': datetime.now().isoformat()
-        })
-
-        # Обновляем личность на основе новых взаимодействий
-        self.update_personality_based_on_message(message)
-
-        # Генерируем ответ
-        if self.config['use_neural_for_dialogue'] and self.neural_model:
-            response = self.generate_neural_response(message, player_faction)
-        else:
-            response = self.generate_rule_based_response(message)
-
-        # Сохраняем ответ в память
-        self.memory.setdefault('player_interactions', []).append({
-            'player_message': message,
-            'ai_response': response,
-            'personality': self.personality.value,
-            'timestamp': datetime.now().isoformat()
-        })
-
-        return response
-
-    def generate_neural_response(self, message: str, player_faction: str) -> str:
-        """Генерирует ответ через нейросеть"""
-        try:
-            prompt = self.create_dialogue_prompt(message, player_faction)
-
-            response = self.neural_model(
-                prompt,
-                max_tokens=150,
-                temperature=0.7,
-                stop=["\n\n", "Player:", "Игрок:"]
-            )
-
-            ai_response = response['choices'][0]['text'].strip()
-
-            # Проверяем и фильтруем ответ
-            ai_response = self.filter_response(ai_response)
-
-            return ai_response
-
-        except Exception as e:
-            print(f"[ОШИБКА] Нейросеть диалога: {e}")
-            return self.generate_rule_based_response(message)
-
-    def create_dialogue_prompt(self, message: str, player_faction: str) -> str:
-        """Создает промпт для диалога"""
-        # Получаем текущие отношения
-        relation = self.get_relation_with_player()
-
-        # Последние 3 сообщения из истории
-        recent_history = self.conversation_history[-3:] if len(self.conversation_history) > 3 else self.conversation_history
-
-        prompt = f"""
-Ты - правитель фракции "{self.faction}" в стратегической игре.
-Твоя личность: {self.personality.value}
-Отношения с игроком ({player_faction}): {relation}/100
-
-ТВОЁ ТЕКУЩЕЕ СОСТОЯНИЕ:
-{json.dumps(self.get_current_resources(), ensure_ascii=False)}
-
-ИСТОРИЯ ДИАЛОГА:
-{json.dumps(recent_history, ensure_ascii=False)}
-
-Игрок ({player_faction}) говорит: "{message}"
-
-Твой ответ должен:
-1. Соответствовать личности {self.personality.value}
-2. Учитывать отношения ({relation}/100)
-3. Быть кратким (1-3 предложения)
-4. Отвечать на суть сообщения
-5. Можно предложить сделку, угрожать или обсуждать текущие события в зависимости от отношений
-
-Ответ:
-"""
-        return prompt
-
-    def generate_rule_based_response(self, message: str) -> str:
-        """Rule-based ответы"""
-        message_lower = message.lower()
-
-        # Ответы по типам личности
-        personality_responses = {
-            AIPersonality.FRIENDLY: {
-                'greeting': "Приветствую, друг! Как поживают твои земли?",
-                'trade': "Я открыт для торговли. Что ты предлагаешь?",
-                'threat': "Я надеюсь, нам не придется сражаться. Давай обсудим.",
-                'default': "Я слушаю тебя. Что ты хочешь обсудить?"
-            },
-            AIPersonality.NEUTRAL: {
-                'greeting': "Здравствуй. У тебя есть деловое предложение?",
-                'trade': "Предложи условия, и я рассмотрю их.",
-                'threat': "Ты угрожаешь мне? Подумай еще раз.",
-                'default': "Говори, я слушаю."
-            },
-            AIPersonality.HOSTILE: {
-                'greeting': "Что тебе нужно? Говори быстрее.",
-                'trade': "Торговля? Только на моих условиях.",
-                'threat': "Ты ищешь смерти? Я исполню твое желание.",
-                'default': "Не трать мое время."
-            },
-            AIPersonality.ENEMY: {
-                'greeting': "Ты осмелился обратиться ко мне?.",
-                'trade': "Ты пошутил или что?.",
-                'threat': "Готовься к войне. Твои дни сочтены.",
-                'default': "Убирайся с моих глаз."
-            }
-        }
-
-        responses = personality_responses.get(self.personality, personality_responses[AIPersonality.NEUTRAL])
-
-        # Определяем тип сообщения
-        if any(word in message_lower for word in ['привет', 'здравствуй', 'добрый']):
-            return responses['greeting']
-        elif any(word in message_lower for word in ['торгов', 'сделк', 'обмен']):
-            return responses['trade']
-        elif any(word in message_lower for word in ['война', 'атака', 'нападу', 'уничтожу']):
-            return responses['threat']
-        else:
-            return responses['default']
-
-    # ------------------------------------------------------------
-    # ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-    # ------------------------------------------------------------
-
     def get_relation_with_player(self) -> int:
-        """Получает текущие отношения с игроком"""
+        """Получает отношения с игроком"""
         try:
             self.cursor.execute('''
                 SELECT relationship FROM relations 
-                WHERE faction1 = ? AND faction2 = 'Игрок'
-            ''', (self.faction,))
+                WHERE faction1 = ? AND faction2 = ?
+            ''', (self.faction, 'Игрок'))
 
             result = self.cursor.fetchone()
             return result[0] if result else 0
         except:
             return 0
 
-    def find_weakest_neighbor(self) -> Optional[Dict]:
-        """Находит самого слабого соседа для атаки"""
+    def get_city_count(self) -> int:
+        """Получает количество городов"""
         try:
-            # Получаем всех соседей (фракции с городами рядом)
             self.cursor.execute('''
-                SELECT DISTINCT c2.faction, c2.name
-                FROM cities c1
-                JOIN cities c2 ON c1.faction != c2.faction
-                WHERE c1.faction = ?
-                AND ABS(CAST(SUBSTR(c1.coordinates, 2, INSTR(c1.coordinates, ',')-2) AS INTEGER) - 
-                        CAST(SUBSTR(c2.coordinates, 2, INSTR(c2.coordinates, ',')-2) AS INTEGER)) < 280
-                AND ABS(CAST(SUBSTR(c1.coordinates, INSTR(c1.coordinates, ',')+1, LENGTH(c1.coordinates)-INSTR(c1.coordinates, ',')-1) AS INTEGER) - 
-                        CAST(SUBSTR(c2.coordinates, INSTR(c2.coordinates, ',')+1, LENGTH(c2.coordinates)-INSTR(c2.coordinates, ',')-1) AS INTEGER)) < 280
+                SELECT COUNT(*) FROM cities WHERE faction = ?
             ''', (self.faction,))
+            result = self.cursor.fetchone()
+            return result[0] if result else 0
+        except:
+            return 0
 
-            neighbors = self.cursor.fetchall()
-
-            # Находим самого слабого по силе армии
-            weakest = None
-            min_strength = float('inf')
-
-            for faction, city in neighbors:
-                strength = self.calculate_faction_strength(faction)
-                if strength < min_strength:
-                    min_strength = strength
-                    weakest = {'faction': faction, 'city': city, 'strength': strength}
-
-            return weakest
-
-        except Exception as e:
-            print(f"[ОШИБКА] Поиск слабого соседа: {e}")
-            return None
-
-    def calculate_faction_strength(self, faction: str) -> int:
-        """Вычисляет силу фракции"""
+    def get_army_strength(self) -> int:
+        """Получает силу армии"""
         try:
             self.cursor.execute('''
                 SELECT SUM(g.unit_count * (u.attack + u.defense))
                 FROM garrisons g
                 JOIN units u ON g.unit_name = u.unit_name
-                WHERE u.faction = ?
+                JOIN cities c ON g.city_name = c.name
+                WHERE c.faction = ?
+            ''', (self.faction,))
+
+            result = self.cursor.fetchone()
+            return result[0] if result[0] else 0
+        except:
+            return 0
+
+    def get_enemies(self) -> List[str]:
+        """Получает список врагов"""
+        enemies = []
+        try:
+            self.cursor.execute('''
+                SELECT faction2 FROM diplomacies 
+                WHERE faction1 = ? AND relationship = 'война'
+            ''', (self.faction,))
+
+            for row in self.cursor.fetchall():
+                enemies.append(row[0])
+        except:
+            pass
+
+        return enemies
+
+    def get_allies(self) -> List[str]:
+        """Получает список союзников"""
+        allies = []
+        try:
+            self.cursor.execute('''
+                SELECT faction2 FROM diplomacies 
+                WHERE faction1 = ? AND relationship = 'союз'
+            ''', (self.faction,))
+
+            for row in self.cursor.fetchall():
+                allies.append(row[0])
+        except:
+            pass
+
+        return allies
+
+    def analyze_situation(self) -> Dict[str, Any]:
+        """
+        Анализирует текущую ситуацию для принятия решений
+        """
+        city_count = self.get_city_count()
+        army_strength = self.get_army_strength()
+        enemies = self.get_enemies()
+        allies = self.get_allies()
+
+        # Получаем силу всех врагов
+        enemy_strength = 0
+        for enemy in enemies:
+            enemy_strength += self.get_faction_strength(enemy)
+
+        # Анализируем состояние
+        analysis = {
+            'city_count': city_count,
+            'army_strength': army_strength,
+            'enemy_count': len(enemies),
+            'enemy_strength': enemy_strength,
+            'ally_count': len(allies),
+            'is_losing': city_count < 3 or (enemy_strength > army_strength * 2),
+            'has_many_enemies': len(enemies) > 2,
+            'needs_help': city_count < self.thresholds['min_cities_for_help'],
+            'can_attack': army_strength > 100 and len(enemies) < 2,
+            'player_relation': self.get_relation_with_player()
+        }
+
+        return analysis
+
+    def get_faction_strength(self, faction: str) -> int:
+        """Получает силу фракции"""
+        try:
+            self.cursor.execute('''
+                SELECT SUM(g.unit_count * (u.attack + u.defense))
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                JOIN cities c ON g.city_name = c.name
+                WHERE c.faction = ?
             ''', (faction,))
 
             result = self.cursor.fetchone()
@@ -712,118 +233,684 @@ class NeuralAICore:
         except:
             return 0
 
-    def filter_response(self, response: str) -> str:
-        """Фильтрует ответ нейросети от нежелательного контента"""
-        # Удаляем HTML/XML теги
-        import re
-        response = re.sub(r'<[^>]+>', '', response)
+    def get_resources(self) -> Dict[str, int]:
+        """Получает ресурсы фракции"""
+        resources = {}
+        try:
+            self.cursor.execute('''
+                SELECT resource_type, amount FROM resources 
+                WHERE faction = ?
+            ''', (self.faction,))
 
-        # Ограничиваем длину
-        if len(response) > 500:
-            response = response[:497] + "..."
+            for resource_type, amount in self.cursor.fetchall():
+                resources[resource_type] = amount
+        except:
+            pass
 
-        # Заменяем нежелательные слова
-        bad_words = ['смерть', 'убийство', 'насилие']
-        for word in bad_words:
-            response = response.replace(word, '[скрыто]')
+        return resources
 
-        return response.strip()
-
-    def update_personality_based_on_message(self, message: str):
-        """Обновляет личность на основе сообщения игрока"""
-        message_lower = message.lower()
-
-        # Если игрок угрожает - становиться более враждебным
-        if any(word in message_lower for word in ['уничтожу', 'убью', 'сотру', 'война']):
-            if self.personality == AIPersonality.FRIENDLY:
-                self.personality = AIPersonality.NEUTRAL
-            elif self.personality == AIPersonality.NEUTRAL:
-                self.personality = AIPersonality.HOSTILE
-
-        # Если игрок предлагает союз - становиться дружелюбнее
-        elif any(word in message_lower for word in ['союз', 'дружба', 'помощь', 'поддержка']):
-            if self.personality == AIPersonality.HOSTILE:
-                self.personality = AIPersonality.NEUTRAL
-            elif self.personality == AIPersonality.NEUTRAL:
-                self.personality = AIPersonality.FRIENDLY
-
-    def execute_commands(self, commands: List[Dict]):
+    def make_strategic_decision(self) -> List[Dict[str, Any]]:
         """
-        Выполняет команды через исполнительный модуль ii.py
+        Принимает стратегические решения на основе анализа
+        Возвращает список решений для выполнения
         """
-        if not self.executive:
-            print("[ОШИБКА] Исполнительный модуль не подключен")
-            return
+        decisions = []
+        analysis = self.analyze_situation()
 
+        # 1. Если проигрываем - предлагаем мир
+        if analysis['is_losing'] or analysis['has_many_enemies']:
+            strongest_enemy = self.find_strongest_enemy()
+            if strongest_enemy:
+                stage = self.get_next_peace_stage(strongest_enemy)
+                decisions.append({
+                    'type': StrategicDecision.PEACE_PROPOSAL,
+                    'target': strongest_enemy,
+                    'stage': stage,
+                    'reason': 'Проигрываем или много врагов'
+                })
+
+        # 2. Если мало городов - просим помощи у союзников
+        if analysis['needs_help']:
+            good_allies = self.find_good_allies()
+            for ally in good_allies:
+                decisions.append({
+                    'type': StrategicDecision.HELP_REQUEST,
+                    'target': ally,
+                    'reason': 'Мало городов для обороны'
+                })
+
+        # 3. Если много врагов - приглашаем на войну
+        if analysis['has_many_enemies']:
+            potential_allies = self.find_potential_war_allies()
+            weakest_enemy = self.find_weakest_enemy()
+
+            if potential_allies and weakest_enemy:
+                for ally in potential_allies[:2]:  # Не более 2 приглашений
+                    decisions.append({
+                        'type': StrategicDecision.WAR_INVITATION,
+                        'target': ally,
+                        'enemy': weakest_enemy,
+                        'reason': 'Много врагов, нужна помощь'
+                    })
+
+        # 4. Если хорошие отношения с игроком - предлагаем союз
+        if analysis['player_relation'] > 70 and self.personality != AIPersonality.ENEMY:
+            decisions.append({
+                'type': StrategicDecision.ALLIANCE_OFFER,
+                'target': 'Игрок',
+                'reason': 'Отличные отношения'
+            })
+
+        # 5. Если есть ресурсы - предлагаем торговлю
+        resources = self.get_resources()
+        if resources.get('Кристаллы', 0) > 500 or resources.get('Кроны', 0) > 2000:
+            trade_partner = self.find_trade_partner()
+            if trade_partner:
+                decisions.append({
+                    'type': StrategicDecision.TRADE_OFFER,
+                    'target': trade_partner,
+                    'reason': 'Избыток ресурсов'
+                })
+
+        # Ограничиваем количество решений (максимум 3 за ход)
+        decisions = decisions[:3]
+
+        # Сохраняем решения в память
+        for decision in decisions:
+            self.memory.setdefault('decisions', []).append({
+                'type': decision['type'].value,
+                'target': decision.get('target'),
+                'reason': decision.get('reason'),
+                'timestamp': datetime.now().isoformat()
+            })
+
+        self.save_memory()
+
+        return decisions
+
+    def find_strongest_enemy(self) -> Optional[str]:
+        """Находит самого сильного врага"""
+        enemies = self.get_enemies()
+        strongest = None
+        max_strength = 0
+
+        for enemy in enemies:
+            strength = self.get_faction_strength(enemy)
+            if strength > max_strength:
+                max_strength = strength
+                strongest = enemy
+
+        return strongest
+
+    def find_weakest_enemy(self) -> Optional[str]:
+        """Находит самого слабого врага"""
+        enemies = self.get_enemies()
+        weakest = None
+        min_strength = float('inf')
+
+        for enemy in enemies:
+            strength = self.get_faction_strength(enemy)
+            if strength < min_strength:
+                min_strength = strength
+                weakest = enemy
+
+        return weakest
+
+    def find_good_allies(self) -> List[str]:
+        """Находит союзников с хорошими отношениями"""
+        good_allies = []
+        allies = self.get_allies()
+
+        for ally in allies:
+            relation = self.get_relation_with_faction(ally)
+            if relation > self.thresholds['good_relation']:
+                good_allies.append(ally)
+
+        return good_allies
+
+    def find_potential_war_allies(self) -> List[str]:
+        """Находит потенциальных союзников для войны"""
+        potential = []
+
+        # Все фракции кроме нас и врагов
+        all_factions = ['Север', 'Эльфы', 'Адепты', 'Вампиры', 'Элины', 'Игрок']
+        enemies = self.get_enemies()
+
+        for faction in all_factions:
+            if faction != self.faction and faction not in enemies:
+                relation = self.get_relation_with_faction(faction)
+                if relation > 30:  # Хотя бы нейтральные отношения
+                    potential.append(faction)
+
+        return potential
+
+    def find_trade_partner(self) -> Optional[str]:
+        """Находит партнера для торговли"""
+        all_factions = ['Север', 'Эльфы', 'Адепты', 'Вампиры', 'Элины', 'Игрок']
+
+        for faction in all_factions:
+            if faction != self.faction:
+                relation = self.get_relation_with_faction(faction)
+                if 20 < relation < 80:  # Не враги и не лучшие друзья
+                    return faction
+
+        return None
+
+    def get_relation_with_faction(self, target_faction: str) -> int:
+        """Получает отношения с фракцией"""
+        try:
+            self.cursor.execute('''
+                SELECT relationship FROM relations 
+                WHERE faction1 = ? AND faction2 = ?
+            ''', (self.faction, target_faction))
+
+            result = self.cursor.fetchone()
+            return result[0] if result else 0
+        except:
+            return 0
+
+    def get_next_peace_stage(self, target_faction: str) -> DiplomaticStage:
+        """Определяет следующий этап мирных переговоров"""
+        if target_faction not in self.peace_proposals:
+            self.peace_proposals[target_faction] = DiplomaticStage.STAGE_1
+        else:
+            current = self.peace_proposals[target_faction]
+
+            if current == DiplomaticStage.STAGE_1:
+                self.peace_proposals[target_faction] = DiplomaticStage.STAGE_2
+            elif current == DiplomaticStage.STAGE_2:
+                self.peace_proposals[target_faction] = DiplomaticStage.STAGE_3
+
+        return self.peace_proposals[target_faction]
+
+    def execute_decisions(self, decisions: List[Dict]) -> List[Dict]:
+        """
+        Выполняет принятые решения
+        """
         results = []
 
-        for cmd in commands:
+        for decision in decisions:
             try:
-                result = self._execute_single_command(cmd)
+                result = self._execute_decision(decision)
                 results.append({
-                    'command': cmd['command'],
+                    'decision': decision['type'].value,
+                    'target': decision.get('target'),
                     'success': True,
                     'result': result
                 })
+
+                # Сохраняем в историю предложений
+                self.memory.setdefault('offers_sent', []).append({
+                    'type': decision['type'].value,
+                    'target': decision.get('target'),
+                    'result': result,
+                    'timestamp': datetime.now().isoformat()
+                })
+
             except Exception as e:
                 results.append({
-                    'command': cmd['command'],
+                    'decision': decision['type'].value,
+                    'target': decision.get('target'),
                     'success': False,
                     'error': str(e)
                 })
 
+        self.save_memory()
         return results
 
-    def _execute_single_command(self, command: Dict) -> Any:
-        """Выполняет одну команду через executive (ii.py)"""
-        cmd_type = command['command']
-        params = command.get('params', {})
+    def _execute_decision(self, decision: Dict) -> str:
+        """Выполняет одно решение"""
+        decision_type = decision['type']
+        target = decision.get('target')
 
-        if cmd_type == 'BUILD_BUILDINGS':
-            return self.executive.build_in_city(
-                building_type=params.get('building_type', 'Фабрика'),
-                count=int(params.get('intensity', 0.5) * 10)  # Конвертируем в количество
+        if decision_type == StrategicDecision.PEACE_PROPOSAL:
+            stage = decision.get('stage', DiplomaticStage.STAGE_1)
+            return self._send_peace_proposal(target, stage)
+
+        elif decision_type == StrategicDecision.HELP_REQUEST:
+            return self._send_help_request(target)
+
+        elif decision_type == StrategicDecision.WAR_INVITATION:
+            enemy = decision.get('enemy')
+            return self._send_war_invitation(target, enemy)
+
+        elif decision_type == StrategicDecision.TRADE_OFFER:
+            return self._send_trade_offer(target)
+
+        elif decision_type == StrategicDecision.ALLIANCE_OFFER:
+            return self._send_alliance_offer(target)
+
+        else:
+            return "Неизвестный тип решения"
+
+    def _send_peace_proposal(self, target_faction: str, stage: DiplomaticStage) -> str:
+        """Отправляет предложение мира"""
+        # Сохраняем в историю переговоров
+        self._save_to_negotiation_history(
+            target_faction,
+            f"Предложение мира (этап {stage.value})"
+        )
+
+        # Создаем сообщение
+        if stage == DiplomaticStage.STAGE_1:
+            message = f"Предлагаю прекратить войну. Давай заключим мир."
+        elif stage == DiplomaticStage.STAGE_2:
+            resources = self.get_resources()
+            offer = {}
+            for res in ['Кроны', 'Кристаллы']:
+                if res in resources:
+                    offer[res] = int(resources[res] * 0.25)
+            message = f"Предлагаю мир в обмен на 25% ресурсов: {offer}"
+        else:  # STAGE_3
+            resources = self.get_resources()
+            offer = {}
+            for res in ['Кроны', 'Кристаллы', 'Рабочие']:
+                if res in resources:
+                    offer[res] = int(resources[res] * 0.6)
+            message = f"Предлагаю мир, союз и 60% ресурсов: {offer}"
+
+        return f"Отправлено предложение мира {target_faction}: {message}"
+
+    def _send_help_request(self, target_faction: str) -> str:
+        """Отправляет запрос помощи"""
+        city_count = self.get_city_count()
+
+        if city_count < 3:
+            message = f"У нас осталось всего {city_count} города! Просим срочной военной помощи!"
+        else:
+            message = f"Нас атакуют! Просим помощи, {target_faction}!"
+
+        self._save_to_negotiation_history(target_faction, message)
+        return f"Отправлен запрос помощи {target_faction}"
+
+    def _send_war_invitation(self, target_faction: str, enemy: str) -> str:
+        """Отправляет приглашение на войну"""
+        message = f"Давайте вместе атакуем {enemy}! Вместе мы сильнее!"
+
+        self._save_to_negotiation_history(target_faction, message)
+        return f"Отправлено приглашение на войну {target_faction} против {enemy}"
+
+    def _send_trade_offer(self, target_faction: str) -> str:
+        """Отправляет торговое предложение"""
+        resources = self.get_resources()
+
+        # Находим, что можем предложить
+        for resource in ['Кристаллы', 'Кроны', 'Рабочие']:
+            if resources.get(resource, 0) > 100:
+                message = f"Предлагаю торговлю {resource}. Что можете предложить взамен?"
+                break
+        else:
+            message = "Предлагаю взаимовыгодную торговлю."
+
+        self._save_to_negotiation_history(target_faction, message)
+        return f"Отправлено торговое предложение {target_faction}"
+
+    def _send_alliance_offer(self, target_faction: str) -> str:
+        """Отправляет предложение союза"""
+        message = f"Давайте заключим союз! Вместе мы непобедимы!"
+
+        self._save_to_negotiation_history(target_faction, message)
+        return f"Отправлено предложение союза {target_faction}"
+
+    def _save_to_negotiation_history(self, target_faction: str, message: str):
+        """Сохраняет переговоры в историю"""
+        try:
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS negotiation_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    faction1 TEXT,
+                    faction2 TEXT,
+                    message TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            self.cursor.execute('''
+                INSERT INTO negotiation_history (faction1, faction2, message)
+                VALUES (?, ?, ?)
+            ''', (self.faction, target_faction, message))
+
+            self.conn.commit()
+        except Exception as e:
+            print(f"[ИИ] Ошибка сохранения истории переговоров: {e}")
+
+    def process_player_message(self, player_message: str) -> str:
+        """
+        Обрабатывает сообщение от игрока
+        Возвращает ответ ИИ
+        """
+        print(f"[ИИ] Игрок: {player_message}")
+
+        # Сохраняем взаимодействие
+        self.memory.setdefault('interactions', []).append({
+            'message': player_message,
+            'timestamp': datetime.now().isoformat(),
+            'personality': self.personality.value
+        })
+
+        # Генерируем ответ
+        response = self._generate_response(player_message)
+
+        self.save_memory()
+        return response
+
+    def _generate_response(self, message: str) -> str:
+        """Генерирует ответ на сообщение игрока"""
+        message_lower = message.lower()
+
+        # Ответы в зависимости от личности
+        responses = {
+            AIPersonality.FRIENDLY: {
+                'peace': "Конечно, давай заключим мир! Мы же друзья!",
+                'war': "Не надо войны! Мы можем договориться!",
+                'trade': "С удовольствием! Что предлагаешь?",
+                'alliance': "Отличная идея! Давай заключим союз!",
+                'help': "Конечно помогу! Что случилось?",
+                'default': "Приветствую, друг! Как дела?"
+            },
+            AIPersonality.NEUTRAL: {
+                'peace': "Мир возможен. Какие условия?",
+                'war': "Война никому не нужна. Что ты предлагаешь?",
+                'trade': "Рассмотрю твое предложение.",
+                'alliance': "Союз требует взаимных обязательств.",
+                'help': "Помощь возможна. Что случилось?",
+                'default': "Здравствуй. Что привело тебя ко мне?"
+            },
+            AIPersonality.HOSTILE: {
+                'peace': "Мир? На каких условиях?",
+                'war': "Угрожаешь? Я готов дать отпор!",
+                'trade': "Торговля? Только на выгодных для меня условиях.",
+                'alliance': "Сначала докажи свою надежность.",
+                'help': "Помощь? А что ты предложишь взамен?",
+                'default': "Что тебе нужно? Говори быстрее."
+            },
+            AIPersonality.ENEMY: {
+                'peace': "Мир? После всего, что было?",
+                'war': "Наконец-то! Я ждал этого!",
+                'trade': "Торговать с врагом? Ты шутишь?",
+                'alliance': "Союз с тобой? Никогда!",
+                'help': "Просишь помощи у врага? Смешно.",
+                'default': "Ты осмелился обратиться ко мне?"
+            }
+        }
+
+        # Определяем тип сообщения
+        if any(word in message_lower for word in ['мир', 'перемирие']):
+            msg_type = 'peace'
+        elif any(word in message_lower for word in ['война', 'атака', 'нападу']):
+            msg_type = 'war'
+        elif any(word in message_lower for word in ['торгов', 'сделк', 'обмен']):
+            msg_type = 'trade'
+        elif any(word in message_lower for word in ['союз', 'дружба']):
+            msg_type = 'alliance'
+        elif any(word in message_lower for word in ['помощ', 'помоги']):
+            msg_type = 'help'
+        else:
+            msg_type = 'default'
+
+        # Получаем ответ
+        personality_responses = responses.get(self.personality, responses[AIPersonality.NEUTRAL])
+        response = personality_responses.get(msg_type, personality_responses['default'])
+
+        return response
+
+    def get_status(self) -> Dict[str, Any]:
+        """Возвращает статус ИИ"""
+        analysis = self.analyze_situation()
+
+        return {
+            'faction': self.faction,
+            'personality': self.personality.value,
+            'city_count': analysis['city_count'],
+            'army_strength': analysis['army_strength'],
+            'enemy_count': analysis['enemy_count'],
+            'player_relation': analysis['player_relation'],
+            'is_losing': analysis['is_losing']
+        }
+
+    def cleanup(self):
+        """Очистка ресурсов"""
+        self.save_memory()
+
+
+# -------------------------------------------------------------------
+# КЛАСС ДЛЯ ИНТЕГРАЦИИ С ИГРОЙ
+# -------------------------------------------------------------------
+
+class NeuralAIIntegration:
+    """
+    Класс для управления всеми фракциями ИИ в игре
+    """
+
+    def __init__(self, player_faction: str, conn: sqlite3.Connection):
+        self.player_faction = player_faction
+        self.conn = conn
+        self.ai_cores = {}  # {faction: NeuralAICore}
+
+        self.initialize_ai_cores()
+        print(f"[ИИ-ИНТЕГРАЦИЯ] Инициализирован для игрока {player_faction}")
+
+    def initialize_ai_cores(self):
+        """Инициализирует NeuralAICore для всех фракций ИИ"""
+        ai_factions = ['Север', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']
+
+        for faction in ai_factions:
+            if faction != self.player_faction:
+                try:
+                    self.ai_cores[faction] = NeuralAICore(faction, self.conn)
+                except Exception as e:
+                    print(f"[ИИ] Ошибка создания ИИ для {faction}: {e}")
+
+    def make_all_turns(self) -> Dict[str, List[Dict]]:
+        """
+        Выполняет ход для всех фракций ИИ
+        Возвращает результаты решений
+        """
+        results = {}
+
+        for faction, ai_core in self.ai_cores.items():
+            try:
+                # Принимаем стратегические решения
+                decisions = ai_core.make_strategic_decision()
+
+                # Выполняем решения
+                execution_results = ai_core.execute_decisions(decisions)
+
+                results[faction] = {
+                    'decisions': decisions,
+                    'results': execution_results
+                }
+
+                print(f"[ИИ] {faction} принял {len(decisions)} решений")
+
+            except Exception as e:
+                print(f"[ИИ] Ошибка хода {faction}: {e}")
+                results[faction] = {'error': str(e)}
+
+        return results
+
+    def handle_player_conversation(self, ai_faction: str, player_message: str) -> str:
+        """
+        Обрабатывает сообщение игрока к фракции ИИ
+        Возвращает ответ ИИ
+        """
+        if ai_faction not in self.ai_cores:
+            return "Эта фракция недоступна для диалога."
+
+        try:
+            ai_core = self.ai_cores[ai_faction]
+            response = ai_core.process_player_message(player_message)
+            return response
+
+        except Exception as e:
+            print(f"[ИИ] Ошибка диалога с {ai_faction}: {e}")
+            return "Произошла ошибка. Попробуйте позже."
+
+    def get_ai_status(self) -> Dict[str, Dict]:
+        """
+        Возвращает статус всех фракций ИИ
+        """
+        status = {}
+
+        for faction, ai_core in self.ai_cores.items():
+            try:
+                status[faction] = ai_core.get_status()
+            except:
+                status[faction] = {'error': 'Не удалось получить статус'}
+
+        return status
+
+    def update_game_state(self, turn_counter: int):
+        """
+        Обновляет состояние игры для ИИ
+        """
+        print(f"[ИИ] Обновление состояния (ход {turn_counter})")
+
+        for faction, ai_core in self.ai_cores.items():
+            try:
+                # Обновляем личность на основе новых отношений
+                ai_core.personality = ai_core.determine_personality()
+
+                # Сохраняем память
+                ai_core.save_memory()
+
+            except Exception as e:
+                print(f"[ИИ] Ошибка обновления {faction}: {e}")
+
+    def train_on_game_data(self, game_data: Dict):
+        """
+        Сохраняет данные игры для анализа (упрощенная версия)
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            # Создаем таблицу для данных
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ai_game_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    turn INTEGER,
+                    data TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Сохраняем данные
+            data_json = json.dumps(game_data, ensure_ascii=False)
+            cursor.execute('''
+                INSERT INTO ai_game_data (turn, data)
+                VALUES (?, ?)
+            ''', (game_data.get('turn', 0), data_json))
+
+            self.conn.commit()
+            print(f"[ИИ] Данные игры сохранены (ход {game_data.get('turn', 0)})")
+
+        except Exception as e:
+            print(f"[ИИ] Ошибка сохранения данных: {e}")
+
+    def create_controller_for_faction(self, faction: str):
+        """
+        Создает прокси-контроллер для интеграции с ii.py
+        """
+        if faction not in self.ai_cores:
+            print(f"[ИИ] Нет ИИ для фракции {faction}")
+            return None
+
+        # Создаем простой прокси-класс
+        class AIControllerProxy:
+            def __init__(self, faction, ai_core):
+                self.faction = faction
+                self.ai_core = ai_core
+
+            def make_turn(self):
+                """Выполняет ход ИИ"""
+                try:
+                    decisions = self.ai_core.make_strategic_decision()
+                    results = self.ai_core.execute_decisions(decisions)
+
+                    print(f"[AIControllerProxy] {self.faction} выполнил ход: {len(results)} результатов")
+
+                    # Здесь можно добавить вызовы к ii.py для реальных действий
+                    # Например: строительство, найм армии, атаки
+
+                    return True
+
+                except Exception as e:
+                    print(f"[AIControllerProxy] Ошибка хода {self.faction}: {e}")
+                    return False
+
+            def hire_army(self):
+                """Упрощенный найм армии"""
+                print(f"[AIControllerProxy] {self.faction} нанимает армию")
+                return True
+
+            def build_in_city(self, building_type: str, count: int):
+                """Упрощенное строительство"""
+                print(f"[AIControllerProxy] {self.faction} строит {building_type} x{count}")
+                return True
+
+        return AIControllerProxy(faction, self.ai_cores[faction])
+
+    def cleanup(self):
+        """Очистка всех ресурсов"""
+        print("[ИИ] Очистка всех ядер ИИ...")
+
+        for faction, ai_core in self.ai_cores.items():
+            try:
+                ai_core.cleanup()
+                print(f"[ИИ] Очищен ИИ {faction}")
+            except Exception as e:
+                print(f"[ИИ] Ошибка очистки {faction}: {e}")
+
+        self.ai_cores.clear()
+        print("[ИИ] Все ядра ИИ очищены")
+
+
+# -------------------------------------------------------------------
+# УТИЛИТЫ ДЛЯ БАЗЫ ДАННЫХ
+# -------------------------------------------------------------------
+
+def initialize_ai_database(conn: sqlite3.Connection):
+    """
+    Инициализирует таблицы для ИИ в базе данных
+    """
+    cursor = conn.cursor()
+
+    try:
+        # Таблица памяти ИИ
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ai_memory (
+                faction TEXT PRIMARY KEY,
+                data TEXT,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
 
-        elif cmd_type == 'HIRE_ARMY':
-            # Активируем найм армии в ii.py
-            self.executive.hire_army()
-            return "Армия нанята"
-
-        elif cmd_type == 'ATTACK_CITY':
-            return self.executive.attack_city(
-                city_name=params.get('city_name'),
-                faction=params.get('target_faction')
+        # Таблица истории переговоров
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS negotiation_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faction1 TEXT,
+                faction2 TEXT,
+                message TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
 
-        elif cmd_type == 'DIPLOMATIC_ACTION':
-            action = params.get('action')
-            target = params.get('target_faction')
+        # Таблица данных игры
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ai_game_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                turn INTEGER,
+                data TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
 
-            if action == 'WAR':
-                # Объявляем войну
-                self.executive.update_diplomacy_status(target, "война")
-                return f"Объявлена война {target}"
+        conn.commit()
+        print("[БД] Таблицы ИИ инициализированы")
 
-            elif action == 'TRADE':
-                # Создаем торговое предложение
-                self.cursor.execute('''
-                    INSERT INTO queries (resource, faction)
-                    VALUES (?, ?)
-                ''', (f"Торговое предложение от {self.faction}", self.faction))
-                return f"Предложена торговля {target}"
+    except Exception as e:
+        print(f"[БД] Ошибка инициализации: {e}")
+        conn.rollback()
 
-        return f"Команда {cmd_type} выполнена"
 
-    def get_status_report(self) -> str:
-        """Возвращает отчет о состоянии нейро-ИИ"""
-        return f"""
-=== НЕЙРО-ИИ ОТЧЕТ: {self.faction} ===
-Личность: {self.personality.value}
-Текущий ход: {self.get_current_turn()}
-Отношения с игроком: {self.get_relation_with_player()}/100
-Ресурсы: {json.dumps(self.get_current_resources(), ensure_ascii=False)}
-Память: {len(self.memory.get('player_interactions', []))} взаимодействий
-Нейросеть: {'Активна' if self.neural_model else 'Неактивна'}
-=====================================
-"""

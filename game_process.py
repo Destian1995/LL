@@ -535,7 +535,7 @@ class GameScreen(Screen):
         self.conn = conn
         self.player_ideology = player_ideology
         self.player_allies = player_allies
-
+        self.city_star_levels = {}
         # --- Словарь для хранения таймеров ---
         self.scheduled_events = {}
         # Инициализация GameStateManager
@@ -595,7 +595,8 @@ class GameScreen(Screen):
         """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
         for faction in FACTIONS:
             if faction != self.selected_faction:
-                self.ai_controllers[faction] = self.neural_ai.create_controller_for_faction(faction)
+                controller = self.neural_ai.create_controller_for_faction(faction)
+                self.ai_controllers[faction] = controller
 
     def save_selected_faction_to_db(self):
         conn = self.conn
@@ -854,8 +855,10 @@ class GameScreen(Screen):
         # Проверяем переворот перед обработкой хода
         if self.check_coup_and_trigger_defeat(self.conn):
             return  # Игра закончена из-за переворота
+
         # Обновляем сезонные бонусы артефактов
         self.season_manager.apply_artifact_bonuses(self.conn)
+
         # Обновляем ресурсы игрока и получаем прирост
         profit_details = self.faction.update_resources()  # Теперь возвращает словарь
         bonus_details = self.faction.apply_player_bonuses()  # Получаем бонусы
@@ -870,6 +873,7 @@ class GameScreen(Screen):
         # Обновляем интерфейс и передаем дельту для подсветки
         self.resource_box.update_resources(delta=delta_resources)
         self.faction.save_resources_to_db()
+
         # Проверяем условие завершения игры
         game_continues, reason = self.faction.end_game()  # Получаем статус и причину завершения
         if not game_continues:
@@ -880,50 +884,58 @@ class GameScreen(Screen):
                 status = "win"  # Условия победы
             else:
                 status = "lose"  # Условия поражения
+
             # Запускаем модуль results_game для обработки результатов
-            results_game_instance = ResultsGame(status, reason, self.conn)  # Создаем экземпляр класса ResultsGame
+            results_game_instance = ResultsGame(status, reason, self.conn)
             results_game_instance.show_results(self.selected_faction, status, reason)
-            App.get_running_app().restart_app()  # Добавляем прямой вызов перезагрузки
+            App.get_running_app().restart_app()
             return  # Прерываем выполнение дальнейших действий
 
         # Проверяем, есть ли Мятежники в городах, и создаём ИИ для них
         self.ensure_rebellion_ai_controller()
+
         # Обновляем данные для нейронной сети перед выполнением ходов ИИ
         self.neural_ai.update_game_state(self.turn_counter, self.selected_faction)
-        # Выполнение хода для всех ИИ
-        for faction, ai_controller in self.ai_controllers.items():
-            if hasattr(ai_controller, 'make_neural_turn'):
-                ai_controller.make_neural_turn()
-            else:
-                ai_controller.make_turn()
+
+        # ИСПРАВЛЕНИЕ: Правильный перебор словаря ai_controllers
+        for faction_name, ai_controller in self.ai_controllers.items():
+            ai_controller.make_turn()
+
         # Удаляем лишних героев 2, 3, 4 классов которых мог наплодить ИИ
         self.enforce_garrison_hero_limits()
+
         # Обновляем статус уничтоженных фракций
         self.update_destroyed_factions()
+
         # Обновляем статус ходов
         self.reset_check_attack_flags()
+
         # Обучаем нейронную сеть на основе результатов хода
         self.train_neural_ai()
-        # Обновляем данные нейронной сети
-        self.neural_ai.update_after_turn(self.turn_counter)
+
+        # Обработка дворян
         process_nobles_turn(self.conn, self.turn_counter)
+
+        # Инициализация перемещений
         self.initialize_turn_check_move()
+
         # Обновляем текущий сезон
         new_season = self.update_season(self.turn_counter)
         self._update_season_display(new_season)
         self.season_manager.update(self.current_idx, self.conn)
+
         # Сбрасываем характеристики отсутствующих юнитов 3 класса
         self.season_manager.reset_absent_third_class_units(self.conn)
-        print("Здесь должны вызываться функции отрисовки звезд мощи городов")
-        # Обновляем статус городов и отрисовываем звёздочки мощи армий
-        # Принудительно обновляем рейтинг один раз
+
+        # Обновляем рейтинг армии и отрисовываем звёздочки
         self.update_army_rating()
+
+        # Генерация случайных событий
         self.event_now = random.randint(1, 100)
-        # Проверяем, нужно ли запустить событие
         if self.turn_counter % self.event_now == 0:
             print("Генерация события...")
             self.event_manager.generate_event(self.turn_counter)
-        # Логирование или обновление интерфейса после хода
+
         print(f"Ход {self.turn_counter} завершён")
 
     def ensure_rebellion_ai_controller(self):
@@ -952,22 +964,415 @@ class GameScreen(Screen):
             self.neural_ai.train_on_game_data(game_data)
 
     def get_city_data(self):
-        """Получение данных о городах для нейронной сети"""
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name, faction, population, defense FROM cities")
-        cities = cursor.fetchall()
+        """Получает стратегически важные данные о городах для ИИ"""
+        try:
+            cursor = self.db_connection.cursor()
 
-        # Преобразуем в формат для нейросети
-        city_data = {}
-        for city in cities:
-            name, faction, population, defense = city
-            city_data[name] = {
-                'faction': faction,
-                'population': population,
-                'defense': defense
+            # 1. Ключевая информация о городах:
+            # - Кто владеет городом
+            # - Его производство кристаллов
+            # - Защита (гарнизон)
+            cursor.execute("""
+                SELECT 
+                    c.name, 
+                    c.faction,
+                    c.kf_crystal,
+                    COALESCE(g.garrison_strength, 0) as defense
+                FROM cities c
+                LEFT JOIN (
+                    SELECT city_name, SUM(unit_count) as garrison_strength
+                    FROM garrisons
+                    GROUP BY city_name
+                ) g ON c.name = g.city_name
+            """)
+
+            cities = []
+            for row in cursor.fetchall():
+                name, faction, kf_crystal, defense = row
+
+                cities.append({
+                    'name': name,
+                    'faction': faction,
+                    'production': kf_crystal,  # Производство кристаллов
+                    'defense': defense,  # Общая численность гарнизона
+                    'is_valuable': kf_crystal > 5  # Ценный ли город (высокое производство)
+                })
+
+            return cities
+
+        except Exception as e:
+            print(f"Ошибка при получении данных о городах: {e}")
+            return []
+
+    def train_neural_ai(self):
+        """Основной метод для тренировки нейро-ИИ"""
+        try:
+            # Собираем все необходимые данные для ИИ
+            game_state = {
+                # 1. Города - самые важные активы
+                'cities': self.get_city_data(),
+
+                # 2. Текущие войны и союзы
+                'diplomacy': self.get_diplomacy_state(),
+
+                # 3. Армии фракций
+                'armies': self.get_army_strength(),
+
+                # 4. Ресурсы фракций
+                'resources': self.get_resources_data(),
+
+                # 5. Отношения между фракциями
+                'relations': self.get_relations_data(),
+
+                # 6. Гарнизоны (защита городов)
+                'garrisons': self.get_garrison_data(),
+
+                # 7. Сила юнитов
+                'units': self.get_unit_stats()
             }
 
-        return city_data
+            # Тренировка ИИ с этими данными
+            self.train_ai_with_data(game_state)
+
+        except Exception as e:
+            print(f"Ошибка при тренировке нейро-ИИ: {e}")
+
+    def get_diplomacy_state(self):
+        """Получает текущее дипломатическое состояние"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Получаем все дипломатические отношения
+            cursor.execute("SELECT faction1, faction2, relationship FROM diplomacies")
+
+            diplomacy = {
+                'wars': [],  # Кто с кем воюет
+                'alliances': [],  # Кто с кем в союзе
+                'neutral': []  # Кто нейтрален
+            }
+
+            for faction1, faction2, relationship in cursor.fetchall():
+                if relationship == 'война':
+                    diplomacy['wars'].append((faction1, faction2))
+                elif relationship == 'союз':
+                    diplomacy['alliances'].append((faction1, faction2))
+                elif relationship == 'нейтралитет':
+                    diplomacy['neutral'].append((faction1, faction2))
+
+            return diplomacy
+
+        except Exception as e:
+            print(f"Ошибка при получении дипломатии: {e}")
+            return {'wars': [], 'alliances': [], 'neutral': []}
+
+    def get_army_strength(self):
+        """Получает общую силу армий каждой фракции"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Считаем общую численность армии по фракциям
+            cursor.execute("""
+                SELECT u.faction, SUM(g.unit_count) as total_army
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                GROUP BY u.faction
+            """)
+
+            armies = {}
+            for faction, total_army in cursor.fetchall():
+                armies[faction] = {
+                    'total_units': total_army or 0,
+                    'city_count': self.get_city_count_for_faction(faction)
+                }
+
+            return armies
+
+        except Exception as e:
+            print(f"Ошибка при получении силы армий: {e}")
+            return {}
+
+    def get_resources_data(self):
+        """Получает ресурсы фракций"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("SELECT faction, resource_type, amount FROM resources")
+
+            resources = {}
+            for faction, resource_type, amount in cursor.fetchall():
+                if faction not in resources:
+                    resources[faction] = {}
+                resources[faction][resource_type] = amount
+
+            # Структурируем важные ресурсы
+            structured_resources = {}
+            for faction, res in resources.items():
+                structured_resources[faction] = {
+                    'gold': res.get('Кроны', 0),
+                    'crystals': res.get('Кристаллы', 0),
+                    'workers': res.get('Рабочие', 0),
+                    'army_limit': res.get('Лимит Армии', 0),
+                    'consumption': res.get('Потребление', 0)
+                }
+
+            return structured_resources
+
+        except Exception as e:
+            print(f"Ошибка при получении ресурсов: {e}")
+            return {}
+
+    def get_relations_data(self):
+        """Получает уровень отношений между фракциями"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("SELECT faction1, faction2, relationship FROM relations")
+
+            relations = {}
+            for faction1, faction2, relationship in cursor.fetchall():
+                key = f"{faction1}_{faction2}"
+                relations[key] = int(relationship)
+
+            return relations
+
+        except Exception as e:
+            print(f"Ошибка при получении отношений: {e}")
+            return {}
+
+    def get_garrison_data(self):
+        """Получает детальную информацию о гарнизонах"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("""
+                SELECT 
+                    g.city_name,
+                    g.unit_name,
+                    g.unit_count,
+                    u.attack,
+                    u.defense,
+                    u.durability,
+                    u.unit_class
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+            """)
+
+            garrisons = {}
+            for row in cursor.fetchall():
+                city_name, unit_name, unit_count, attack, defense, durability, unit_class = row
+
+                if city_name not in garrisons:
+                    garrisons[city_name] = []
+
+                garrisons[city_name].append({
+                    'unit': unit_name,
+                    'count': unit_count,
+                    'attack': attack,
+                    'defense': defense,
+                    'durability': durability,
+                    'class': unit_class
+                })
+
+            return garrisons
+
+        except Exception as e:
+            print(f"Ошибка при получении гарнизонов: {e}")
+            return {}
+
+    def get_unit_stats(self):
+        """Получает статистику юнитов"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("""
+                SELECT 
+                    faction,
+                    unit_name,
+                    attack,
+                    defense,
+                    durability,
+                    unit_class,
+                    cost_money
+                FROM units
+            """)
+
+            units = {}
+            for row in cursor.fetchall():
+                faction, unit_name, attack, defense, durability, unit_class, cost_money = row
+
+                if faction not in units:
+                    units[faction] = []
+
+                units[faction].append({
+                    'name': unit_name,
+                    'attack': attack,
+                    'defense': defense,
+                    'durability': durability,
+                    'class': unit_class,
+                    'cost': cost_money
+                })
+
+            return units
+
+        except Exception as e:
+            print(f"Ошибка при получении статистики юнитов: {e}")
+            return {}
+
+    def get_city_count_for_faction(self, faction):
+        """Получает количество городов у фракции"""
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (faction,))
+            return cursor.fetchone()[0] or 0
+        except:
+            return 0
+
+    def train_ai_with_data(self, game_state):
+        """Тренирует ИИ на основе данных игры"""
+        try:
+            # Анализируем состояние каждой фракции
+            for faction in ['Север', 'Эльфы', 'Адепты', 'Вампиры', 'Элины']:
+                if faction == self.current_faction:
+                    continue  # ИИ не управляет игроком
+
+                # 1. Оцениваем текущее положение фракции
+                faction_state = self.analyze_faction_state(faction, game_state)
+
+                # 2. Принимаем решения на основе анализа
+                decisions = self.make_ai_decisions(faction, faction_state, game_state)
+
+                # 3. Применяем решения
+                self.apply_ai_decisions(faction, decisions)
+
+        except Exception as e:
+            print(f"Ошибка при тренировке ИИ: {e}")
+
+    def analyze_faction_state(self, faction, game_state):
+        """Анализирует состояние конкретной фракции"""
+        state = {
+            'strength': 0,
+            'weakness': 0,
+            'cities': 0,
+            'production': 0,
+            'enemies': [],
+            'allies': [],
+            'is_losing': False,
+            'can_attack': False
+        }
+
+        # 1. Количество городов
+        state['cities'] = sum(1 for city in game_state['cities'] if city['faction'] == faction)
+
+        # 2. Производство кристаллов
+        state['production'] = sum(city['production'] for city in game_state['cities'] if city['faction'] == faction)
+
+        # 3. Сила армии
+        army_data = game_state['armies'].get(faction, {})
+        state['army_strength'] = army_data.get('total_units', 0)
+
+        # 4. Враги
+        for war in game_state['diplomacy']['wars']:
+            if faction in war:
+                enemy = war[0] if war[1] == faction else war[1]
+                state['enemies'].append(enemy)
+
+        # 5. Союзники
+        for alliance in game_state['diplomacy']['alliances']:
+            if faction in alliance:
+                ally = alliance[0] if alliance[1] == faction else alliance[1]
+                state['allies'].append(ally)
+
+        # 6. Оцениваем, проигрывает ли фракция
+        if state['cities'] < 3 or len(state['enemies']) > 2:
+            state['is_losing'] = True
+
+        # 7. Может ли атаковать
+        if state['army_strength'] > 50 and state['production'] > 10:
+            state['can_attack'] = True
+
+        return state
+
+    def make_ai_decisions(self, faction, faction_state, game_state):
+        """Принимает решения для ИИ на основе анализа"""
+        decisions = {
+            'diplomacy': [],  # Дипломатические действия
+            'military': [],  # Военные действия
+            'economic': []  # Экономические действия
+        }
+
+        # ЛОГИКА ПРЕДЛОЖЕНИЯ МИРА (как вы описали)
+        if faction_state['is_losing']:
+            # Если проигрывает, предлагаем мир по этапам
+            strongest_enemy = self.find_strongest_enemy(faction, game_state)
+
+            if strongest_enemy:
+                # Этап 1: Простое предложение мира
+                decisions['diplomacy'].append({
+                    'action': 'peace_proposal',
+                    'target': strongest_enemy,
+                    'stage': 1,
+                    'offer': 'мир'
+                })
+
+        # ЛОГИКА ПРОСЬБЫ О ПОМОЩИ
+        if faction_state['cities'] < 4:
+            # Ищем союзников с хорошими отношениями
+            good_allies = self.find_allies_with_good_relations(faction, game_state, min_relation=60)
+
+            for ally in good_allies:
+                decisions['diplomacy'].append({
+                    'action': 'request_help',
+                    'target': ally,
+                    'reason': 'мало городов',
+                    'offer': 'взаимопомощь'
+                })
+
+        # ЛОГИКА ПРИГЛАШЕНИЯ НА ВОЙНУ
+        if len(faction_state['enemies']) > 1:
+            # Ищем возможных союзников для совместной войны
+            potential_allies = self.find_potential_allies(faction, game_state)
+
+            for potential_ally in potential_allies:
+                weakest_enemy = self.find_weakest_enemy(faction, game_state)
+
+                if weakest_enemy:
+                    decisions['diplomacy'].append({
+                        'action': 'invite_to_war',
+                        'target': potential_ally,
+                        'enemy': weakest_enemy,
+                        'offer': 'совместная атака'
+                    })
+
+        # ЛОГИКА ЗАПРОСА РАЗВЕДКИ
+        if faction_state['is_losing'] or len(faction_state['enemies']) > 0:
+            # Просим разведданные у союзников
+            for ally in faction_state['allies']:
+                decisions['diplomacy'].append({
+                    'action': 'request_intel',
+                    'target': ally,
+                    'reason': 'стратегическая необходимость'
+                })
+
+        return decisions
+
+    def apply_ai_decisions(self, faction, decisions):
+        """Применяет решения ИИ в игре"""
+        for decision_type, actions in decisions.items():
+            for action in actions:
+                if action['action'] == 'peace_proposal':
+                    self.ai_send_peace_proposal(
+                        faction,
+                        action['target'],
+                        action['stage'],
+                        action.get('offer', '')
+                    )
+                elif action['action'] == 'request_help':
+                    self.ai_request_help(faction, action['target'], action['reason'])
+                elif action['action'] == 'invite_to_war':
+                    self.ai_invite_to_war(faction, action['target'], action['enemy'])
+                elif action['action'] == 'request_intel':
+                    self.ai_request_intelligence(faction, action['target'])
+
 
     def get_diplomacy_data(self):
         """Получение дипломатических данных для нейронной сети"""
@@ -1014,7 +1419,7 @@ class GameScreen(Screen):
 
         # Сохраняем модель нейронной сети при завершении
         if hasattr(self, 'neural_ai'):
-            self.neural_ai.save_model()
+            self.neural_ai.cleanup()
         print("Очистка GameScreen завершена.")
 
 
@@ -2245,6 +2650,16 @@ class GameScreen(Screen):
                         self.conn.rollback()
                 finally:
                     cur.close()
+
+    def on_leave(self, *args):
+        """Вызывается при уходе с экрана."""
+        self.cleanup()
+        return super().on_leave(*args)
+
+    def on_pre_enter(self, *args):
+        """Вызывается перед входом на экран."""
+        # Инициализация при повторном входе, если нужно
+        return super().on_pre_enter(*args)
 
     def reset_game(self):
         """Сброс игры (например, при новой игре)."""

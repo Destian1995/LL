@@ -1004,10 +1004,10 @@ class AIController:
             defense = 0
         elif param_choice == "defense":
             attack = 0
-            defense = random.randint(8000, 14000)
+            defense = random.randint(4000, 14000)
         else:  # both
-            attack = random.randint(4000, 13000)
-            defense = random.randint(4000, 13000)
+            attack = random.randint(2000, 13000)
+            defense = random.randint(2000, 13000)
 
         # Случайный выбор слота (0: Оружие, 1: Голова, 2: Сапоги, 3: Туловище, 4: Аксессуар)
         artifact_type = random.choice([0, 1, 2, 3, 4])
@@ -1020,7 +1020,7 @@ class AIController:
         name = f"{random.choice(prefixes)} {random.choice(suffixes)}"
 
         # Случайная стоимость
-        cost = random.randint(2_000_000_000, 10_000_000_000)  # 2-10 млрд.
+        cost = random.randint(3_000_000, 10_000_000)  # 2-10 млн
 
         # Сезон (может быть пустым или случайным)
         seasons_list = [[], ["Весна"], ["Лето"], ["Осень"], ["Зима"], ["Весна", "Лето"], ["Лето", "Осень"],
@@ -1220,7 +1220,7 @@ class AIController:
         Рассчитывает максимальный лимит армии на основе базового значения и бонуса от городов.
         """
         base_limit = 5000  # Базовый лимит 1 млн
-        city_bonus = 3500 * len(self.cities)  # Бонус за каждый город
+        city_bonus = 4500 * len(self.cities)  # Бонус за каждый город
         total_limit = base_limit + city_bonus
         return total_limit
 
