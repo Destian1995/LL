@@ -23,7 +23,6 @@ from .quick_actions import QuickActions
 from .diplomacy_chat import DiplomacyChat
 from .political_systems import PoliticalSystemsManager
 from .relations_manager import RelationsManager
-from .diplomacy_ai import DiplomacyAI
 
 def calculate_font_size():
     from kivy.utils import platform
@@ -78,7 +77,6 @@ class AdvisorView(FloatLayout):
         self.relations_manager = RelationsManager(self)
         self.diplomacy_chat = DiplomacyChat(self)
         self.quick_actions = QuickActions(self)
-        self.diplomacy_ai = DiplomacyAI(self)
 
         # Цветовая тема интерфейса
         self.colors = {
