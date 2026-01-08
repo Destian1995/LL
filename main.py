@@ -214,6 +214,7 @@ def clear_tables(conn):
         "artifact_effects_log",
         "player_allies",
         "player_choices",
+        "negotiation_history",
     ]
 
     cursor = conn.cursor()

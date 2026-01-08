@@ -1,5 +1,5 @@
 from kivy.uix.checkbox import CheckBox
-
+from ai_models.lerdon_ai.ultralight_ai import  DiplomacyAIFactory
 from db_lerdon_connect import *
 
 
@@ -244,9 +244,13 @@ class AdvisorView(FloatLayout):
 
     def open_ai_chat(self, instance):
         """Открывает окно дипломатических переговоров с другими фракциями"""
-
-        # === Создаем окно дипломатии ===
-        diplomacy_window = FloatLayout(size_hint=(1, 1))
+        # === Создаем окно дипломатии с BoxLayout для лучшей организации ===
+        diplomacy_window = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 1),
+            spacing=dp(10),  # Отступ между секциями
+            padding=dp(10)  # Внешний отступ
+        )
 
         # Фон - кабинет правителя
         with diplomacy_window.canvas.before:
@@ -259,7 +263,7 @@ class AdvisorView(FloatLayout):
             size_hint=(1, None),
             height=dp(60),
             padding=[dp(15), dp(10)],
-            pos_hint={'top': 1}
+            spacing=dp(10)  # Отступ между элементами
         )
 
         # Кнопка назад
@@ -279,7 +283,6 @@ class AdvisorView(FloatLayout):
             size_hint=(0.4, 1),
             spacing=dp(2)
         )
-
         title_label = Label(
             text=f"Дипломатическая переписка",
             font_size='18sp',
@@ -287,7 +290,6 @@ class AdvisorView(FloatLayout):
             color=(1, 1, 1, 1),
             halign='center'
         )
-
         faction_info.add_widget(title_label)
 
         # === ВЫПАДАЮЩИЙ СПИСОК ФРАКЦИЙ ===
@@ -296,16 +298,12 @@ class AdvisorView(FloatLayout):
             size_hint=(0.4, 1),
             spacing=dp(10)
         )
-
-        # Метка перед списком
         selector_label = Label(
             text="Фракция:",
             font_size='16sp',
             color=(0.8, 0.8, 0.9, 1),
             size_hint=(0.4, 1)
         )
-
-        # Создаем выпадающий список
         self.faction_spinner = Spinner(
             text='Выберите фракцию',
             values=[],
@@ -314,15 +312,11 @@ class AdvisorView(FloatLayout):
             background_color=(0.2, 0.3, 0.5, 1),
             font_size='14sp'
         )
-
-        # Заполняем список фракциями
         all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
         for faction in all_factions:
             if faction != self.faction:
                 self.faction_spinner.values.append(faction)
-
         self.faction_spinner.bind(text=self.on_faction_selected)
-
         faction_selector_box.add_widget(selector_label)
         faction_selector_box.add_widget(self.faction_spinner)
 
@@ -337,6 +331,7 @@ class AdvisorView(FloatLayout):
             on_press=lambda x: self.load_chat_history()
         )
 
+        # Сборка шапки
         header.add_widget(back_button)
         header.add_widget(faction_info)
         header.add_widget(faction_selector_box)
@@ -347,8 +342,7 @@ class AdvisorView(FloatLayout):
             orientation='vertical',
             size_hint=(1, 0.85),
             spacing=dp(10),
-            padding=[dp(15), dp(10)],
-            pos_hint={'top': 0.88}
+            padding=[dp(15), dp(10)]
         )
 
         # === Заголовок текущей переписки ===
@@ -358,22 +352,17 @@ class AdvisorView(FloatLayout):
             height=dp(50),
             padding=[dp(10), 0]
         )
-
-        # Иконка текущей фракции
         self.current_faction_icon = Image(
             source='files/pict/question.png',
             size_hint=(None, None),
             size=(dp(40), dp(40)),
             allow_stretch=True
         )
-
-        # Информация о текущих переговорах
         self.chat_info_box = BoxLayout(
             orientation='vertical',
             size_hint=(0.8, 1),
             spacing=dp(2)
         )
-
         self.chat_title = Label(
             text="Выберите фракцию для просмотра переписки",
             font_size='16sp',
@@ -381,33 +370,31 @@ class AdvisorView(FloatLayout):
             color=(1, 1, 1, 1),
             halign='left'
         )
-
         self.relation_status = Label(
             text="Отношения: ---",
             font_size='12sp',
             color=(0.7, 0.7, 0.7, 1),
             halign='left'
         )
-
         self.chat_info_box.add_widget(self.chat_title)
         self.chat_info_box.add_widget(self.relation_status)
-
         chat_header.add_widget(self.current_faction_icon)
         chat_header.add_widget(self.chat_info_box)
 
         # === Область чата (история переписки) ===
+        # Используем ScrollView с фиксированной высотой
         chat_area = BoxLayout(
             orientation='vertical',
             size_hint=(1, 0.7)
         )
-
         # Скроллируемая область сообщений
         self.chat_scroll = ScrollView(
             size_hint=(1, 1),
             bar_width=dp(8),
-            bar_color=(0.5, 0.5, 0.5, 0.5)
+            bar_color=(0.5, 0.5, 0.5, 0.5),
+            do_scroll_x=False,  # Только вертикальный скролл
+            scroll_type=['bars', 'content']
         )
-
         self.chat_container = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
@@ -416,7 +403,6 @@ class AdvisorView(FloatLayout):
         )
         self.chat_container.bind(minimum_height=self.chat_container.setter('height'))
         self.chat_scroll.add_widget(self.chat_container)
-
         chat_area.add_widget(chat_header)
         chat_area.add_widget(self.chat_scroll)
 
@@ -428,16 +414,15 @@ class AdvisorView(FloatLayout):
             spacing=dp(10),
             padding=[dp(5), dp(5)]
         )
-
         self.message_input = TextInput(
             hint_text="Введите ваше сообщение...",
             multiline=False,
             size_hint=(0.7, 1),
             background_color=(0.15, 0.15, 0.2, 1),
             foreground_color=(1, 1, 1, 1),
-            padding=[dp(10), dp(10)]
+            padding=[dp(10), dp(10)],
+            font_size='14sp'  # Уменьшаем шрифт для компактности
         )
-
         send_button = Button(
             text="Отправить",
             size_hint=(0.3, 1),
@@ -447,7 +432,6 @@ class AdvisorView(FloatLayout):
             bold=True,
             on_press=self.send_diplomatic_message
         )
-
         input_panel.add_widget(self.message_input)
         input_panel.add_widget(send_button)
 
@@ -459,14 +443,12 @@ class AdvisorView(FloatLayout):
             spacing=dp(5),
             padding=[dp(10), dp(5)]
         )
-
         quick_actions = [
             ("📋 Отчет", self.request_report),
             ("💰 Торговля", self.propose_trade_quick),
             ("🤝 Мир", self.propose_peace),
             ("⚔️ Угроза", self.send_threat)
         ]
-
         for text, callback in quick_actions:
             btn = Button(
                 text=text,
@@ -491,13 +473,11 @@ class AdvisorView(FloatLayout):
             padding=[dp(15), 0],
             pos_hint={'bottom': 1}
         )
-
         self.chat_status = Label(
             text="Готов к дипломатической переписке",
             font_size='12sp',
             color=(0.7, 0.7, 0.7, 1)
         )
-
         status_panel.add_widget(self.chat_status)
 
         # Финальная сборка окна
@@ -507,12 +487,59 @@ class AdvisorView(FloatLayout):
 
         # Устанавливаем содержимое popup
         self.popup.content = diplomacy_window
-
         # Инициализируем выбранную фракцию
         self.selected_faction = None
-
         # Фокусируемся на поле ввода
         Clock.schedule_once(lambda dt: setattr(self.message_input, 'focus', True), 0.3)
+
+    def show_diplomatic_analysis(self):
+        """Показывает анализ дипломатической ситуации"""
+        analysis = self.get_diplomatic_situation_analysis()
+
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(20))
+
+        title = Label(
+            text="Анализ дипломатической ситуации",
+            font_size='18sp',
+            bold=True,
+            color=(1, 1, 1, 1)
+        )
+
+        analysis_label = Label(
+            text=analysis,
+            font_size='14sp',
+            color=(0.9, 0.9, 0.9, 1),
+            halign='left',
+            valign='top',
+            size_hint_y=None
+        )
+        analysis_label.bind(
+            texture_size=lambda *x: analysis_label.setter('height')(analysis_label,
+                                                                    analysis_label.texture_size[1] + dp(20))
+        )
+
+        scroll = ScrollView(size_hint=(1, 0.8))
+        scroll.add_widget(analysis_label)
+
+        close_button = Button(
+            text="Закрыть",
+            size_hint=(1, None),
+            height=dp(40),
+            background_color=(0.3, 0.5, 0.8, 1),
+            on_press=lambda x: self.popup.dismiss()
+        )
+
+        content.add_widget(title)
+        content.add_widget(scroll)
+        content.add_widget(close_button)
+
+        analysis_popup = Popup(
+            title="",
+            content=content,
+            size_hint=(0.7, 0.6),
+            background=''
+        )
+        analysis_popup.open()
 
     def on_faction_selected(self, spinner, text):
         """Обработчик выбора фракции из выпадающего списка"""
@@ -610,17 +637,20 @@ class AdvisorView(FloatLayout):
 
     def add_chat_message(self, message, sender, timestamp, is_player=False):
         """Добавляет сообщение в чат"""
+        # Создаем контейнер для сообщения
         message_box = BoxLayout(
             orientation='vertical',
-            size_hint=(0.8 if is_player else 0.7, None),
+            size_hint_y=None,
             spacing=dp(2)
         )
 
-        # Выравнивание сообщений
+        # Выравнивание сообщений: игрок справа, ИИ слева
         if is_player:
             message_box.pos_hint = {'right': 1}
+            bg_color = (0.2, 0.4, 0.6, 0.8)  # Синий фон для игрока
         else:
             message_box.pos_hint = {'x': 0}
+            bg_color = (0.3, 0.3, 0.4, 0.8)  # Серый фон для ИИ
 
         # Заголовок сообщения
         header = BoxLayout(
@@ -628,7 +658,6 @@ class AdvisorView(FloatLayout):
             size_hint=(1, None),
             height=dp(20)
         )
-
         sender_label = Label(
             text=f"{'👑' if is_player else '🏛️'} {sender}",
             font_size='11sp',
@@ -636,7 +665,6 @@ class AdvisorView(FloatLayout):
             size_hint=(0.7, 1),
             halign='left'
         )
-
         time_label = Label(
             text=timestamp,
             font_size='10sp',
@@ -644,49 +672,52 @@ class AdvisorView(FloatLayout):
             size_hint=(0.3, 1),
             halign='right'
         )
-
         header.add_widget(sender_label)
         header.add_widget(time_label)
 
         # Текст сообщения
+        # Ограничиваем ширину текста
+        max_width = Window.width * 0.6  # 60% ширины экрана
         message_label = Label(
             text=message,
             font_size='13sp',
             color=(1, 1, 1, 1) if is_player else (0.9, 0.9, 0.9, 1),
-            size_hint=(1, None),
+            size_hint=(None, None),
+            width=max_width,  # Фиксируем ширину
             halign='left',
-            valign='top'
+            valign='top',
+            text_size=(max_width - dp(20), None)  # Обеспечиваем перенос строк
         )
-        message_label.bind(
-            width=lambda *x: message_label.setter('text_size')(message_label, (message_label.width - dp(20), None)),
-            texture_size=lambda *x: message_label.setter('height')(message_label,
-                                                                   message_label.texture_size[1] + dp(10))
-        )
+        # Привязываем высоту к тексту
+        message_label.bind(texture_size=lambda *x: message_label.setter('height')(message_label,
+                                                                                  message_label.texture_size[1] + dp(
+                                                                                      10)))
 
-        # Фон сообщения
+        # Фон сообщения (скругленный прямоугольник)
         message_container = BoxLayout(
             orientation='vertical',
-            padding=[dp(10), dp(8)]
+            padding=[dp(10), dp(8)],
+            size_hint=(None, None)  # Убираем size_hint_y=None, чтобы высота определялась содержимым
         )
+        # Вычисляем общую высоту контейнера
+        total_height = dp(20) + message_label.height + dp(8)  # header + message + padding
+        message_container.size = (max_width, total_height)
 
         with message_container.canvas.before:
-            if is_player:
-                Color(0.2, 0.4, 0.6, 0.8)  # Синий для игрока
-            else:
-                Color(0.3, 0.3, 0.4, 0.8)  # Серый для другой фракции
+            Color(*bg_color)
             RoundedRectangle(
                 pos=message_container.pos,
                 size=message_container.size,
                 radius=[dp(10), ]
             )
 
+        # Добавляем элементы в контейнер
         message_box.add_widget(header)
         message_box.add_widget(message_label)
         message_container.add_widget(message_box)
 
         # Добавляем в контейнер чата
         self.chat_container.add_widget(message_container)
-
         # Прокручиваем вниз
         Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0.1)
 
@@ -695,12 +726,9 @@ class AdvisorView(FloatLayout):
         message_box = BoxLayout(
             orientation='vertical',
             size_hint=(0.9, None),
-            spacing=dp(2)
+            spacing=dp(2),
+            pos_hint={'center_x': 0.5}  # По центру
         )
-
-        # Системное сообщение по центру
-        message_box.pos_hint = {'center_x': 0.5}
-
         # Текст системного сообщения
         message_label = Label(
             text=f"📢 {message}",
@@ -708,14 +736,13 @@ class AdvisorView(FloatLayout):
             color=(0.8, 0.8, 0.4, 1),
             size_hint=(1, None),
             halign='center',
-            valign='middle'
+            valign='middle',
+            text_size=(Window.width * 0.8, None)  # Ширина 80% экрана
         )
         message_label.bind(
             texture_size=lambda *x: message_label.setter('height')(message_label, message_label.texture_size[1] + dp(5))
         )
-
         message_box.add_widget(message_label)
-
         # Добавляем в контейнер чата
         self.chat_container.add_widget(message_box)
 
@@ -753,15 +780,37 @@ class AdvisorView(FloatLayout):
         self.chat_status.text = "Сообщение отправлено"
 
     def generate_ai_response_to_message(self, player_message, target_faction):
-        """Генерирует ответ от ИИ фракции"""
-        # Получаем текущие отношения
-        relations = self.load_combined_relations()
-        relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
+        """Генерирует ответ от ИИ фракции с использованием AI модели"""
+        try:
+            # Если ИИ не инициализирован, используем старый метод
+            if not self.diplomacy_ai:
+                return self.generate_diplomatic_response_main(player_message, target_faction)
 
-        # Простой ИИ для ответа
-        response = self.generate_diplomatic_response(player_message, target_faction, relation_data)
+            # Получаем контекст для целевой фракции
+            target_context = self.get_game_context_for_faction(target_faction)
 
-        # Добавляем ответ ИИ
+            # Получаем отношения
+            relations = self.load_combined_relations()
+            relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
+
+            # Генерируем ответ с использованием ИИ
+            response = self.diplomacy_ai.generate_response(
+                game_context=target_context
+            )
+
+            # Если ИИ вернул None или пустую строку, используем запасной вариант
+            if not response:
+                response = self.generate_diplomatic_response_main(player_message, target_faction, relation_data)
+
+        except Exception as e:
+            print(f"Ошибка при генерации ответа ИИ: {e}")
+            # Используем старый метод в случае ошибки
+            response = self.generate_diplomatic_response_main(
+                player_message,
+                target_faction
+            )
+
+        # Добавляем ответ ИИ в чат
         current_time = datetime.now().strftime("%d.%m %H:%M")
         self.add_chat_message(
             message=response,
@@ -774,6 +823,104 @@ class AdvisorView(FloatLayout):
         self.save_negotiation_message(target_faction, response, is_player=False)
 
         self.chat_status.text = "Получен ответ"
+
+        # Обновляем отношения на основе ответа
+        self.update_relations_based_on_message(player_message, response, target_faction)
+
+        return response
+
+    def load_recent_negotiation_history(self, limit=20):
+        """Загружает последнюю историю переговоров для контекста ИИ"""
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute('''
+                SELECT faction1, faction2, message, is_player, timestamp 
+                FROM negotiation_history 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            ''', (limit,))
+
+            history = cursor.fetchall()
+            return [
+                {
+                    'faction1': msg[0],
+                    'faction2': msg[1],
+                    'message': msg[2],
+                    'is_player': bool(msg[3]),
+                    'timestamp': msg[4]
+                }
+                for msg in history
+            ]
+        except Exception as e:
+            print(f"Ошибка при загрузке истории переговоров: {e}")
+            return []
+
+    def update_relations_based_on_message(self, player_message, ai_response, target_faction):
+        """Обновляет отношения на основе обмена сообщениями"""
+        try:
+            relations = self.load_combined_relations()
+            if target_faction not in relations:
+                return
+
+            current_relation = relations[target_faction]["relation_level"]
+
+            # Анализ тона сообщений
+            player_tone = self.analyze_message_tone(player_message)
+            ai_tone = self.analyze_message_tone(ai_response)
+
+            # Определяем изменение отношений
+            relation_change = 0
+
+            if player_tone == "positive" and ai_tone == "positive":
+                relation_change = 5
+            elif player_tone == "negative" and ai_tone == "negative":
+                relation_change = -10
+            elif player_tone == "positive" and ai_tone == "negative":
+                relation_change = -5
+            elif player_tone == "negative" and ai_tone == "positive":
+                relation_change = -2
+
+            # Обновляем отношения
+            new_relation = max(0, min(100, current_relation + relation_change))
+
+            if new_relation != current_relation:
+                self.update_relation_in_db(target_faction, new_relation)
+                print(f"Отношения с {target_faction} изменились: {current_relation} -> {new_relation}")
+
+        except Exception as e:
+            print(f"Ошибка при обновлении отношений: {e}")
+
+    def analyze_message_tone(self, message):
+        """Анализирует тон сообщения"""
+        message_lower = message.lower()
+
+        positive_words = ['спасибо', 'благодарю', 'прошу', 'пожалуйста', 'уважаем',
+                          'ценю', 'рад', 'рады', 'отличн', 'прекрасн', 'замечательн']
+        negative_words = ['угроз', 'уничтож', 'нападу', 'атакую', 'война', 'ненавижу',
+                          'против', 'враг', 'смерть', 'уничтожу', 'раздавлю']
+
+        positive_count = sum(1 for word in positive_words if word in message_lower)
+        negative_count = sum(1 for word in negative_words if word in message_lower)
+
+        if positive_count > negative_count:
+            return "positive"
+        elif negative_count > positive_count:
+            return "negative"
+        else:
+            return "neutral"
+
+    def update_relation_in_db(self, target_faction, new_value):
+        """Обновляет уровень отношений в базе данных"""
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute('''
+                UPDATE relations
+                SET relationship = ?
+                WHERE faction1 = ? AND faction2 = ?
+            ''', (new_value, self.faction, target_faction))
+            self.db_connection.commit()
+        except Exception as e:
+            print(f"Ошибка при обновлении отношений в БД: {e}")
 
     def generate_diplomatic_response(self, player_message, target_faction, relation_data):
         """Генерирует дипломатический ответ на основе сообщения и отношений"""
@@ -804,43 +951,119 @@ class AdvisorView(FloatLayout):
 
         return response
 
-    def get_game_context_for_faction(self, target_faction):
+    def generate_diplomatic_response_main(self, player_message, target_faction, relation_data=None):
+        """Алиас для обратной совместимости"""
+        if relation_data is None:
+            relations = self.load_combined_relations()
+            relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
+
+        return self.generate_diplomatic_response(player_message, target_faction, relation_data)
+
+    def get_game_context_for_faction(self, faction):
         """Получает игровой контекст для указанной фракции"""
+        try:
+            context = self.get_comprehensive_game_context()
+            return context.get('factions', {}).get(faction, {})
+        except:
+            return {}
+
+    def get_comprehensive_game_context(self):
+        """Получает полный контекст игры для ИИ"""
         try:
             cursor = self.db_connection.cursor()
 
-            # Получаем ресурсы фракции
-            cursor.execute("SELECT gold, crystals, food FROM resources WHERE faction = ?", (target_faction,))
-            resources = cursor.fetchone()
-
-            # Получаем количество городов
-            cursor.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (target_faction,))
-            city_count = cursor.fetchone()[0]
-
-            # Получаем армию
-            cursor.execute("""
-                SELECT SUM(unit_count) 
-                FROM garrisons g 
-                JOIN units u ON g.unit_name = u.unit_name 
-                WHERE u.faction = ?
-            """, (target_faction,))
-            army_count = cursor.fetchone()[0] or 0
-
-            # Получаем политическую систему
-            cursor.execute("SELECT system FROM political_systems WHERE faction = ?", (target_faction,))
-            political_system = cursor.fetchone()
-            political_system = political_system[0] if political_system else "Неизвестно"
-
-            return {
-                'resources': resources or (0, 0, 0),
-                'city_count': city_count or 0,
-                'army_count': army_count or 0,
-                'political_system': political_system,
-                'strength': self.calculate_faction_strength(target_faction)
+            context = {
+                'player_faction': self.faction,
+                'factions': {},
+                'global_state': {}
             }
 
+            # Получаем информацию обо всех фракциях
+            all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+
+            for faction in all_factions:
+                faction_data = {
+                    'resources': None,
+                    'cities': 0,
+                    'army': 0,
+                    'political_system': None,
+                    'relations': {}
+                }
+
+                # Ресурсы
+                all_resources = self.get_resources_data()  # ← Это функция из AdvisorView
+                faction_resources = all_resources.get(faction, {})
+                faction_data['resources'] = (
+                    faction_resources.get('gold', 0),  # Кроны
+                    faction_resources.get('crystals', 0),  # Кристаллы
+                    faction_resources.get('workers', 0)  # Рабочие
+                )
+
+                # Города
+                cursor.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (faction,))
+                faction_data['cities'] = cursor.fetchone()[0] or 0
+
+                # Армия
+                cursor.execute("""
+                    SELECT SUM(g.unit_count), u.unit_name 
+                    FROM garrisons g 
+                    JOIN units u ON g.unit_name = u.unit_name 
+                    WHERE u.faction = ?
+                    GROUP BY u.unit_name
+                """, (faction,))
+                units = cursor.fetchall()
+                faction_data['army'] = sum([unit[0] for unit in units]) if units else 0
+                faction_data['unit_composition'] = {unit[1]: unit[0] for unit in units}
+
+                # Политическая система
+                cursor.execute("SELECT system FROM political_systems WHERE faction = ?", (faction,))
+                political = cursor.fetchone()
+                faction_data['political_system'] = political[0] if political else "Неизвестно"
+
+                # Отношения с другими фракциями
+                cursor.execute("SELECT faction2, relationship FROM relations WHERE faction1 = ?", (faction,))
+                relations = cursor.fetchall()
+                faction_data['relations'] = {rel[0]: rel[1] for rel in relations}
+
+                context['factions'][faction] = faction_data
+
+            # История переговоров (последние 20 сообщений)
+            context['negotiation_history'] = self.load_recent_negotiation_history()
+
+            return context
+
         except Exception as e:
-            print(f"Ошибка при получении контекста для фракции {target_faction}: {e}")
+            print(f"Ошибка при получении контекста игры: {e}")
+            return {}
+
+    def get_resources_data(self):
+        """Получает ресурсы фракций"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("SELECT faction, resource_type, amount FROM resources")
+
+            resources = {}
+            for faction, resource_type, amount in cursor.fetchall():
+                if faction not in resources:
+                    resources[faction] = {}
+                resources[faction][resource_type] = amount
+
+            # Структурируем важные ресурсы
+            structured_resources = {}
+            for faction, res in resources.items():
+                structured_resources[faction] = {
+                    'gold': res.get('Кроны', 0),
+                    'crystals': res.get('Кристаллы', 0),
+                    'workers': res.get('Рабочие', 0),
+                    'army_limit': res.get('Лимит Армии', 0),
+                    'consumption': res.get('Потребление', 0)
+                }
+
+            return structured_resources
+
+        except Exception as e:
+            print(f"Ошибка при получении ресурсов: {e}")
             return {}
 
     def calculate_faction_strength(self, faction):
@@ -898,6 +1121,29 @@ class AdvisorView(FloatLayout):
             return "question"
         else:
             return "neutral"
+
+    def initialize_diplomacy_ai(self):
+        """Инициализирует ИИ для дипломатических переговоров"""
+        try:
+            # Используем фабрику для создания ИИ
+            ai_factory = DiplomacyAIFactory()
+
+            # Получаем текущий игровой контекст
+            game_context = self.get_comprehensive_game_context()
+
+            # Создаем ИИ с учетом фракции игрока и контекста
+            diplomacy_ai = ai_factory.create_ai(
+                self.faction,
+                game_context
+            )
+
+            print(f"ИИ дипломатии инициализирован для фракции {self.faction}")
+            return diplomacy_ai
+
+        except Exception as e:
+            print(f"Ошибка при инициализации ИИ дипломатии: {e}")
+            # Возвращаем заглушку или None
+            return None
 
     def analyze_message_type(self, message):
         """Анализирует тип сообщения"""
@@ -1305,16 +1551,50 @@ class AdvisorView(FloatLayout):
 
     # Быстрые действия
     def request_report(self, instance):
-        """Запрос отчета"""
+        """Запрос отчета с использованием ИИ"""
         if hasattr(self, 'selected_faction') and self.selected_faction:
-            self.message_input.text = "Прошу предоставить отчет о текущей ситуации в ваших землях."
+            # Используем ИИ для генерации запроса
+            if self.diplomacy_ai:
+                request = self.diplomacy_ai.generate_request(
+                    request_type="report",
+                    target_faction=self.selected_faction,
+                    tone="formal"
+                )
+            else:
+                request = "Прошу предоставить отчет о текущей ситуации в ваших землях."
+
+            self.message_input.text = request
             self.send_diplomatic_message(None)
 
     def propose_trade_quick(self, instance):
-        """Быстрое предложение торговли"""
+        """Быстрое предложение торговли с использованием ИИ"""
         if hasattr(self, 'selected_faction') and self.selected_faction:
-            self.message_input.text = "Предлагаю обсудить условия торгового соглашения."
+            if self.diplomacy_ai:
+                proposal = self.diplomacy_ai.generate_proposal(
+                    proposal_type="trade",
+                    target_faction=self.selected_faction,
+                    tone="diplomatic"
+                )
+            else:
+                proposal = "Предлагаю обсудить условия торгового соглашения."
+
+            self.message_input.text = proposal
             self.send_diplomatic_message(None)
+
+    def get_diplomatic_situation_analysis(self):
+        """Получает анализ дипломатической ситуации от ИИ"""
+        if not self.diplomacy_ai:
+            return "ИИ дипломатии не доступен"
+
+        try:
+            analysis = self.diplomacy_ai.analyze_diplomatic_situation(
+                player_faction=self.faction,
+                game_context=self.get_comprehensive_game_context()
+            )
+            return analysis
+        except Exception as e:
+            print(f"Ошибка при анализе дипломатической ситуации: {e}")
+            return "Не удалось проанализировать ситуацию"
 
     def propose_peace(self, instance):
         """Быстрое предложение мира"""
@@ -1836,12 +2116,10 @@ class AdvisorView(FloatLayout):
 
         return panel
 
-
     def scroll_chat_to_bottom(self):
         """Прокручивает чат вниз"""
         if self.chat_scroll:
             self.chat_scroll.scroll_y = 0
-
 
     def ask_quick_question(self, question):
         """Задает быстрый вопрос из панели"""
