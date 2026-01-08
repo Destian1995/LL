@@ -520,12 +520,16 @@ class DiplomacyChat:
         self.message_input.text = ""
 
         # Генерируем ответ ИИ
-        Clock.schedule_once(
-            lambda dt: self.generate_ai_response_to_message(message, self.selected_faction),
-            1.5
-        )
+        response = self.generate_ai_response_to_message(message, self.selected_faction)
 
-        self.chat_status.text = "Сообщение отправлено"
+        # Если в ответе есть соглашение - обрабатываем его
+        if "Держи" in response or "Принимаю" in response or "согласен" in response.lower():
+            # Проверяем, есть ли активное предложение
+            if self.selected_faction in self.negotiation_context:
+                context = self.negotiation_context[self.selected_faction]
+                if context.get('active_request') and context.get('stage') == 'agreement':
+                    # Выполняем сделку
+                    self.execute_agreed_trade(self.selected_faction, context['active_request'])
 
     def generate_ai_response_to_message(self, player_message, target_faction):
         """Генерирует ответ от ИИ фракции"""

@@ -2462,25 +2462,54 @@ class AIController:
     def process_queries(self):
         """
         Обрабатывает запросы из таблицы queries.
-        Для каждого запроса проверяет, является ли фракция союзником,
-        и выполняет соответствующие действия на основе заполненных столбцов.
-        После обработки всех запросов очищает таблицу queries, только если ходит союзник.
+        Теперь также обрабатывает торговые соглашения из чата.
         """
         try:
             # Загружаем все запросы из таблицы queries
             query = """
-                SELECT resource, defense_city, attack_city, faction
+                SELECT id, resource, defense_city, attack_city, faction, trade_info, status
                 FROM queries
+                WHERE status IS NULL OR status = 'pending'
             """
             self.cursor.execute(query)
             rows = self.cursor.fetchall()
-            is_ally_turn = False  # Флаг для отслеживания, был ли ход союзника
+            is_ally_turn = False
 
             for row in rows:
-                resource, defense_city, attack_city, faction = row
+                query_id, resource, defense_city, attack_city, faction, trade_info, status = row
 
                 # Проверяем, является ли фракция союзником
                 is_ally = self.is_faction_ally(faction)
+
+                # ТОРГОВЫЕ СОГЛАШЕНИЯ ИЗ ЧАТА
+                if trade_info and status == 'pending':
+                    print(f"Обработка торгового соглашения с {faction}: {trade_info}")
+
+                    # Парсим информацию о сделке
+                    # Формат: "что_получает_игрок:количество -> что_дает_игрок:количество"
+                    parts = trade_info.split('->')
+                    if len(parts) == 2:
+                        ai_gets = parts[0].split(':')
+                        player_gets = parts[1].split(':')
+
+                        if len(ai_gets) == 2 and len(player_gets) == 2:
+                            ai_resource_type = ai_gets[0]
+                            ai_amount = int(ai_gets[1])
+                            player_resource_type = player_gets[0]
+                            player_amount = int(player_gets[1])
+
+                            # Выполняем обмен ресурсами
+                            self.execute_chat_trade(
+                                faction=faction,
+                                ai_gives_resource=player_resource_type,
+                                ai_gives_amount=player_amount,
+                                ai_gets_resource=ai_resource_type,
+                                ai_gets_amount=ai_amount
+                            )
+
+                            # Помечаем запрос как выполненный
+                            self.mark_query_completed(query_id)
+                            continue
 
                 if not is_ally:
                     print(f"Фракция {faction} не является союзником. Пропускаем запрос.")
@@ -2536,6 +2565,77 @@ class AIController:
         except sqlite3.Error as e:
             print(f"Ошибка при обработке запросов: {e}")
 
+    def execute_chat_trade(self, faction, ai_gives_resource, ai_gives_amount,
+                           ai_gets_resource, ai_gets_amount):
+        """
+        Выполняет торговую сделку, согласованную через чат.
+        """
+        try:
+            print(f"Выполнение сделки с {faction}:")
+            print(f"  ИИ отдает: {ai_gives_amount} {ai_gives_resource}")
+            print(f"  ИИ получает: {ai_gets_amount} {ai_gets_resource}")
+
+            # Проверяем, есть ли у нас достаточно ресурсов
+            if self.resources.get(ai_gives_resource, 0) < ai_gives_amount:
+                print(f"Недостаточно {ai_gives_resource} для выполнения сделки")
+                return False
+
+            # 1. Вычитаем ресурсы у ИИ
+            self.resources[ai_gives_resource] -= ai_gives_amount
+
+            # 2. Добавляем ресурсы ИИ (то, что получает от игрока)
+            self.resources[ai_gets_resource] += ai_gets_amount
+
+            # 3. Обновляем ресурсы игрока в базе данных
+            # (нужно увеличить то, что ИИ отдает, и уменьшить то, что ИИ получает)
+            cursor = self.db_connection.cursor()
+
+            # Увеличиваем ресурсы игрока (то, что ИИ отдает)
+            cursor.execute('''
+                UPDATE resources 
+                SET amount = amount + ?
+                WHERE faction = ? AND resource_type = ?
+            ''', (ai_gives_amount, faction, ai_gives_resource))
+
+            # Уменьшаем ресурсы игрока (то, что ИИ получает)
+            cursor.execute('''
+                UPDATE resources 
+                SET amount = amount - ?
+                WHERE faction = ? AND resource_type = ?
+            ''', (ai_gets_amount, faction, ai_gets_resource))
+
+            self.db_connection.commit()
+
+            print(f"Сделка с {faction} успешно выполнена")
+            return True
+
+        except Exception as e:
+            print(f"Ошибка при выполнении сделки: {e}")
+            return False
+
+    def mark_query_completed(self, query_id):
+        """Помечает запрос как выполненный"""
+        try:
+            self.cursor.execute('''
+                UPDATE queries 
+                SET status = 'completed' 
+                WHERE id = ?
+            ''', (query_id,))
+            self.db_connection.commit()
+        except Exception as e:
+            print(f"Ошибка при обновлении статуса запроса: {e}")
+
+    def clear_processed_queries(self):
+        """Удаляет обработанные запросы"""
+        try:
+            self.cursor.execute('''
+                DELETE FROM queries 
+                WHERE status = 'completed' 
+                   OR (resource IS NULL AND defense_city IS NULL AND attack_city IS NULL)
+            ''')
+            self.db_connection.commit()
+        except Exception as e:
+            print(f"Ошибка при очистке запросов: {e}")
 
     def clear_queries_table(self):
         """
