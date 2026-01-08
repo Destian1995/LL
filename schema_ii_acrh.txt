@@ -1,0 +1,12 @@
+ai_diplomacy/
+├── __init__.py
+├── advisor_view.py          # Основной класс (упрощённый)
+├── diplomacy_chat.py        # Чат с ИИ
+├── political_systems.py     # Идеологии
+├── relations_manager.py     # Управление отношениями
+├── quick_actions.py         # Быстрые действия
+├── diplomacy_ai.py          # Логика ИИ
+└── ui/                      # UI-компоненты
+    ├── chat_widgets.py
+    ├── relations_table.py
+    └── political_ui.py
