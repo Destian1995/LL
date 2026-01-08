@@ -1,5 +1,5 @@
 from kivy.uix.checkbox import CheckBox
-from ai_models.lerdon_ai.ultralight_ai import  DiplomacyAIFactory
+from ai_models.lerdon_ai.ultralight_ai import DiplomacyAIFactory
 from db_lerdon_connect import *
 
 
@@ -163,29 +163,10 @@ class AdvisorView(FloatLayout):
         self.ai_chat_button = ClickableImage(
             source="files/pict/sov/letter.png",
             size_hint=(None, None),
-            size=(dp(50), dp(50)),
-            pos_hint={'right': 0.98, 'top': 0.98},
+            size=(dp(110), dp(110)),
+            pos_hint={'right': 0.90, 'top': 0.90},
             allow_stretch=True
         )
-
-        # Добавляем круглый фон
-        with self.ai_chat_button.canvas.before:
-            Color(0.2, 0.6, 0.9, 0.9)
-            self.ai_chat_bg = Ellipse(
-                pos=self.ai_chat_button.pos,
-                size=self.ai_chat_button.size
-            )
-
-            # Обводка
-            Color(1, 1, 1, 0.8)
-            self.ai_chat_border = Line(
-                circle=(
-                    self.ai_chat_button.center_x,
-                    self.ai_chat_button.center_y,
-                    min(self.ai_chat_button.width, self.ai_chat_button.height) / 2 - dp(1)
-                ),
-                width=dp(2)
-            )
 
         # Обновляем фон при изменении позиции/размера
         def update_ai_chat_bg(instance, value):
@@ -194,12 +175,6 @@ class AdvisorView(FloatLayout):
                 Color(0.2, 0.6, 0.9, 0.9)
                 Ellipse(pos=instance.pos, size=instance.size)
 
-                Color(1, 1, 1, 0.8)
-                Line(circle=(
-                    instance.center_x,
-                    instance.center_y,
-                    min(instance.width, instance.height) / 2 - dp(1)
-                ), width=dp(2))
 
         self.ai_chat_button.bind(pos=update_ai_chat_bg, size=update_ai_chat_bg)
         self.ai_chat_button.bind(on_press=self.open_ai_chat)
@@ -219,28 +194,6 @@ class AdvisorView(FloatLayout):
             if os.path.exists(f'files/sov/parlament/{translation_dict.get(self.faction)}_palace.jpg') else ''
         )
         self.popup.open()
-
-    def _update_border(self, *args):
-        self.border_rect.rectangle = (
-            dp(2),
-            dp(2),
-            self.interface_window.width - dp(4),
-            self.interface_window.height - dp(4)
-        )
-
-    def create_arrow_icon(self, direction):
-        if direction == "up":
-            source = 'files/pict/up.png'
-        else:
-            source = 'files/pict/down.png'
-
-        return Image(
-            source=source,
-            size_hint=(None, None),
-            size=(dp(24), dp(24)),
-            allow_stretch=True,
-            keep_ratio=True
-        )
 
     def open_ai_chat(self, instance):
         """Открывает окно дипломатических переговоров с другими фракциями"""
@@ -268,7 +221,7 @@ class AdvisorView(FloatLayout):
 
         # Кнопка назад
         back_button = Button(
-            text="← Назад",
+            text="Назад",
             size_hint=(None, None),
             size=(dp(100), dp(40)),
             background_color=(0.3, 0.3, 0.5, 1),
@@ -443,22 +396,6 @@ class AdvisorView(FloatLayout):
             spacing=dp(5),
             padding=[dp(10), dp(5)]
         )
-        quick_actions = [
-            ("📋 Отчет", self.request_report),
-            ("💰 Торговля", self.propose_trade_quick),
-            ("🤝 Мир", self.propose_peace),
-            ("⚔️ Угроза", self.send_threat)
-        ]
-        for text, callback in quick_actions:
-            btn = Button(
-                text=text,
-                size_hint=(1, 1),
-                background_color=(0.3, 0.3, 0.5, 1),
-                background_normal='',
-                font_size='12sp',
-                on_press=callback
-            )
-            actions_panel.add_widget(btn)
 
         # Собираем основную область
         main_area.add_widget(chat_area)
@@ -1148,15 +1085,15 @@ class AdvisorView(FloatLayout):
     def analyze_message_type(self, message):
         """Анализирует тип сообщения"""
         categories = {
-            'greeting': ['привет', 'здравствуй', 'добрый', 'hello', 'hi', 'день'],
+            'greeting': ['привет', 'здравствуй', 'добрый', 'hello', 'hi', 'день', 'здаров', 'хай'],
             'farewell': ['пока', 'до свидан', 'прощай', 'удачи', 'bye'],
             'alliance': ['союз', 'альянс', 'объедин', 'вместе', 'совмест', 'помощь военн'],
             'war': ['война', 'атака', 'напасть', 'уничтож', 'сражен', 'битв', 'конфликт'],
-            'trade': ['торгов', 'обмен', 'ресурс', 'товар', 'куплю', 'продам', 'цен', 'деньг', 'крон'],
+            'trade': ['торгов', 'обмен', 'ресурс', 'товар', 'куплю', 'продам', 'цен', 'деньг', 'крон', 'кристал'],
             'peace': ['мир', 'перемир', 'прекрат', 'законч', 'договор мирн'],
             'threat': ['угроз', 'опас', 'предупрежд', 'осторожн', 'последств'],
             'information': ['информац', 'данн', 'сведен', 'отчет', 'состоян', 'ситуац', 'новост'],
-            'request': ['прошу', 'запрос', 'требу', 'нужн', 'хочу', 'желаю'],
+            'request': ['прошу', 'запрос', 'требу', 'нужн', 'хочу', 'желаю', 'надо', 'хочу', 'дай'],
             'offer': ['предлагаю', 'предложен', 'могу', 'готов', 'соглас']
         }
 
@@ -1549,38 +1486,6 @@ class AdvisorView(FloatLayout):
 
         return self.select_response_by_personality(responses, personality)
 
-    # Быстрые действия
-    def request_report(self, instance):
-        """Запрос отчета с использованием ИИ"""
-        if hasattr(self, 'selected_faction') and self.selected_faction:
-            # Используем ИИ для генерации запроса
-            if self.diplomacy_ai:
-                request = self.diplomacy_ai.generate_request(
-                    request_type="report",
-                    target_faction=self.selected_faction,
-                    tone="formal"
-                )
-            else:
-                request = "Прошу предоставить отчет о текущей ситуации в ваших землях."
-
-            self.message_input.text = request
-            self.send_diplomatic_message(None)
-
-    def propose_trade_quick(self, instance):
-        """Быстрое предложение торговли с использованием ИИ"""
-        if hasattr(self, 'selected_faction') and self.selected_faction:
-            if self.diplomacy_ai:
-                proposal = self.diplomacy_ai.generate_proposal(
-                    proposal_type="trade",
-                    target_faction=self.selected_faction,
-                    tone="diplomatic"
-                )
-            else:
-                proposal = "Предлагаю обсудить условия торгового соглашения."
-
-            self.message_input.text = proposal
-            self.send_diplomatic_message(None)
-
     def get_diplomatic_situation_analysis(self):
         """Получает анализ дипломатической ситуации от ИИ"""
         if not self.diplomacy_ai:
@@ -1595,19 +1500,6 @@ class AdvisorView(FloatLayout):
         except Exception as e:
             print(f"Ошибка при анализе дипломатической ситуации: {e}")
             return "Не удалось проанализировать ситуацию"
-
-    def propose_peace(self, instance):
-        """Быстрое предложение мира"""
-        if hasattr(self, 'selected_faction') and self.selected_faction:
-            self.message_input.text = "Предлагаю прекратить конфликт и заключить мирный договор."
-            self.send_diplomatic_message(None)
-
-    def send_threat(self, instance):
-        """Быстрая угроза"""
-        if hasattr(self, 'selected_faction') and self.selected_faction:
-            self.message_input.text = "Если вы не прекратите свои действия, мы будем вынуждены объявить войну!"
-            self.send_diplomatic_message(None)
-
 
     def load_diplomatic_factions(self):
         """Загружает список фракций для дипломатии"""

@@ -4,7 +4,7 @@ import economic
 import army
 import politic
 from ii import AIController
-from sov import AdvisorView
+from ai_models import AdvisorView
 from event_manager import EventManager
 from results_game import ResultsGame
 from seasons import SeasonManager
