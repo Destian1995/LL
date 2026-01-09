@@ -13,16 +13,33 @@ from kivy.metrics import dp
 from kivy.clock import Clock
 from datetime import datetime
 import os
-
+from .nlp_processor import NaturalLanguageProcessor, Intent
+from .manipulation_strategy import ManipulationStrategy, StrategyContext, ManipulationTactic
 from .translation import translation_dict, reverse_translation_dict
 
+class EnhancedDiplomacyChat():
+    """Улучшенная версия дипломатического чата с обработкой запросов"""
 
-class DiplomacyChat:
-    def __init__(self, advisor_view):
+    def __init__(self, advisor_view, db_connection):
         self.advisor = advisor_view
+        self.db_connection = db_connection
         self.faction = advisor_view.faction
-        self.db_connection = advisor_view.db_connection
-        self.selected_faction = None
+        # Инициализируем NLP процессор
+        self.nlp_processor = NaturalLanguageProcessor()
+
+        # Инициализируем стратегию манипуляций
+        self.manipulation_strategy = ManipulationStrategy()
+
+        # Контекст переговоров
+        self.negotiation_context = {}
+
+        # Активные переговоры (resource_request, alliance_request, trade_request)
+        self.active_negotiations = {}
+
+        # История предложений в текущей сессии
+        self.current_offers = {}
+
+        # Ожидаемые ответы от ИИ
 
         # Ссылки на UI элементы
         self.chat_scroll = None
@@ -333,13 +350,13 @@ class DiplomacyChat:
         try:
             cursor = self.db_connection.cursor()
             cursor.execute('''
-                SELECT message, is_player, timestamp 
-                FROM negotiation_history 
-                WHERE (faction1 = ? AND faction2 = ?) 
-                   OR (faction1 = ? AND faction2 = ?)
-                ORDER BY timestamp ASC
-                LIMIT 50
-            ''', (self.faction, self.selected_faction, self.selected_faction, self.faction))
+                        SELECT message, is_player, timestamp 
+                        FROM negotiation_history 
+                        WHERE (faction1 = ? AND faction2 = ?) 
+                           OR (faction1 = ? AND faction2 = ?)
+                        ORDER BY timestamp ASC
+                        LIMIT 50
+                    ''', (self.faction, self.selected_faction, self.selected_faction, self.faction))
 
             history = cursor.fetchall()
 
@@ -520,510 +537,491 @@ class DiplomacyChat:
         self.message_input.text = ""
 
         # Генерируем ответ ИИ
-        response = self.generate_ai_response_to_message(message, self.selected_faction)
+        response = self.generate_diplomatic_response(message, self.selected_faction)
 
-        # Если в ответе есть соглашение - обрабатываем его
-        if "Держи" in response or "Принимаю" in response or "согласен" in response.lower():
-            # Проверяем, есть ли активное предложение
-            if self.selected_faction in self.negotiation_context:
-                context = self.negotiation_context[self.selected_faction]
-                if context.get('active_request') and context.get('stage') == 'agreement':
-                    # Выполняем сделку
-                    self.execute_agreed_trade(self.selected_faction, context['active_request'])
+        if response:
+            ai_time = datetime.now().strftime("%d.%m %H:%M")
 
-    def generate_ai_response_to_message(self, player_message, target_faction):
-        """Генерирует ответ от ИИ фракции"""
-        try:
-            # Получаем текущие отношения
-            relations = self.advisor.relations_manager.load_combined_relations()
-            relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
+            # Добавляем сообщение ИИ в чат
+            self.add_chat_message(
+                message=response,
+                sender=self.selected_faction,
+                timestamp=ai_time,
+                is_player=False
+            )
 
-            # Генерируем ответ
-            response = self.generate_diplomatic_response(player_message, target_faction, relation_data)
+            # Сохраняем ответ ИИ в БД
+            self.save_negotiation_message(
+                self.selected_faction,
+                response,
+                is_player=False
+            )
 
-        except Exception as e:
-            print(f"Ошибка при генерации ответа ИИ: {e}")
-            response = f"{target_faction} получила ваше сообщение. Мы дадим ответ после обсуждения."
+    def generate_diplomatic_response(self, player_message, target_faction):
+        """Генерирует ответ ИИ на сообщение игрока с учетом контекста переговоров"""
 
-        # Добавляем ответ ИИ в чат
-        current_time = datetime.now().strftime("%d.%m %H:%M")
-        self.add_chat_message(
-            message=response,
-            sender=target_faction,
-            timestamp=current_time,
-            is_player=False
-        )
+        # Загружаем данные об отношениях
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
 
-        # Сохраняем в базу данных
-        self.save_negotiation_message(target_faction, response, is_player=False)
+        # Получаем контекст переговоров для этой фракции
+        context = self.negotiation_context.get(target_faction, {})
 
-        self.chat_status.text = "Получен ответ"
+        # Проверяем стадии торговли/ресурсов (добавили counter_offer)
+        if context.get("stage") in (
+                "ask_resource_type", "ask_resource_amount", "ask_player_offer", "counter_offer", "evaluate"):
+            forced = self._handle_forced_dialog(player_message, target_faction, context)
+            if forced:
+                return forced
 
-        # Обновляем отношения
-        self.update_relations_based_on_message(player_message, response, target_faction)
+        # Определяем intent через NLP
+        intent = self.nlp_processor.process_message(player_message, context)
+        print("INTENT:", intent, type(intent))
 
-        return response
+        # --- Обработка интентов ---
+        if intent.name in ("demand_resources", "trade_propose"):
+            # Инициируем диалог о торговле
+            self.negotiation_context[target_faction] = {
+                "stage": "ask_resource_type",
+                "counter_offers": 0
+            }
+            return "Какие ресурсы тебе нужны?"
 
-    def generate_diplomatic_response(self, player_message, target_faction, relation_data):
-        """Генерирует дипломатический ответ"""
-        player_message_lower = player_message.lower()
-
-        # Преобразуем relation_level в int
-        try:
-            relation_level = int(relation_data["relation_level"])
-        except (ValueError, TypeError, KeyError):
-            relation_level = 50
-
-        status = relation_data.get("status", "нейтралитет")
-
-        # Анализ настроения сообщения
-        mood = self.analyze_message_mood(player_message_lower)
-
-        # Анализ типа сообщения
-        message_type = self.analyze_message_type(player_message_lower)
-
-        # Генерация ответа
-        response = self.generate_contextual_response(
-            player_message_lower, target_faction, relation_level,
-            status, mood, message_type, {}
-        )
-
-        return response
-
-    def analyze_message_mood(self, message):
-        """Анализирует настроение сообщения"""
-        positive_words = ['спасибо', 'благодарю', 'прошу', 'пожалуйста', 'уважаем', 'ценю',
-                          ' рад', 'рады', 'отличн', 'прекрасн', 'замечательн', 'согласн', 'дружб']
-        negative_words = ['угроз', 'уничтож', 'нападу', 'атакую', 'война', 'ненавижу',
-                          'против', 'враг', 'смерть', 'уничтожу', 'раздавлю', 'сокрушу']
-        neutral_words = ['предлагаю', 'обсуж', 'договор', 'соглашен', 'торгов', 'ресурс',
-                         'город', 'помощь', 'поддержк', 'информац', 'вопрос']
-        question_words = ['?', 'почему', 'зачем', 'когда', 'сколько', 'где', 'кто', 'что', 'как']
-
-        positive_score = sum(1 for word in positive_words if word in message)
-        negative_score = sum(1 for word in negative_words if word in message)
-        neutral_score = sum(1 for word in neutral_words if word in message)
-        is_question = any(word in message for word in question_words)
-
-        if negative_score > positive_score and negative_score > neutral_score:
-            return "negative"
-        elif positive_score > negative_score and positive_score > neutral_score:
-            return "positive"
-        elif is_question:
-            return "question"
-        else:
-            return "neutral"
-
-    def analyze_message_type(self, message):
-        """Анализирует тип сообщения"""
-        categories = {
-            'greeting': ['привет', 'здравствуй', 'добрый', 'hello', 'hi', 'день', 'здаров', 'хай'],
-            'farewell': ['пока', 'до свидан', 'прощай', 'удачи', 'bye'],
-            'alliance': ['союз', 'альянс', 'объедин', 'вместе', 'совмест', 'помощь военн'],
-            'war': ['война', 'атака', 'напасть', 'уничтож', 'сражен', 'битв', 'конфликт'],
-            'trade': ['торгов', 'обмен', 'ресурс', 'товар', 'куплю', 'продам', 'цен', 'деньг', 'крон', 'кристал'],
-            'peace': ['мир', 'перемир', 'прекрат', 'законч', 'договор мирн'],
-            'threat': ['угроз', 'опас', 'предупрежд', 'осторожн', 'последств'],
-            'information': ['информац', 'данн', 'сведен', 'отчет', 'состоян', 'ситуац', 'новост'],
-            'request': ['прошу', 'запрос', 'требу', 'нужн', 'хочу', 'желаю', 'надо', 'хочу', 'дай'],
-            'offer': ['предлагаю', 'предложен', 'могу', 'готов', 'соглас']
+        # Простые интенты для обычного диалога
+        simple_responses = {
+            "greeting": ["Привет! Рад тебя видеть.", "Здравствуйте! Как ваши дела?", "Приветствую!"],
+            "farewell": ["До свидания!", "Пока! Будем ждать ваших предложений.", "Всего хорошего!"],
+            "ask_status": [
+                f"Наши отношения с тобой на уровне {relation_data.get('relation_level', 50)} ({relation_data.get('status', 'нейтралитет')}).",
+                f"Я отношусь к тебе {relation_data.get('status', 'нейтралитет')}."
+            ],
+            "thanks": ["Пожалуйста!", "Рад помочь!", "Не за что!"]
         }
 
-        scores = {category: 0 for category in categories}
+        if intent.name in simple_responses:
+            import random
+            return random.choice(simple_responses[intent.name])
 
-        for category, words in categories.items():
-            for word in words:
-                if word in message:
-                    scores[category] += 1
+        # --- Если intent неизвестен, пробуем дать осмысленный fallback ---
+        # 1. Если сообщение похоже на запрос ресурсов или торговлю, попробуем выделить вручную
+        trade_info = self._extract_trade_info(player_message)
+        resource_request = self._extract_resource_request_info(player_message)
 
-        max_score = max(scores.values())
-        if max_score > 0:
-            for category, score in scores.items():
-                if score == max_score:
-                    return category
+        if trade_info:
+            # Инициализируем торговлю
+            self.negotiation_context[target_faction] = {"stage": "ask_resource_type", "counter_offers": 0}
+            return f"Ты предлагаешь обмен {trade_info['give_amount']} {trade_info['give_type']} на {trade_info['get_amount']} {trade_info['get_type']}. Какие ресурсы тебе нужны?"
 
-        return "general"
+        if resource_request:
+            self.negotiation_context[target_faction] = {
+                "stage": "ask_resource_amount",
+                "resource": resource_request['type']
+            }
+            return f"Сколько {resource_request['type']} тебе нужно?"
 
-    def generate_contextual_response(self, message, faction, relation_level, status, mood, message_type, context):
-        """Генерирует контекстный ответ"""
-        # Словарь персонажей для разных фракций
-        faction_personalities = {
-            "Север": {"formal": 8, "aggressive": 6, "pragmatic": 7, "honorable": 9},
-            "Эльфы": {"formal": 9, "aggressive": 3, "pragmatic": 6, "honorable": 8, "wise": 9},
-            "Адепты": {"formal": 7, "aggressive": 5, "pragmatic": 8, "honorable": 6, "mysterious": 8},
-            "Вампиры": {"formal": 9, "aggressive": 8, "pragmatic": 7, "honorable": 4, "arrogant": 9},
-            "Элины": {"formal": 6, "aggressive": 4, "pragmatic": 9, "honorable": 7, "diplomatic": 8}
-        }
+        # 2. Если ничего не распознано — нейтральный ответ с контекстом
+        fallback_messages = [
+            "Я не совсем понял твой запрос. Можешь уточнить?",
+            "Расскажи подробнее, о чем идет речь?",
+            "Интересно, продолжай..."
+        ]
 
-        personality = faction_personalities.get(faction, {"formal": 7, "pragmatic": 6, "honorable": 6})
-
-        # Генерация ответа по типу сообщения
-        if message_type == "greeting":
-            if mood == "positive":
-                greetings = [
-                    f"{faction} приветствует вас, правитель. Надеюсь, дела идут хорошо.",
-                    f"Добро пожаловать, ваше величество. Рады слышать от вас.",
-                    f"Приветствую вас от имени {faction}. Чем можем быть полезны?"
-                ]
-            else:
-                greetings = [
-                    f"{faction} вас слушает.",
-                    f"Мы получили ваше сообщение. Говорите.",
-                    f"{faction} на связи. Что вам нужно?"
-                ]
-            return self.select_response_by_personality(greetings, personality)
-
-        elif message_type == "farewell":
-            farewells = [
-                f"До новых встреч, правитель. Пусть удача сопутствует вам.",
-                f"Прощайте. Надеюсь, наши пути пересекутся вновь.",
-                f"{faction} прощается с вами. Будьте осторожны."
-            ]
-            return self.select_response_by_personality(farewells, personality)
-
-        elif message_type == "alliance":
-            return self.generate_alliance_response(faction, relation_level, status, mood, personality, context)
-
-        elif message_type == "war":
-            return self.generate_war_response(faction, relation_level, status, mood, personality, context)
-
-        elif message_type == "trade":
-            return self.generate_trade_response(faction, relation_level, status, mood, personality, context)
-
-        elif message_type == "peace":
-            return self.generate_peace_response(faction, relation_level, status, mood, personality, context)
-
-        elif message_type == "threat":
-            return self.generate_threat_response(faction, relation_level, status, mood, personality, context)
-
-        elif message_type == "information":
-            return self.generate_information_response(faction, relation_level, status, mood, personality, context, message)
-
-        elif message_type == "request":
-            return self.generate_request_response(faction, relation_level, status, mood, personality, context, message)
-
-        elif message_type == "offer":
-            return self.generate_offer_response(faction, relation_level, status, mood, personality, context, message)
-
-        else:
-            # Общий ответ
-            if mood == "question":
-                responses = [
-                    f"Интересный вопрос. {faction} должна обдумать это.",
-                    f"Нам нужно больше информации чтобы ответить на ваш вопрос.",
-                    f"Это требует размышлений. Дайте нам время."
-                ]
-            elif mood == "positive":
-                responses = [
-                    f"Благодарим за ваше сообщение. {faction} ценит ваше обращение.",
-                    f"Мы рады услышать от вас. Спасибо за сообщение.",
-                    f"Ваши слова не останутся без внимания."
-                ]
-            elif mood == "negative":
-                responses = [
-                    f"{faction} отмечает ваш тон. Будем надеяться на лучшее.",
-                    f"Мы слышим вас. Давайте сохраним спокойствие.",
-                    f"Ваше сообщение получено. Просим сохранять дипломатический тон."
-                ]
-            else:
-                responses = [
-                    f"{faction} получила ваше сообщение. Мы рассмотрим его.",
-                    f"Сообщение принято к сведению.",
-                    f"Ваше обращение зарегистрировано."
-                ]
-
-            return self.select_response_by_personality(responses, personality)
-
-    def select_response_by_personality(self, responses, personality):
-        """Выбирает ответ в соответствии с личностью фракции"""
         import random
+        return random.choice(fallback_messages)
 
-        if personality.get("arrogant", 0) > 7:
-            arrogant_responses = [
-                "Мы выслушали ваши слова. Надеемся, они стоили нашего времени.",
-                "Ваше сообщение... интересно. Для кого-то вашего уровня.",
-                f"Мы приняли к сведению. Не ожидайте слишком многого."
-            ]
-            responses = arrogant_responses + responses
+    def _extract_number(self, message):
+        import re
+        numbers = re.findall(r'\d+', message)
+        return int(numbers[0]) if numbers else None
 
-        if personality.get("wise", 0) > 7:
-            wise_responses = [
-                "Ветры перемен приносят ваши слова. Мы прислушаемся к ним.",
-                "Как листья на дереве времени, ваше сообщение найдет свой ответ.",
-                "Мудрость требует размышлений. Мы дадим ответ в должное время."
-            ]
-            responses = wise_responses + responses
+    def _extract_trade_offer(self, message):
+        """Извлекает торговое предложение из сообщения"""
+        # Сначала пытаемся извлечь структурированное предложение
+        info = self._extract_trade_info(message)
+        if info:
+            return {
+                "type": info["get_type"],
+                "amount": info["get_amount"]
+            }
 
-        if personality.get("aggressive", 0) > 7:
-            aggressive_responses = [
-                "Говорите яснее, у нас нет времени на пустые слова.",
-                "Ваше сообщение получено. Будьте кратки в следующий раз.",
-                "Мы слушаем. Но наше терпение не безгранично."
-            ]
-            responses = aggressive_responses + responses
+        # Если не получилось, ищем просто "ресурс + количество"
+        import re
 
-        return random.choice(responses)
+        # Словарь соответствий
+        resource_map = {
+            'крон': 'Кроны', 'золот': 'Кроны', 'деньг': 'Кроны',
+            'кристалл': 'Кристаллы', 'руда': 'Кристаллы', 'минерал': 'Кристаллы',
+            'рабоч': 'Рабочие', 'люд': 'Рабочие', 'работник': 'Рабочие'
+        }
 
-    def generate_alliance_response(self, faction, relation_level, status, mood, personality, context):
-        """Генерирует ответ на предложение союза"""
-        if status == "союз":
-            responses = [
-                f"Мы уже союзники, правитель. Нужно ли что-то еще?",
-                f"Наш союз крепок. Что вас беспокоит?",
-                f"Как союзники, мы готовы слушать ваши предложения."
-            ]
-        elif relation_level > 75:
-            if mood == "positive":
-                responses = [
-                    f"{faction} рассматривает ваше предложение о союзе благосклонно.",
-                    f"Наши отношения достаточно крепки для союза. Обсудим детали?",
-                    f"Мы заинтересованы в союзе. Какие условия вы предлагаете?"
-                ]
-            else:
-                responses = [
-                    f"Союз возможен, но нужны гарантии с вашей стороны.",
-                    f"{faction} готова обсуждать союз, но у нас есть условия.",
-                    f"Мы рассматриваем ваше предложение. Что вы можете предложить взамен?"
-                ]
-        elif relation_level > 50:
-            responses = [
-                f"Наши отношения еще развиваются. Давайте укрепим их прежде чем говорить о союзе.",
-                f"Союз требует больше доверия. Предлагаю сначала наладить торговлю.",
-                f"{faction} видит потенциал, но пока рано говорить о полноценном союзе."
-            ]
-        else:
-            responses = [
-                f"Наши отношения слишком натянуты для союза. Предлагаю начать с малого.",
-                f"{faction} не видит оснований для союза при текущих отношениях.",
-                f"Прежде чем говорить о союзе, нам нужно улучшить взаимопонимание."
-            ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def generate_war_response(self, faction, relation_level, status, mood, personality, context):
-        """Генерирует ответ на угрозы войны"""
-        if status == "война":
-            if mood == "negative":
-                responses = [
-                    f"Мы уже воюем! Ваши угрозы бессмысленны!",
-                    f"Война идет. Говорите о мире или готовьтесь к бою!",
-                    f"На поле боя слова ничего не стоят!"
-                ]
-            else:
-                responses = [
-                    f"Конфликт между нами продолжается. Что вы предлагаете?",
-                    f"Мы в состоянии войны. Ищем пути к разрешению.",
-                    f"Война - это реальность. Давайте искать выход."
-                ]
-        else:
-            if relation_level < 30:
-                responses = [
-                    f"{faction} не боится ваших угроз! Мы готовы к войне!",
-                    f"Вы бросаете вызов не той фракции! Наши армии ждут!",
-                    f"Угрозы? {faction} ответит сталью и кровью!"
-                ]
-            else:
-                responses = [
-                    f"Это серьезное заявление, правитель. Вы уверены в своих словах?",
-                    f"Война принесет разрушение нам обоим. Есть ли альтернатива?",
-                    f"{faction} надеется, что это лишь слова, а не намерения."
-                ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def generate_trade_response(self, faction, relation_level, status, mood, personality, context):
-        """Генерирует ответ на торговые предложения"""
-        if relation_level > 40:
-            if mood == "positive":
-                responses = [
-                    f"{faction} заинтересована в торговле. Что конкретно вы предлагаете?",
-                    f"Торговля может быть взаимовыгодной. Обсудим условия?",
-                    f"Мы всегда открыты для разумных торговых предложений."
-                ]
-            else:
-                responses = [
-                    f"Торговля возможна, но условия должны быть справедливыми.",
-                    f"{faction} рассмотрит ваше предложение. Какие у вас ресурсы?",
-                    f"Что вы предлагаете и что хотите получить взамен?"
-                ]
-        else:
-            responses = [
-                f"Сначала нужно улучшить отношения для серьезной торговли.",
-                f"Торговля требует доверия. Давайте наладим отношения сначала.",
-                f"{faction} предпочитает знать партнеров лучше перед торговлей."
-            ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def generate_peace_response(self, faction, relation_level, status, mood, personality, context):
-        """Генерирует ответ на предложения мира"""
-        if status == "война":
-            if mood == "positive":
-                responses = [
-                    f"Мы устали от войны. Готовы обсудить условия мира.",
-                    f"Мир возможен. Какие условия вы предлагаете?",
-                    f"{faction} готова сложить оружие при разумных условиях."
-                ]
-            else:
-                responses = [
-                    f"Мир? После всего, что было? Нужны серьезные гарантии.",
-                    f"Мы слышим ваше предложение. Что вы предлагаете взамен?",
-                    f"Мир требует компенсаций за причиненные потери."
-                ]
-        else:
-            responses = [
-                f"Мы и так не воюем. О каком мире речь?",
-                f"Мир уже есть между нами. Что вас беспокоит?",
-                f"Нет конфликта - нет нужды в мире. Есть конкретные предложения?"
-            ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def generate_threat_response(self, faction, relation_level, status, mood, personality, context):
-        """Генерирует ответ на угрозы"""
-        if relation_level > 60:
-            responses = [
-                f"Это недружественный тон, правитель. Давайте сохраним уважение.",
-                f"Угрозы не помогут нашим отношениям. Предлагаю диалог.",
-                f"{faction} ценит прямоту, но просит соблюдать дипломатический этикет."
-            ]
-        else:
-            responses = [
-                f"Ваши угрозы приняты к сведению. {faction} готова к любому развитию.",
-                f"Мы не боимся угроз. Наши армии наготове.",
-                f"Угрожать - легко. Действовать - сложно. Что вы выберете?"
-            ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def generate_information_response(self, faction, relation_level, status, mood, personality, context, message):
-        """Генерирует ответ на запрос информации"""
-        if any(word in message for word in ['ресурс', 'золот', 'кристал', 'еда', 'пищ']):
-            if relation_level > 50:
-                response = f"Наши ресурсы стабильны, но точные цифры - государственная тайна."
-            else:
-                response = f"{faction} не разглашает информацию о ресурсах так открыто."
-        elif any(word in message for word in ['арми', 'войск', 'солдат', 'защит']):
-            if relation_level > 60:
-                response = f"Наша армия готова защищать интересы {faction}."
-            else:
-                response = f"Информация о нашей армии - военная тайна."
-        else:
-            if mood == "question":
-                response = f"{faction} нуждается в уточнении. О какой именно информации идет речь?"
-            else:
-                response = f"Мы готовы предоставить информацию в рамках наших возможностей."
-
-        return response
-
-    def generate_request_response(self, faction, relation_level, status, mood, personality, context, message):
-        """Генерирует ответ на просьбы"""
-        if relation_level > 50:
-            if "помощь" in message or "поддержк" in message:
-                if mood == "positive":
-                    responses = [
-                        f"Мы рассмотрим возможность помощи. Опишите ситуацию подробнее.",
-                        f"{faction} готова помочь союзнику. Что конкретно нужно?",
-                        f"Как дружественной фракции, мы готовы оказать поддержку."
-                    ]
-                else:
-                    responses = [
-                        f"Помощь требует взаимности. Что вы предлагаете взамен?",
-                        f"Мы поможем, но нужны гарантии.",
-                        f"Помощь возможна при определенных условиях."
-                    ]
-            else:
-                responses = [
-                    f"Мы рассмотрим вашу просьбу. Дайте нам время.",
-                    f"Ваше обращение принято. Ответим после обсуждения.",
-                    f"{faction} обдумает вашу просьбу."
-                ]
-        else:
-            responses = [
-                f"Наши отношения не позволяют выполнять просьбы так легко.",
-                f"Сначала нужно укрепить доверие между нами.",
-                f"Просьбы требуют определенного уровня отношений."
-            ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def generate_offer_response(self, faction, relation_level, status, mood, personality, context, message):
-        """Генерирует ответ на предложения"""
-        if relation_level > 40:
-            if mood == "positive":
-                responses = [
-                    f"Интересное предложение. Расскажите подробнее.",
-                    f"{faction} заинтересована. Какие детали?",
-                    f"Мы готовы слушать. Что конкретно вы предлагаете?"
-                ]
-            else:
-                responses = [
-                    f"Предложение получено. Что вы ожидаете взамен?",
-                    f"Мы рассмотрим ваше предложение, но нужны уточнения.",
-                    f"Интересно. Каковы условия?"
-                ]
-        else:
-            responses = [
-                f"Предложение требует доверия, которого пока нет.",
-                f"Давайте сначала улучшим отношения, а потом обсудим предложения.",
-                f"Слишком рано для серьезных предложений."
-            ]
-
-        return self.select_response_by_personality(responses, personality)
-
-    def update_relations_based_on_message(self, player_message, ai_response, target_faction):
-        """Обновляет отношения на основе обмена сообщениями"""
-        try:
-            relations = self.advisor.relations_manager.load_combined_relations()
-            if target_faction not in relations:
-                return
-
-            current_relation = relations[target_faction]["relation_level"]
-
-            # Анализ тона сообщений
-            player_tone = self.analyze_message_tone(player_message)
-            ai_tone = self.analyze_message_tone(ai_response)
-
-            # Определяем изменение отношений
-            relation_change = 0
-
-            if player_tone == "positive" and ai_tone == "positive":
-                relation_change = 5
-            elif player_tone == "negative" and ai_tone == "negative":
-                relation_change = -10
-            elif player_tone == "positive" and ai_tone == "negative":
-                relation_change = -5
-            elif player_tone == "negative" and ai_tone == "positive":
-                relation_change = -2
-
-            # Обновляем отношения
-            new_relation = max(0, min(100, current_relation + relation_change))
-
-            if new_relation != current_relation:
-                self.advisor.relations_manager.update_relation_in_db(target_faction, new_relation)
-                print(f"Отношения с {target_faction} изменились: {current_relation} -> {new_relation}")
-
-        except Exception as e:
-            print(f"Ошибка при обновлении отношений: {e}")
-
-    def analyze_message_tone(self, message):
-        """Анализирует тон сообщения"""
         message_lower = message.lower()
 
-        positive_words = ['спасибо', 'благодарю', 'прошу', 'пожалуйста', 'уважаем',
-                          'ценю', 'рад', 'рады', 'отличн', 'прекрасн', 'замечательн']
-        negative_words = ['угроз', 'уничтож', 'нападу', 'атакую', 'война', 'ненавижу',
-                          'против', 'враг', 'смерть', 'уничтожу', 'раздавлю']
+        # Ищем число
+        numbers = re.findall(r'\d+', message_lower)
+        if not numbers:
+            return None
 
-        positive_count = sum(1 for word in positive_words if word in message_lower)
-        negative_count = sum(1 for word in negative_words if word in message_lower)
+        amount = int(numbers[0])
 
-        if positive_count > negative_count:
-            return "positive"
-        elif negative_count > positive_count:
-            return "negative"
+        # Ищем тип ресурса
+        for key, resource_type in resource_map.items():
+            if key in message_lower:
+                return {
+                    "type": resource_type,
+                    "amount": amount
+                }
+
+        return None
+
+    def _handle_forced_dialog(self, message, faction, context):
+        message_lower = message.lower()
+
+        if context.get("stage") == "ask_resource_type":
+            resource = self._extract_resource_type(message)
+            if not resource:
+                # Ресурс не распознан → уточняем
+                return "Какой ресурс тебе нужен: Кроны, Кристаллы или Рабочие?"
+            context["resource"] = resource
+            context["stage"] = "ask_resource_amount"
+            return f"Сколько {resource} тебе нужно?"
+
+        if context.get("stage") == "ask_resource_amount":
+            amount = self._extract_number(message)
+            if not amount:
+                return "Назови конкретное количество."
+            context["amount"] = amount
+            context["stage"] = "ask_player_offer"
+            return self._check_ai_stock_and_respond(faction, context)
+
+        if context.get("stage") == "ask_player_offer":
+            offer = self._extract_trade_offer(message)
+            if not offer:
+                # Проверяем, может быть игрок говорит "ничего" или отказывается
+                if any(word in message_lower for word in
+                       ['ничего', 'не хочу', 'отказываюсь', 'нет', 'хватит', 'прекратим']):
+                    context["stage"] = "idle"
+                    return "Хорошо, тогда не будем торговать."
+
+                # Пробуем извлечь ресурс напрямую из сообщения
+                resource = self._extract_resource_type(message)
+                if resource:
+                    # Если есть число, создаем предложение
+                    amount = self._extract_number(message)
+                    if amount:
+                        offer = {
+                            "type": resource,
+                            "amount": amount
+                        }
+                        context["player_offer"] = offer
+                        context["stage"] = "evaluate"
+                        return self._evaluate_trade(faction, context)
+
+                return "Что именно ты предлагаешь взамен? Назови ресурс и количество."
+
+            # Сохраняем предложение и переходим к оценке
+            context["player_offer"] = offer
+            context["stage"] = "evaluate"
+            return self._evaluate_trade(faction, context)
+
+        # Обработка стадии counter_offer (предложение улучшения)
+        if context.get("stage") == "counter_offer":
+            # Проверяем, соглашается ли игрок на предложенное улучшение
+            if any(word in message_lower for word in ['да', 'согласен', 'ок', 'хорошо', 'ладно', 'принимаю']):
+                # Игрок согласился на улучшение - обновляем контекст и оцениваем
+                context["stage"] = "evaluate"
+                return self._evaluate_trade(faction, context)
+            elif any(word in message_lower for word in ['нет', 'не согласен', 'отказываюсь']):
+                context["stage"] = "idle"
+                return "Хорошо, тогда сделку отменяем."
+            else:
+                # Игрок предлагает новый вариант
+                offer = self._extract_trade_offer(message)
+                if offer:
+                    context["player_offer"] = offer
+                    context["stage"] = "evaluate"
+                    return self._evaluate_trade(faction, context)
+                else:
+                    return "Назови свое предложение или ответь на мое предложение."
+
+        return None
+
+    def _check_ai_stock_and_respond(self, faction, context):
+        ai_resources = self._get_ai_resources(faction)
+        have = ai_resources.get(context["resource"], 0)
+
+        if have < context["amount"]:
+            context["stage"] = "idle"
+            return f"У меня нет столько {context['resource']}. Сделка невозможна."
+
+        context["stage"] = "ask_player_offer"
+        return (
+            f"У меня есть {context['amount']} {context['resource']}. "
+            "Что ты предлагаешь взамен?"
+        )
+
+    def _evaluate_trade(self, faction, context):
+        relation_data = self.advisor.relations_manager.load_combined_relations().get(
+            faction, {"relation_level": 50}
+        )
+
+        offer = {
+            "player_offers": context["player_offer"],
+            "ai_offers": {
+                "type": context["resource"],
+                "amount": context["amount"]
+            }
+        }
+
+        ratio = self._calculate_trade_ratio({
+            "give_type": offer["ai_offers"]["type"],
+            "give_amount": offer["ai_offers"]["amount"],
+            "get_type": offer["player_offers"]["type"],
+            "get_amount": offer["player_offers"]["amount"],
+        }, faction, relation_data)
+
+        print(f"DEBUG: Trade ratio = {ratio}, threshold = 0.9")  # Отладочная информация
+
+        # Уменьшаем порог для завершения сделки и учитываем отношения
+        relation_level = int(relation_data.get("relation_level", 50))
+        threshold = 0.9 - (relation_level - 50) * 0.002  # Чем лучше отношения, тем ниже порог
+
+        if ratio >= threshold:
+            context["stage"] = "agreement"
+            context["active_request"] = {
+                "type": "resource_trade",
+                "player_offers": offer["player_offers"],
+                "ai_offers": offer["ai_offers"],
+            }
+
+            # Выполняем сделку
+            if self.execute_agreed_trade(faction, context["active_request"]):
+                return "Согласен. Принимаю сделку! Ресурсы будут переданы."
+            else:
+                context["stage"] = "idle"
+                return "Согласен, но возникла ошибка при обработке сделки."
+
+        # Если сделка не выгодна, предлагаем улучшение
+        context["stage"] = "counter_offer"
+        suggested_improvement = self._suggest_trade_improvement(
+            {
+                "give_type": offer["ai_offers"]["type"],
+                "give_amount": offer["ai_offers"]["amount"],
+                "get_type": offer["player_offers"]["type"],
+                "get_amount": offer["player_offers"]["amount"],
+            },
+            ratio,
+            threshold
+        )
+
+        # Сохраняем текущее предложение для сравнения
+        context["last_ratio"] = ratio
+        return suggested_improvement
+
+    def _extract_resource_request_info(self, message):
+        """Извлекает информацию о запросе ресурсов из сообщения"""
+        message_lower = message.lower()
+
+        # Слова-триггеры для каждого ресурса
+        resource_triggers = {
+            'Кроны': ['крон', 'золот', 'деньг', 'монет', 'денег'],
+            'Кристаллы': ['кристалл', 'руда', 'минерал'],
+            'Рабочие': ['рабоч', 'люд', 'крестьян', 'работник', 'рабочих']
+        }
+
+        import re
+        numbers = re.findall(r'\d+', message)
+        amount = int(numbers[0]) if numbers else 0
+
+        # Проверяем все триггеры
+        found_resources = []
+        for resource_type, triggers in resource_triggers.items():
+            for trigger in triggers:
+                if trigger in message_lower:
+                    found_resources.append(resource_type)
+                    break
+
+        # Если найдено ровно 1 совпадение - возвращаем его
+        if len(found_resources) == 1:
+            return {
+                'type': found_resources[0],
+                'amount': amount
+            }
+        # Если найдено несколько или не найдено - возвращаем None, чтобы ИИ уточнил
         else:
-            return "neutral"
+            return None
+
+    def _extract_trade_info(self, message):
+        """Извлекает информацию о торговом предложении"""
+        message_lower = message.lower()
+
+        # Паттерны для поиска торговых предложений
+        patterns = [
+            r'(?P<give_amount>\d+)\s*(?P<give_type>крон|золот|кристалл|ресурс|рабоч|люд)[^\d]*(?P<get_amount>\d+)\s*(?P<get_type>крон|золот|кристалл|ресурс|рабоч|люд)',
+            r'(?P<give_type>крон|золот|кристалл|ресурс|рабоч|люд)[^\d]*(?P<give_amount>\d+)[^\d]*(?P<get_type>крон|золот|кристалл|ресурс|рабоч|люд)[^\d]*(?P<get_amount>\d+)'
+        ]
+
+        import re
+        for pattern in patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                resource_map = {
+                    'крон': 'Кроны', 'золот': 'Кроны',
+                    'кристалл': 'Кристаллы', 'ресурс': 'Кристаллы',
+                    'рабоч': 'Рабочие', 'люд': 'Рабочие'
+                }
+
+                return {
+                    'give_type': resource_map.get(match.group('give_type'), 'Кроны'),
+                    'give_amount': int(match.group('give_amount')),
+                    'get_type': resource_map.get(match.group('get_type'), 'Кристаллы'),
+                    'get_amount': int(match.group('get_amount'))
+                }
+
+        return None
+
+    def _extract_resource_type(self, message):
+        message_lower = message.lower()
+        if any(word in message_lower for word in ['крон', 'золот', 'деньг']):
+            return 'Кроны'
+        elif any(word in message_lower for word in ['кристалл', 'ресурс', 'материал']):
+            return 'Кристаллы'
+        elif any(word in message_lower for word in ['рабоч', 'люд']):
+            return 'Рабочие'
+        return None
+
+    def _get_ai_resources(self, faction):
+        """Получает текущие ресурсы ИИ фракции"""
+        # Используем соединение из AIController
+        from ii import AIController
+
+        # Создаем временный контроллер для проверки ресурсов
+        ai = AIController(faction, self.db_connection)
+        ai.load_resources_from_db()
+
+        return {
+            'Кроны': ai.resources.get('Кроны', 0),
+            'Кристаллы': ai.resources.get('Кристаллы', 0),
+            'Рабочие': ai.resources.get('Рабочие', 0)
+        }
+
+    def _calculate_trade_ratio(self, trade_info, faction, relation_data):
+        """Рассчитывает соотношение торговой сделки"""
+
+        # Получаем ресурсы ИИ
+        ai_resources = self._get_ai_resources(faction)
+
+        # Ценности ресурсов (более сбалансированные)
+        resource_values = {
+            'Кроны': 1.0,
+            'Кристаллы': 1.0,
+            'Рабочие': 1.0
+        }
+
+        # Что ИИ отдает
+        ai_gives_value = trade_info['give_amount'] * resource_values.get(trade_info['give_type'], 1.0)
+
+        # Что ИИ получает
+        ai_gets_value = trade_info['get_amount'] * resource_values.get(trade_info['get_type'], 1.0)
+
+        # Учитываем доступность ресурсов (но менее строго)
+        ai_has_amount = ai_resources.get(trade_info['give_type'], 0)
+        if ai_has_amount == 0:
+            availability = 0  # Нет ресурсов вообще
+        else:
+            availability = min(1.0, ai_has_amount / max(1, trade_info['give_amount']))
+            if availability < 0.5:
+                availability = 0.5  # Минимальный доступный коэффициент
+
+        # Учитываем отношения
+        relation_level = int(relation_data.get("relation_level", 50))
+        relation_factor = 0.8 + (relation_level - 50) / 100.0  # От 0.3 до 1.3
+
+        # Рассчитываем выгодность
+        if ai_gives_value > 0:
+            base_ratio = ai_gets_value / ai_gives_value
+            final_ratio = base_ratio * availability * relation_factor
+
+            # Отладочная печать
+            print(
+                f"DEBUG: give={trade_info['give_amount']} {trade_info['give_type']}, get={trade_info['get_amount']} {trade_info['get_type']}")
+            print(
+                f"DEBUG: base_ratio={base_ratio}, availability={availability}, relation_factor={relation_factor}, final={final_ratio}")
+
+            return final_ratio
+
+        return 0
+
+    def _suggest_trade_improvement(self, trade_info, current_ratio, threshold):
+        """Предлагает улучшение торгового предложения"""
+
+        # На сколько нужно улучшить предложение
+        improvement_needed = threshold - current_ratio
+
+        if improvement_needed > 0:
+            # Предлагаем увеличить то, что игрок дает
+            suggested_amount = int(trade_info['get_amount'] * (1 + improvement_needed * 1.5))
+
+            # Проверяем разумность предложения (не более чем в 2 раза)
+            if suggested_amount > trade_info['get_amount'] * 2:
+                suggested_amount = trade_info['get_amount'] * 2
+
+            return f"Это предложение недостаточно выгодно. Предложи {suggested_amount} {trade_info['get_type'].lower()} вместо {trade_info['get_amount']}?"
+
+        return f"Предложи больше {trade_info['get_type'].lower()} или меньше {trade_info['give_type'].lower()}"
+
+    def _create_trade_query(self, faction, trade_info):
+        """Создает запись в таблице queries для выполнения сделки"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Создаем запись о сделке
+            cursor.execute('''
+                INSERT INTO queries (resource, faction, trade_info)
+                VALUES (?, ?, ?)
+            ''', (
+                f"{trade_info['give_type']}:{trade_info['give_amount']}",
+                faction,
+                f"{trade_info['get_type']}:{trade_info['get_amount']}"
+            ))
+
+            self.db_connection.commit()
+            print(f"Создан торговый запрос для фракции {faction}")
+
+        except Exception as e:
+            print(f"Ошибка при создании торгового запроса: {e}")
+
+    def execute_agreed_trade(self, faction, offer):
+        """Выполняет согласованную сделку"""
+        try:
+            if offer['type'] == 'resource_trade':
+                player_offers = offer['player_offers']
+                ai_offers = offer['ai_offers']
+
+                # Здесь нужно интегрировать с AIController для фактического обмена
+                # Создаем запись в queries для обработки
+                cursor = self.db_connection.cursor()
+
+                cursor.execute('''
+                    INSERT INTO queries (resource, faction, trade_info, status)
+                    VALUES (?, ?, ?, 'pending')
+                ''', (
+                    f"{ai_offers['type']}:{ai_offers['amount']}",
+                    faction,
+                    f"{player_offers['type']}:{player_offers['amount']}"
+                ))
+
+                self.db_connection.commit()
+
+                # Очищаем контекст переговоров
+                if faction in self.negotiation_context:
+                    self.negotiation_context[faction]['stage'] = 'completed'
+                    self.negotiation_context[faction]['active_request'] = None
+
+                return True
+
+        except Exception as e:
+            print(f"Ошибка при выполнении сделки: {e}")
+            return False
 
     def save_negotiation_message(self, target_faction, message, is_player=True):
         """Сохраняет сообщение переговоров в БД"""

@@ -19,8 +19,7 @@ import os
 import random
 import sqlite3
 
-from .quick_actions import QuickActions
-from .diplomacy_chat import DiplomacyChat
+from .diplomacy_chat import EnhancedDiplomacyChat
 from .political_systems import PoliticalSystemsManager
 from .relations_manager import RelationsManager
 
@@ -75,8 +74,7 @@ class AdvisorView(FloatLayout):
         # Инициализация менеджеров
         self.political_manager = PoliticalSystemsManager(self)
         self.relations_manager = RelationsManager(self)
-        self.diplomacy_chat = DiplomacyChat(self)
-        self.quick_actions = QuickActions(self)
+        self.diplomacy_chat = EnhancedDiplomacyChat(self, self.db_connection)
 
         # Цветовая тема интерфейса
         self.colors = {

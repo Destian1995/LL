@@ -1037,7 +1037,6 @@ class Faction:
         # Обновление ресурсов с учетом коэффициентов
         self.born_peoples = int(self.hospitals * 50)
         self.work_peoples = int(self.factories * 20)
-        # self.clear_up_peoples теперь влияет только на free_peoples, не включает эффект налогов напрямую
         self.clear_up_peoples = self.born_peoples - self.work_peoples
 
         # Загружаем текущие значения ресурсов из базы данных

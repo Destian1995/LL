@@ -420,22 +420,22 @@ class AIController:
     def manage_buildings(self):
         """
         Управляет строительством зданий для ИИ.
-        Теперь ИИ строит 250 больниц и 250 фабрик вместо 500 одного типа.
+        Теперь ИИ строит 12 больниц и 13 фабрик вместо 25 одного типа.
         """
         try:
             crowns = self.resources['Кроны']
             building_budget = int(crowns * 0.99)  # Используем 90% бюджета на строительство
 
-            if building_budget < 250:
+            if building_budget < 20:
                 print("Недостаточно средств для строительства.")
                 return
 
-            # Фиксируем максимальное количество зданий — 500 всего
-            max_hospitals = 250
-            max_factories = 250
+            # Фиксируем максимальное количество зданий — 24 всего
+            max_hospitals = 12
+            max_factories = 12
 
             # Проверяем, сколько можно построить с учетом денег
-            max_by_money = building_budget // 125  # Каждое здание стоит 125 крон
+            max_by_money = building_budget // 10  # Каждое здание стоит 10 крон
             total_possible = min(max_hospitals + max_factories, max_by_money)
 
             # Пропорционально делим возможное количество
@@ -460,7 +460,7 @@ class AIController:
         :param building_type: Тип здания ("Больница" или "Фабрика").
         :param count: Максимальное количество зданий для постройки.
         """
-        cost = 125 if building_type == 'Больница' else 125
+        cost = 10 if building_type == 'Больница' else 10
 
         # Загружаем актуальные данные о городах фракции
         self.cities = self.load_cities()
@@ -479,7 +479,7 @@ class AIController:
         total_buildings = current_factories + current_hospitals
 
         # Максимальное количество зданий в городе
-        max_buildings_per_city = 500
+        max_buildings_per_city = 24
 
         # Вычисляем, сколько еще можно построить зданий в городе
         remaining_slots = max_buildings_per_city - total_buildings
@@ -515,14 +515,14 @@ class AIController:
         return True
 
     def sell_resources(self):
-        if self.resources['Кристаллы'] > 1000:
+        if self.resources['Кристаллы'] > 100:
             amount_to_sell = int(self.resources['Кристаллы'] * 0.95)
             earned_crowns = int(amount_to_sell * self.raw_material_price)
             self.resources['Кристаллы'] -= amount_to_sell
             self.resources['Кроны'] += earned_crowns
 
             # Рассчитываем эффективность сделки (цена за единицу Кристаллы)
-            price_per_lot = self.raw_material_price / 1000
+            price_per_lot = self.raw_material_price / 100
             self.update_economic_efficiency(price_per_lot)  # Обновляем эффективность
 
             print(f"Продано {amount_to_sell} Кристаллы за {earned_crowns} крон.")
@@ -970,7 +970,7 @@ class AIController:
             return
 
         # Проверяем, достаточно ли денег для покупки артефакта (минимальная стоимость)
-        min_cost = 2_000_000_000  # 2 млрд.
+        min_cost = 2_000_000  # 2 мл.
         if self.resources.get('Кроны', 0) < min_cost:
             print(
                 f"[INFO] ИИ '{self.faction}': Недостаточно крон для генерации артефакта (требуется минимум {format_number(min_cost)}).")
@@ -1003,7 +1003,7 @@ class AIController:
         name = f"{random.choice(prefixes)} {random.choice(suffixes)}"
 
         # Случайная стоимость
-        cost = random.randint(2_000_000_000, 10_000_000_000)  # 2-10 млрд.
+        cost = random.randint(2_000_000, 10_000_000)  # 2-10 мл.
 
         # Сезон (может быть пустым или случайным)
         seasons_list = [[], ["Весна"], ["Лето"], ["Осень"], ["Зима"], ["Весна", "Лето"], ["Лето", "Осень"],
@@ -1202,8 +1202,8 @@ class AIController:
         """
         Рассчитывает максимальный лимит армии на основе базового значения и бонуса от городов.
         """
-        base_limit = 500_000  # Базовый лимит 1 млн
-        city_bonus = 350_000 * len(self.cities)  # Бонус за каждый город
+        base_limit = 5000  # Базовый лимит 1 млн
+        city_bonus = 3500 * len(self.cities)  # Бонус за каждый город
         total_limit = base_limit + city_bonus
         return total_limit
 
@@ -1319,7 +1319,7 @@ class AIController:
         Генерирует новую цену на Кристаллы.
         """
         # Простая реализация: случайная цена в диапазоне
-        self.raw_material_price = round(random.uniform(19200, 39250), 8900)
+        self.raw_material_price = round(random.uniform(150, 200), 8)
         print(f"Новая цена на Кристаллы: {self.raw_material_price}")
 
     def update_trade_resources_from_db(self):
@@ -1413,6 +1413,7 @@ class AIController:
         Обновление текущих ресурсов с учетом данных из базы данных.
         Все расчеты выполняются на основе таблиц в базе данных.
         """
+
         try:
             self.update_buildings_from_db()
 
@@ -1426,22 +1427,23 @@ class AIController:
 
             # Коэффициенты для каждой фракции
             faction_coefficients = {
-                'Люди': {'money_loss': 100, 'food_loss': 0.4},
-                'Эльфы': {'money_loss': 10, 'food_loss': 0.04},
-                'Вампиры': {'money_loss': 5, 'food_loss': 0.03},
-                'Адепты': {'money_loss': 100, 'food_loss': 0.07},
-                'Элины': {'money_loss': 100, 'food_loss': 0.06},
+                'Север': {'money_loss': 15, 'food_loss': 0.4},
+                'Эльфы': {'money_loss': 18, 'food_loss': 0.1},
+                'Вампиры': {'money_loss': 21, 'food_loss': 0.09},
+                'Адепты': {'money_loss': 24, 'food_loss': 0.05},
+                'Элины': {'money_loss': 27, 'food_loss': 0.04},
             }
 
             # Получение коэффициентов для текущей фракции
             faction = self.faction
             if faction not in faction_coefficients:
                 raise ValueError(f"Фракция '{faction}' не найдена.")
+
             coeffs = faction_coefficients[faction]
 
             # Обновление ресурсов с учетом коэффициентов
-            self.born_peoples = int(self.hospitals * 500)
-            self.work_peoples = int(self.factories * 200)
+            self.born_peoples = int(self.hospitals * 50)
+            self.work_peoples = int(self.factories * 20)
             self.clear_up_peoples = (self.born_peoples - self.work_peoples + self.tax_effects) + int(
                 self.city_count * (self.population / 100))
 
@@ -1455,11 +1457,13 @@ class AIController:
             self.money_up = int(self.calculate_tax_income() - (self.hospitals * coeffs['money_loss']))
             self.taxes_info = int(self.calculate_tax_income())
 
-            # Учитываем, что одна фабрика может прокормить 10000 людей
-            self.raw_material += int((self.factories * 1000) - (self.population * coeffs['food_loss']))
+
+            # Учитываем, что одна фабрика может прокормить 100 людей
+            self.raw_material += int((self.factories * 100) - (self.population * coeffs['food_loss']))
             self.food_info = (
-                    int((self.factories * 1000) - (self.population * coeffs['food_loss'])) - self.total_consumption)
+                    int((self.factories * 100) - (self.population * coeffs['food_loss'])) - self.total_consumption)
             self.food_peoples = int(self.population * coeffs['food_loss'])
+
 
             # Проверяем, будет ли население увеличиваться
             if self.raw_material > 0:
@@ -1474,15 +1478,18 @@ class AIController:
                     self.population -= loss
                 self.free_peoples = 0  # Все рабочие обнуляются, так как Кристаллы нет
 
+
             # Проверка, чтобы ресурсы не опускались ниже 0 и не превышали максимальные значения
+
             self.resources.update({
-                "Кроны": max(min(int(self.money), 10_000_000_000), 0),  # Не более 10 млрд
-                "Рабочие": max(min(int(self.free_peoples), 10_000_000), 0),  # Не более 10 млн
-                "Кристаллы": max(min(int(self.raw_material), 10_000_000_000), 0),  # Не более 10 млрд
-                "Население": max(min(int(self.population), 100_000_000), 0),  # Не более 100 млн
+                "Кроны": max(min(round(self.money, 2), 10_000_000), 0),  # Не более 10 млн, 2 знака
+                "Рабочие": max(min(round(self.free_peoples, 2), 500_000), 0),  # Не более 500 тыс, 2 знака
+                "Кристаллы": max(min(round(self.raw_material, 2), 10_000_000), 0),  # Не более 10 млн, 2 знака
+                "Население": max(min(round(self.population, 2), 1_000_000), 0),  # Не более 1 млн, 2 знака
                 "Текущее потребление": self.total_consumption,  # Используем рассчитанное значение
                 "Лимит армии": self.army_limit
             })
+
             self.money = self.resources['Кроны']
             self.free_peoples = self.resources['Рабочие']
             self.raw_material = self.resources['Кристаллы']
@@ -1491,9 +1498,7 @@ class AIController:
             self.total_consumption = self.resources['Текущее потребление']
             # Потребление армии
             self.calculate_and_deduct_consumption()
-
             self.save_resources_to_db()
-
             print(f"Ресурсы обновлены: {self.resources}, Больницы: {self.hospitals}, Фабрики: {self.factories}")
 
         except sqlite3.Error as e:
@@ -2467,62 +2472,83 @@ class AIController:
         try:
             # Загружаем все запросы из таблицы queries
             query = """
-                SELECT id, resource, defense_city, attack_city, faction, trade_info, status
+                SELECT resource, defense_city, attack_city, faction
                 FROM queries
-                WHERE status IS NULL OR status = 'pending'
             """
             self.cursor.execute(query)
             rows = self.cursor.fetchall()
             is_ally_turn = False
 
             for row in rows:
-                query_id, resource, defense_city, attack_city, faction, trade_info, status = row
+                resource, defense_city, attack_city, faction = row
 
                 # Проверяем, является ли фракция союзником
                 is_ally = self.is_faction_ally(faction)
 
                 # ТОРГОВЫЕ СОГЛАШЕНИЯ ИЗ ЧАТА
-                if trade_info and status == 'pending':
-                    print(f"Обработка торгового соглашения с {faction}: {trade_info}")
+                if resource and ':' in str(resource) and ':' in str(defense_city or '') and defense_city:
+                    # Проверяем формат торгового соглашения:
+                    # resource: "Кристаллы:100" (что ИИ получает)
+                    # defense_city: "Кроны:50" (что ИИ отдает)
+                    # attack_city: None или что-то другое
+                    print(f"Обработка торгового соглашения с {faction}: {resource} -> {defense_city}")
 
-                    # Парсим информацию о сделке
-                    # Формат: "что_получает_игрок:количество -> что_дает_игрок:количество"
-                    parts = trade_info.split('->')
-                    if len(parts) == 2:
-                        ai_gets = parts[0].split(':')
-                        player_gets = parts[1].split(':')
+                    try:
+                        # Парсим что ИИ получает (из resource)
+                        ai_gets = str(resource).split(':')
+                        # Парсим что ИИ отдает (из defense_city)
+                        ai_gives = str(defense_city).split(':')
 
-                        if len(ai_gets) == 2 and len(player_gets) == 2:
-                            ai_resource_type = ai_gets[0]
-                            ai_amount = int(ai_gets[1])
-                            player_resource_type = player_gets[0]
-                            player_amount = int(player_gets[1])
+                        if len(ai_gets) == 2 and len(ai_gives) == 2:
+                            ai_gets_resource = ai_gets[0].strip()
+                            ai_gets_amount = int(ai_gets[1])
+                            ai_gives_resource = ai_gives[0].strip()
+                            ai_gives_amount = int(ai_gives[1])
 
                             # Выполняем обмен ресурсами
-                            self.execute_chat_trade(
+                            success = self.execute_chat_trade(
                                 faction=faction,
-                                ai_gives_resource=player_resource_type,
-                                ai_gives_amount=player_amount,
-                                ai_gets_resource=ai_resource_type,
-                                ai_gets_amount=ai_amount
+                                ai_gives_resource=ai_gives_resource,
+                                ai_gives_amount=ai_gives_amount,
+                                ai_gets_resource=ai_gets_resource,
+                                ai_gets_amount=ai_gets_amount
                             )
 
-                            # Помечаем запрос как выполненный
-                            self.mark_query_completed(query_id)
+                            if success:
+                                print(f"Торговая сделка с {faction} выполнена успешно")
+                            else:
+                                print(f"Ошибка при выполнении торговой сделки с {faction}")
+
+                            # После обработки удаляем запись
+                            self.cursor.execute("""
+                                DELETE FROM queries 
+                                WHERE resource = ? AND defense_city = ? AND faction = ?
+                            """, (resource, defense_city, faction))
+                            self.db_connection.commit()
                             continue
+
+                    except (ValueError, IndexError) as e:
+                        print(f"Ошибка парсинга торгового соглашения: {e}")
+                        continue
 
                 if not is_ally:
                     print(f"Фракция {faction} не является союзником. Пропускаем запрос.")
+                    # Удаляем запросы от не-союзников
+                    self.cursor.execute("""
+                        DELETE FROM queries 
+                        WHERE resource = ? AND defense_city = ? AND attack_city = ? AND faction = ?
+                    """, (resource, defense_city, attack_city, faction))
+                    self.db_connection.commit()
                     continue
 
                 is_ally_turn = True  # Устанавливаем флаг, если хотя бы один запрос выполнен для союзника
 
-                # Если заполнен столбец resource
-                if resource:
+                # Если заполнен столбец resource (не торговый запрос)
+                if resource and ':' not in str(resource):
                     self.transfer_resource_to_ally(faction, resource)
 
-                # Если заполнен столбец defense_city
-                if defense_city:
+                # Если заполнен столбец defense_city (не торговый запрос)
+                if defense_city and ':' not in str(defense_city):
                     self.reinforce_defense_in_city(defense_city, faction)
 
                 # Если заполнен столбец attack_city
@@ -2555,63 +2581,108 @@ class AIController:
                     # Выполняем атаку на город — теперь вторым параметром передаётся target_faction
                     self.launch_attack_on_city(attack_city, target_faction)
 
-            # Очищаем таблицу queries, только если был ход союзника
-            if is_ally_turn:
-                self.clear_queries_table()
-                print("Обработка запросов завершена. Таблица queries очищена.")
-            else:
-                print("Обработка запросов завершена. Таблица queries не очищена, так как ходили не союзники.")
+                # Удаляем обработанный запрос
+                self.cursor.execute("""
+                    DELETE FROM queries 
+                    WHERE resource = ? AND defense_city = ? AND attack_city = ? AND faction = ?
+                """, (resource, defense_city, attack_city, faction))
+                self.db_connection.commit()
 
-        except sqlite3.Error as e:
+            if is_ally_turn:
+                print("Обработка запросов от союзников завершена.")
+            else:
+                print("Обработка запросов завершена. Не было запросов от союзников.")
+
+        except Exception as e:
             print(f"Ошибка при обработке запросов: {e}")
 
-    def execute_chat_trade(self, faction, ai_gives_resource, ai_gives_amount,
-                           ai_gets_resource, ai_gets_amount):
+    def execute_chat_trade(self, faction, ai_gives_resource, ai_gives_amount, ai_gets_resource, ai_gets_amount):
         """
-        Выполняет торговую сделку, согласованную через чат.
+        Выполняет торговую сделку из чата.
+        ИИ отдает ai_gives_resource:ai_gives_amount
+        ИИ получает ai_gets_resource:ai_gets_amount
         """
         try:
-            print(f"Выполнение сделки с {faction}:")
-            print(f"  ИИ отдает: {ai_gives_amount} {ai_gives_resource}")
-            print(f"  ИИ получает: {ai_gets_amount} {ai_gets_resource}")
+            # Загружаем текущие ресурсы ИИ
+            ai_resources = self._get_ai_resources(faction)
 
-            # Проверяем, есть ли у нас достаточно ресурсов
-            if self.resources.get(ai_gives_resource, 0) < ai_gives_amount:
-                print(f"Недостаточно {ai_gives_resource} для выполнения сделки")
+            # Проверяем, достаточно ли у ИИ ресурсов для передачи
+            if ai_resources.get(ai_gives_resource, 0) < ai_gives_amount:
+                print(
+                    f"У ИИ фракции {faction} недостаточно {ai_gives_resource}: {ai_resources.get(ai_gives_resource, 0)} < {ai_gives_amount}")
                 return False
 
-            # 1. Вычитаем ресурсы у ИИ
-            self.resources[ai_gives_resource] -= ai_gives_amount
+            # Вычитаем ресурсы у ИИ
+            ai_resources[ai_gives_resource] -= ai_gives_amount
 
-            # 2. Добавляем ресурсы ИИ (то, что получает от игрока)
-            self.resources[ai_gets_resource] += ai_gets_amount
+            # Добавляем полученные ресурсы ИИ
+            ai_resources[ai_gets_resource] = ai_resources.get(ai_gets_resource, 0) + ai_gets_amount
 
-            # 3. Обновляем ресурсы игрока в базе данных
-            # (нужно увеличить то, что ИИ отдает, и уменьшить то, что ИИ получает)
-            cursor = self.db_connection.cursor()
+            # Сохраняем ресурсы ИИ обратно в БД
+            self._save_ai_resources(faction, ai_resources)
 
-            # Увеличиваем ресурсы игрока (то, что ИИ отдает)
-            cursor.execute('''
-                UPDATE resources 
-                SET amount = amount + ?
-                WHERE faction = ? AND resource_type = ?
-            ''', (ai_gives_amount, faction, ai_gives_resource))
+            # Теперь нужно добавить ресурсы игроку
+            # Получаем ресурсы игрока
+            player_resources = self._get_player_resources()
 
-            # Уменьшаем ресурсы игрока (то, что ИИ получает)
-            cursor.execute('''
-                UPDATE resources 
-                SET amount = amount - ?
-                WHERE faction = ? AND resource_type = ?
-            ''', (ai_gets_amount, faction, ai_gets_resource))
+            # Игрок отдает то, что получает ИИ
+            if player_resources.get(ai_gets_resource, 0) < ai_gets_amount:
+                print(f"У игрока недостаточно {ai_gets_resource}")
+                return False
 
-            self.db_connection.commit()
+            # Вычитаем у игрока
+            player_resources[ai_gets_resource] -= ai_gets_amount
 
-            print(f"Сделка с {faction} успешно выполнена")
+            # Добавляем игроку то, что отдает ИИ
+            player_resources[ai_gives_resource] = player_resources.get(ai_gives_resource, 0) + ai_gives_amount
+
+            # Сохраняем ресурсы игрока
+            self._save_player_resources(player_resources)
+
+            print(
+                f"Торговый обмен завершен: ИИ {faction} отдал {ai_gives_amount} {ai_gives_resource}, получил {ai_gets_amount} {ai_gets_resource}")
             return True
 
         except Exception as e:
-            print(f"Ошибка при выполнении сделки: {e}")
+            print(f"Ошибка при выполнении торговой сделки: {e}")
             return False
+
+    def _get_player_resources(self):
+        """Получает ресурсы игрока"""
+        # Предполагаем, что у контроллера есть доступ к ресурсам игрока
+        # Нужно адаптировать под вашу структуру
+        cursor = self.db_connection.cursor()
+        cursor.execute('''
+            SELECT Кроны, Кристаллы, Рабочие, Население 
+            FROM resources 
+            WHERE faction = ?
+        ''', (self.faction,))
+        row = cursor.fetchone()
+
+        if row:
+            return {
+                'Кроны': row[0],
+                'Кристаллы': row[1],
+                'Рабочие': row[2],
+                'Население': row[3]
+            }
+        return {'Кроны': 0, 'Кристаллы': 0, 'Рабочие': 0, 'Население': 0}
+
+    def _save_player_resources(self, resources):
+        """Сохраняет ресурсы игрока"""
+        cursor = self.db_connection.cursor()
+        cursor.execute('''
+            UPDATE resources 
+            SET Кроны = ?, Кристаллы = ?, Рабочие = ?, Население = ?
+            WHERE faction = ?
+        ''', (
+            resources.get('Кроны', 0),
+            resources.get('Кристаллы', 0),
+            resources.get('Рабочие', 0),
+            resources.get('Население', 0),
+            self.faction
+        ))
+        self.db_connection.commit()
 
     def mark_query_completed(self, query_id):
         """Помечает запрос как выполненный"""
@@ -2772,7 +2843,6 @@ class AIController:
             print(f"Передислоцировано {units_to_relocate} защитных юнитов в город {city_name}.")
         except Exception as e:
             print(f"Ошибка при усилении обороны: {e}")
-
 
     def apply_political_system_bonus(self):
         """

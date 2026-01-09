@@ -557,6 +557,8 @@ class GameScreen(Screen):
         self.initialize_season_table(self.conn)
         # Инициализация AI-контроллеров
         self.ai_controllers = {}
+        # === Инициализация ИИ ===
+        self.init_ai_controllers()
         # Инициализация EventManager
         self.event_manager = EventManager(self.selected_faction, self, self.game_state_manager.faction, self.conn)
 
@@ -589,6 +591,11 @@ class GameScreen(Screen):
         self.scheduled_events['update_army_rating'] = Clock.schedule_interval(self.update_army_rating, 1)
         self.diplomacy_ai_factory = None  # Фабрика ИИ дипломатии
 
+    def init_ai_controllers(self):
+        """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
+        for faction in FACTIONS:
+            if faction != self.selected_faction:
+                self.ai_controllers[faction] = AIController(faction, self.conn, self.season_manager)
 
     def save_selected_faction_to_db(self):
         conn = self.conn
