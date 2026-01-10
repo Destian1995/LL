@@ -533,9 +533,9 @@ class EnhancedDiplomacyChat():
             )
 
     def generate_diplomatic_response(self, player_message, target_faction):
-        """Генерирует ответ ИИ на сообщение игрока с учетом контекста переговоров"""
+        """Генерирует ответ ИИ на сообщение игрока с улучшенной обработкой запросов ресурсов"""
 
-        print(f"DEBUG: Получено сообщение: '{player_message}' от игрока")  # Отладка
+        print(f"DEBUG: Получено сообщение: '{player_message}' от игрока")
 
         # Загружаем данные об отношениях
         relations = self.advisor.relations_manager.load_combined_relations()
@@ -547,44 +547,105 @@ class EnhancedDiplomacyChat():
         if coefficient == 0 and self._is_resource_request(player_message):
             return (f"При нашем текущем уровне отношений ({relation_level}/100) "
                     f"я не готов обсуждать сделки.")
+
         # Получаем контекст переговоров для этой фракции
         context = self.negotiation_context.get(target_faction, {})
-        print(f"DEBUG: Контекст для {target_faction}: {context}")  # Отладка
+        print(f"DEBUG: Контекст для {target_faction}: {context}")
 
-        # 1. ПЕРВОЕ - проверяем стадии торговли/ресурсов
-        if context.get("stage") in (
-                "ask_resource_type", "ask_resource_amount", "ask_player_offer", "counter_offer", "evaluate"):
-            print(f"DEBUG: Обработка стадии диалога: {context.get('stage')}")  # Отладка
+        # 1. Проверяем стадии торговли/ресурсов
+        if context.get("stage") in ("ask_resource_type", "ask_resource_amount",
+                                    "ask_player_offer", "counter_offer", "evaluate"):
+            print(f"DEBUG: Обработка стадии диалога: {context.get('stage')}")
             forced = self._handle_forced_dialog(player_message, target_faction, context)
             if forced:
                 return forced
 
-        # 2. Проверяем на простые запросы ресурсов ПЕРЕД вызовом NLP
+        # 2. УЛУЧШЕНИЕ: Автоматическая обработка запросов ресурсов с количеством
+        # Проверяем, есть ли в сообщении запрос ресурсов с указанием количества
+        trade_offer = self._extract_trade_offer(player_message)
+        if trade_offer:
+            print(f"DEBUG: Найден готовый trade_offer: {trade_offer}")
+            # Проверяем, есть ли в запросе количество
+            if trade_offer.get("amount"):
+                # Инициируем диалог с уже известным количеством
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_player_offer",
+                    "resource": trade_offer["type"],
+                    "amount": trade_offer["amount"],
+                    "counter_offers": 0
+                }
+                return f"Хочешь {trade_offer['amount']} {trade_offer['type']}? Что предлагаешь взамен?"
+
+        # 3. УЛУЧШЕНИЕ: Обработка запросов с типом ресурса, но без количества
         is_resource_req = self._is_resource_request(player_message)
-        print(f"DEBUG: _is_resource_request вернул: {is_resource_req}")  # Отладка
+        resource_mentions = self._extract_resource_mentions(player_message)
 
-        if is_resource_req:
-            # Инициируем диалог о ресурсах
-            self.negotiation_context[target_faction] = {
-                "stage": "ask_resource_type",
-                "counter_offers": 0
-            }
-            return "Какой ресурс тебе нужен: Кроны, Кристаллы или Рабочие?"
+        print(f"DEBUG: _is_resource_request вернул: {is_resource_req}")
+        print(f"DEBUG: resource_mentions: {resource_mentions}")
 
-        # 3. Определяем intent через NLP
+        if is_resource_req and resource_mentions:
+            # Определяем, есть ли количество в запросе
+            amount = self._extract_number(player_message)
+            print(f"DEBUG: Извлеченное количество: {amount}")
+
+            if amount:
+                # Если количество указано - сразу переходим к предложению взамен
+                resource_type = resource_mentions[0]
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_player_offer",
+                    "resource": resource_type,
+                    "amount": amount,
+                    "counter_offers": 0
+                }
+                return f"Хочешь {amount} {resource_type}? Что предлагаешь взамен?"
+            else:
+                # Если количество не указано - уточняем
+                resource_type = resource_mentions[0]
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_resource_amount",
+                    "resource": resource_type,
+                    "counter_offers": 0
+                }
+                return f"Сколько {resource_type} тебе нужно?"
+
+        # 4. Определяем intent через NLP
         intent = self.nlp_processor.process_message(player_message, context)
-        print(f"DEBUG: Определен intent: {intent.name} с уверенностью {intent.confidence}")  # Отладка
+        print(f"DEBUG: Определен intent: {intent.name} с уверенностью {intent.confidence}")
 
-        # 4. Обрабатываем основные интенты
+        # 5. Обрабатываем основные интенты
         # Обработка интентов для торговли
         if intent.name in ("demand_resources", "trade_propose"):
-            print(f"DEBUG: Обработка intent торговли: {intent.name}")  # Отладка
-            # Инициируем диалог о торговле
-            self.negotiation_context[target_faction] = {
-                "stage": "ask_resource_type",
-                "counter_offers": 0
-            }
-            return "Какие ресурсы тебе нужны?"
+            print(f"DEBUG: Обработка intent торговли: {intent.name}")
+            # УЛУЧШЕНИЕ: Проверяем, упоминается ли тип ресурса в сообщении
+            resource_mentions = self._extract_resource_mentions(player_message)
+            if resource_mentions:
+                resource_type = resource_mentions[0]
+                amount = self._extract_number(player_message)
+
+                if amount:
+                    # Если есть и тип и количество
+                    self.negotiation_context[target_faction] = {
+                        "stage": "ask_player_offer",
+                        "resource": resource_type,
+                        "amount": amount,
+                        "counter_offers": 0
+                    }
+                    return f"Хочешь {amount} {resource_type}? Что предлагаешь взамен?"
+                else:
+                    # Если только тип
+                    self.negotiation_context[target_faction] = {
+                        "stage": "ask_resource_amount",
+                        "resource": resource_type,
+                        "counter_offers": 0
+                    }
+                    return f"Сколько {resource_type} тебе нужно?"
+            else:
+                # Если нет типа ресурса
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_resource_type",
+                    "counter_offers": 0
+                }
+                return "Какой ресурс тебе нужен: Кроны, Кристаллы или Рабочие?"
 
         # Простые интенты для обычного диалога
         simple_responses = {
@@ -600,16 +661,15 @@ class EnhancedDiplomacyChat():
         }
 
         if intent.name in simple_responses:
-            print(f"DEBUG: Обработка простого intent: {intent.name}")  # Отладка
+            print(f"DEBUG: Обработка простого intent: {intent.name}")
             import random
             return random.choice(simple_responses[intent.name])
 
-        # 5. ФОЛБЭК - если intent неизвестен или уверенность низкая
-        print(f"DEBUG: Intent не распознан или уверенность низкая")  # Отладка
+        # 6. ФОЛБЭК - если intent неизвестен или уверенность низкая
+        print(f"DEBUG: Intent не распознан или уверенность низкая")
 
-        # Проверяем вручную на ключевые слова БОЛЕЕ АГРЕССИВНО
+        # Проверяем вручную на ключевые слова
         message_lower = player_message.lower()
-        print(f"DEBUG: message_lower: '{message_lower}'")  # Отладка
 
         # РАСШИРЕННЫЙ список ключевых слов для запросов ресурсов
         request_patterns = [
@@ -620,18 +680,18 @@ class EnhancedDiplomacyChat():
 
         # Проверяем, есть ли хоть одно слово запроса
         has_request_word = any(pattern in message_lower for pattern in request_patterns)
-        print(f"DEBUG: has_request_word: {has_request_word}")  # Отладка
+        print(f"DEBUG: has_request_word: {has_request_word}")
 
         # Проверяем наличие ресурсов
         resource_mentions = self._extract_resource_mentions(player_message)
-        print(f"DEBUG: resource_mentions: {resource_mentions}")  # Отладка
+        print(f"DEBUG: resource_mentions: {resource_mentions}")
 
         if has_request_word and resource_mentions:
-            print(f"DEBUG: Найден запрос ресурсов вручную!")  # Отладка
+            print(f"DEBUG: Найден запрос ресурсов вручную!")
             resource_type = resource_mentions[0]
 
             amount = self._extract_number(player_message)
-            print(f"DEBUG: Извлеченное количество: {amount}")  # Отладка
+            print(f"DEBUG: Извлеченное количество: {amount}")
 
             if amount:
                 self.negotiation_context[target_faction] = {
@@ -649,7 +709,7 @@ class EnhancedDiplomacyChat():
                 }
                 return f"Сколько {resource_type} тебе нужно?"
 
-        # 6. Проверяем на простые приветствия/прощания вручную
+        # 7. Проверяем на простые приветствия/прощания вручную
         greeting_words = ['привет', 'здравствуй', 'здравствуйте', 'добрый', 'хай', 'здаров', 'ку', 'hello', 'hi']
         farewell_words = ['пока', 'до свидания', 'прощай', 'удачи', 'всего', 'bye', 'goodbye']
 
@@ -672,7 +732,7 @@ class EnhancedDiplomacyChat():
 
         import random
         response = random.choice(fallback_messages)
-        print(f"DEBUG: Используется fallback response: '{response}'")  # Отладка
+        print(f"DEBUG: Используется fallback response: '{response}'")
         return response
 
     def show_relation_tooltip(self, faction, pos=None):
@@ -1363,17 +1423,76 @@ class EnhancedDiplomacyChat():
         if numbers:
             return int(numbers[0])
 
-        # Ищем числительные (простая версия)
+        # Ищем числительные (расширенная версия)
         numeral_map = {
-            'один': 1, 'одну': 1, 'два': 2, 'две': 2, 'три': 3, 'четыре': 4,
-            'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8, 'девять': 9,
-            'десять': 10, 'сотня': 100, 'сотню': 100, 'тысяча': 1000
+            'один': 1, 'одну': 1, 'одного': 1,
+            'два': 2, 'две': 2, 'двух': 2,
+            'три': 3, 'трёх': 3, 'трех': 3,
+            'четыре': 4, 'четырёх': 4, 'четырех': 4,
+            'пять': 5, 'пяти': 5,
+            'шесть': 6, 'шести': 6,
+            'семь': 7, 'семи': 7,
+            'восемь': 8, 'восьми': 8,
+            'девять': 9, 'девяти': 9,
+            'десять': 10, 'десяти': 10,
+            'одиннадцать': 11, 'двенадцать': 12,
+            'тринадцать': 13, 'четырнадцать': 14,
+            'пятнадцать': 15, 'шестнадцать': 16,
+            'семнадцать': 17, 'восемнадцать': 18,
+            'девятнадцать': 19, 'двадцать': 20,
+            'сотня': 100, 'сотню': 100, 'сотен': 100,
+            'тысяча': 1000, 'тысячу': 1000, 'тысяч': 1000,
+            'немного': 10, 'немножко': 10, 'чуть-чуть': 10,
+            'много': 100, 'немного': 50, 'пару': 2,
+            'несколько': 5, 'кучу': 100, 'массу': 100
         }
 
         message_lower = message.lower()
-        for word, value in numeral_map.items():
-            if word in message_lower:
+
+        # Проверяем отдельные слова
+        words = message_lower.split()
+        for word in words:
+            if word in numeral_map:
+                return numeral_map[word]
+
+        # Проверяем составные числительные
+        for numeral, value in numeral_map.items():
+            if numeral in message_lower:
                 return value
+
+        return None
+
+    def _extract_trade_info_enhanced(self, message):
+        """Улучшенное извлечение информации о торговом предложении"""
+        message_lower = message.lower()
+
+        # Паттерны для поиска торговых предложений
+        patterns = [
+            # "дай 100 крон"
+            r'(?:дай|дайте|хочу|нужно|нужны|нужен|необходимо)\s+(?P<amount>\d+)\s+(?P<type>крон|золот|кристалл|ресурс|рабоч|люд)',
+            # "мне нужно 500 кристаллов"
+            r'(?:мне|нам)\s+(?:нужно|нужны|необходимо)\s+(?P<amount>\d+)\s+(?P<type>крон|золот|кристалл|ресурс|рабоч|люд)',
+            # "хочу получить 200 рабочих"
+            r'(?:хочу|желаю|хотел|хотела)\s+(?:получить|приобрести|взять)\s+(?P<amount>\d+)\s+(?P<type>крон|золот|кристалл|ресурс|рабоч|люд)'
+        ]
+
+        import re
+        for pattern in patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                resource_map = {
+                    'крон': 'Кроны', 'золот': 'Кроны',
+                    'кристалл': 'Кристаллы', 'ресурс': 'Кристаллы',
+                    'рабоч': 'Рабочие', 'люд': 'Рабочие'
+                }
+
+                amount = int(match.group('amount'))
+                resource_type = resource_map.get(match.group('type'), 'Кроны')
+
+                return {
+                    'type': resource_type,
+                    'amount': amount
+                }
 
         return None
 
@@ -1558,7 +1677,7 @@ class EnhancedDiplomacyChat():
             if self.execute_agreed_trade(faction, context["active_request"]):
                 # Улучшаем отношения при успешной сделке
                 self.improve_relations_from_trade(faction, amount)
-                return f"Согласен! Отношения позволяют нам заключить эту сделку."
+                return f"Согласен! Если не возникнет форс-мажора, жди поставки через день."
             else:
                 context["stage"] = "idle"
                 return "Согласен, но возникла ошибка при обработке."
