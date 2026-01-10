@@ -581,11 +581,11 @@ class Faction:
 
     def update_trade_resources_from_db(self):
         try:
-            # Проверяем все неподтвержденные сделки (agree = 0)
+            # Проверяем все неподтвержденные сделки (agree = 2)
             self.cursor.execute('''
                 SELECT id, initiator, target_faction 
                 FROM trade_agreements 
-                WHERE (initiator = ? OR target_faction = ?) AND agree = 0
+                WHERE (initiator = ? OR target_faction = ?) AND agree = 2
             ''', (self.faction, self.faction))
 
             rejected_rows = self.cursor.fetchall()
@@ -595,14 +595,14 @@ class Faction:
                 trade_id, initiator, target_faction = row
 
                 if initiator == self.faction:
-                    show_message("Отказ", f"{target_faction} отказались от сделки.")
+                    show_message("Отказ", f"{target_faction} свернули сделку...")
                 elif target_faction == self.faction:
-                    show_message("Отказ", f"{initiator} отказались от сделки.")
+                    show_message("Отказ", f"{initiator} свернули сделку...")
 
             # Удаляем все неподтвержденные сделки
             self.cursor.execute('''
                 DELETE FROM trade_agreements 
-                WHERE (initiator = ? OR target_faction = ?) AND agree = 0
+                WHERE (initiator = ? OR target_faction = ?) AND agree = 7
             ''', (self.faction, self.faction))
 
             # Извлекаем все подтвержденные сделки
@@ -621,7 +621,7 @@ class Faction:
                     initiator_summ_resource, target_type_resource, target_summ_resource = row
 
                 # Проверяем, была ли сделка одобрена
-                show_message(f"{initiator_type_resource}", f" {target_faction} одобрили сделку!")
+                show_message(f"{initiator_type_resource}", f" {target_faction} прислали ресурсы!")
 
                 if initiator == self.faction:
                     # Проверяем наличие ресурсов только если они должны быть отданы

@@ -199,7 +199,6 @@ def clear_tables(conn):
         "karma",
         "user_faction",
         "units",
-        "queries",
         "results",
         "auto_build_settings",
         "interface_coord",

@@ -1543,7 +1543,7 @@ class AIController:
     def process_trade_agreements(self):
         """
         Обрабатывает торговые соглашения для текущей фракции.
-        Если текущая фракция является target_faction, анализирует сделку и принимает решение.
+        Если текущая фракция является target_faction, исполняет сделку без проверки выгодности.
         """
         try:
             # Загружаем текущие отношения с другими фракциями
@@ -1554,7 +1554,7 @@ class AIController:
                 SELECT id, initiator, target_faction, initiator_type_resource, target_type_resource,
                        initiator_summ_resource, target_summ_resource
                 FROM trade_agreements
-                WHERE target_faction = ?
+                WHERE target_faction = ? AND agree = 0
             """
             self.cursor.execute(query, (self.faction,))
             rows = self.cursor.fetchall()
@@ -1562,15 +1562,6 @@ class AIController:
             for row in rows:
                 trade_id, initiator, target_faction, initiator_type_resource, target_type_resource, \
                     initiator_summ_resource, target_summ_resource = row
-
-                # Проверяем уровень отношений с инициатором сделки
-                relation_level = int(self.relations.get(initiator, 0))
-
-                # Определяем коэффициент на основе уровня отношений
-                if relation_level < 15:
-                    print(f"Отказ от сделки с {initiator}. Низкий уровень отношений ({relation_level}).")
-                    self.update_agreement_status(trade_id, False)  # Проставляем agree = false
-                    continue
 
                 # Проверяем наличие ресурсов у целевой фракции
                 has_enough_resources = self.resources.get(target_type_resource, 0) >= target_summ_resource
@@ -1580,42 +1571,25 @@ class AIController:
                     self.update_agreement_status(trade_id, False)  # Проставляем agree = false
                     continue
 
-                # Рассчитываем соотношение обмена ресурсов
-                resource_ratio = target_summ_resource / initiator_summ_resource
-
-                # Определяем коэффициент выгодности сделки на основе отношений
-                if relation_level < 25:
-                    coefficient = 0.09
-                elif 25 <= relation_level < 35:
-                    coefficient = 0.2
-                elif 35 <= relation_level < 50:
-                    coefficient = 0.8
-                elif 50 <= relation_level < 60:
-                    coefficient = 1.0
-                elif 60 <= relation_level < 75:
-                    coefficient = 1.4
-                elif 75 <= relation_level < 90:
-                    coefficient = 2.0
-                elif 90 <= relation_level <= 100:
-                    coefficient = 3.1
-                else:
-                    coefficient = 0.0
-
-                # Проверяем, выгодна ли сделка
-                if resource_ratio > coefficient:
-                    print(
-                        f"Отказ от сделки с {initiator}. Не выгодное соотношение ({resource_ratio:.2f} < {coefficient:.2f})."
-                    )
-                    self.update_agreement_status(trade_id, False)  # Проставляем agree = false
+                # Проверяем минимальный уровень отношений (если нужен, можно убрать и эту проверку)
+                relation_level = int(self.relations.get(initiator, 0))
+                if relation_level < 10:  # Минимальный порог отношений
+                    print(f"Отказ от сделки с {initiator}. Слишком низкий уровень отношений ({relation_level}).")
+                    self.update_agreement_status(trade_id, False)
                     continue
 
-                # Если сделка выгодна, выполняем обмен ресурсами
+                # Исполняем сделку
                 print(
-                    f"Принята сделка с {initiator}. Соотношение: {resource_ratio:.2f}, Коэффициент: {coefficient:.2f}."
-                )
-                self.execute_trade(initiator, target_faction, initiator_type_resource, target_type_resource,
-                                   initiator_summ_resource, target_summ_resource)
-                self.update_agreement_status(trade_id, True)  # Проставляем agree = true
+                    f"Исполнение сделки с {initiator}. Ресурсы: отдаем {target_summ_resource} {target_type_resource}, получаем {initiator_summ_resource} {initiator_type_resource}")
+
+                # Выполняем обмен ресурсами
+                success = self.execute_trade(initiator, target_faction, initiator_type_resource, target_type_resource,
+                                             initiator_summ_resource, target_summ_resource)
+
+                if success:
+                    self.update_agreement_status(trade_id, True)  # Проставляем agree = true
+                else:
+                    self.update_agreement_status(trade_id, False)  # Проставляем agree = false
 
         except sqlite3.Error as e:
             print(f"Ошибка при обработке торговых соглашений: {e}")
@@ -1652,20 +1626,6 @@ class AIController:
             print(f"Возвращено {amount} {resource_type} фракции {initiator}.")
         except sqlite3.Error as e:
             print(f"Ошибка при возврате ресурсов: {e}")
-
-    def remove_trade_agreement(self, trade_id):
-        """
-        Удаляет торговое соглашение из базы данных.
-        """
-        try:
-            self.cursor.execute("""
-                DELETE FROM trade_agreements
-                WHERE id = ?
-            """, (trade_id,))
-            self.db_connection.commit()
-            print(f"Торговое соглашение ID={trade_id} удалено.")
-        except sqlite3.Error as e:
-            print(f"Ошибка при удалении торгового соглашения: {e}")
 
     def execute_trade(self, initiator, target_faction, initiator_type_resource, target_type_resource,
                       initiator_summ_resource, target_summ_resource):
@@ -2466,135 +2426,173 @@ class AIController:
 
     def process_queries(self):
         """
-        Обрабатывает запросы из таблицы queries.
-        Теперь также обрабатывает торговые соглашения из чата.
+        Обрабатывает запросы из таблицы queries И торговые соглашения из trade_agreements.
+        Исполняет ВСЕ доступные сделки без каких-либо проверок.
         """
         try:
-            # Загружаем все запросы из таблицы queries
-            query = """
-                SELECT resource, defense_city, attack_city, faction
-                FROM queries
+            # Обрабатываем ВСЕ торговые соглашения
+            trade_query = """
+                SELECT id, initiator, target_faction, 
+                       initiator_type_resource, initiator_summ_resource,
+                       target_type_resource, target_summ_resource
+                FROM trade_agreements
+                WHERE target_faction = ? AND agree = 0
             """
-            self.cursor.execute(query)
-            rows = self.cursor.fetchall()
-            is_ally_turn = False
+            self.cursor.execute(trade_query, (self.faction,))
+            trade_rows = self.cursor.fetchall()
 
-            for row in rows:
-                resource, defense_city, attack_city, faction = row
+            for trade_row in trade_rows:
+                trade_id, initiator, target_faction, give_type, give_amount, get_type, get_amount = trade_row
 
-                # Проверяем, является ли фракция союзником
-                is_ally = self.is_faction_ally(faction)
+                print(f"Исполнение торгового соглашения #{trade_id} от {initiator}")
 
-                # ТОРГОВЫЕ СОГЛАШЕНИЯ ИЗ ЧАТА
-                if resource and ':' in str(resource) and ':' in str(defense_city or '') and defense_city:
-                    # Проверяем формат торгового соглашения:
-                    # resource: "Кристаллы:100" (что ИИ получает)
-                    # defense_city: "Кроны:50" (что ИИ отдает)
-                    # attack_city: None или что-то другое
-                    print(f"Обработка торгового соглашения с {faction}: {resource} -> {defense_city}")
+                # ПЫТАЕМСЯ ВЫПОЛНИТЬ СДЕЛКУ
+                success = self.execute_trade_from_agreement(
+                    trade_id=trade_id,
+                    initiator=initiator,
+                    give_type=give_type,
+                    give_amount=give_amount,
+                    get_type=get_type,
+                    get_amount=get_amount
+                )
 
-                    try:
-                        # Парсим что ИИ получает (из resource)
-                        ai_gets = str(resource).split(':')
-                        # Парсим что ИИ отдает (из defense_city)
-                        ai_gives = str(defense_city).split(':')
-
-                        if len(ai_gets) == 2 and len(ai_gives) == 2:
-                            ai_gets_resource = ai_gets[0].strip()
-                            ai_gets_amount = int(ai_gets[1])
-                            ai_gives_resource = ai_gives[0].strip()
-                            ai_gives_amount = int(ai_gives[1])
-
-                            # Выполняем обмен ресурсами
-                            success = self.execute_chat_trade(
-                                faction=faction,
-                                ai_gives_resource=ai_gives_resource,
-                                ai_gives_amount=ai_gives_amount,
-                                ai_gets_resource=ai_gets_resource,
-                                ai_gets_amount=ai_gets_amount
-                            )
-
-                            if success:
-                                print(f"Торговая сделка с {faction} выполнена успешно")
-                            else:
-                                print(f"Ошибка при выполнении торговой сделки с {faction}")
-
-                            # После обработки удаляем запись
-                            self.cursor.execute("""
-                                DELETE FROM queries 
-                                WHERE resource = ? AND defense_city = ? AND faction = ?
-                            """, (resource, defense_city, faction))
-                            self.db_connection.commit()
-                            continue
-
-                    except (ValueError, IndexError) as e:
-                        print(f"Ошибка парсинга торгового соглашения: {e}")
-                        continue
-
-                if not is_ally:
-                    print(f"Фракция {faction} не является союзником. Пропускаем запрос.")
-                    # Удаляем запросы от не-союзников
+                if success:
+                    print(f"Сделка #{trade_id} исполнена")
+                else:
+                    print(f"Не удалось исполнить сделку #{trade_id}")
+                    # Даже если не удалось, помечаем как обработанную
                     self.cursor.execute("""
-                        DELETE FROM queries 
-                        WHERE resource = ? AND defense_city = ? AND attack_city = ? AND faction = ?
-                    """, (resource, defense_city, attack_city, faction))
-                    self.db_connection.commit()
-                    continue
+                        UPDATE trade_agreements 
+                        SET agree = 2 
+                        WHERE id = ?
+                    """, (trade_id,))
 
-                is_ally_turn = True  # Устанавливаем флаг, если хотя бы один запрос выполнен для союзника
-
-                # Если заполнен столбец resource (не торговый запрос)
-                if resource and ':' not in str(resource):
-                    self.transfer_resource_to_ally(faction, resource)
-
-                # Если заполнен столбец defense_city (не торговый запрос)
-                if defense_city and ':' not in str(defense_city):
-                    self.reinforce_defense_in_city(defense_city, faction)
-
-                # Если заполнен столбец attack_city
-                if attack_city:
-                    # Получаем владельца целевого города
-                    self.cursor.execute("""
-                        SELECT faction FROM cities WHERE name = ?
-                    """, (attack_city,))
-                    target_faction_row = self.cursor.fetchone()
-
-                    if not target_faction_row:
-                        print(f"Город {attack_city} не найден.")
-                        continue
-
-                    target_faction = target_faction_row[0]
-
-                    # Обновляем статус дипломатии на "война"
-                    self.update_diplomacy_status(target_faction, "война")
-
-                    # Обнуляем отношения в таблице relations
-                    self.cursor.execute("""
-                        UPDATE relations
-                        SET relationship = 0
-                        WHERE faction1 = ? AND faction2 = ?
-                    """, (self.faction, target_faction))
-                    self.db_connection.commit()
-
-                    print(f"Фракция {self.faction} объявила войну фракции {target_faction} по запросу союзника.")
-
-                    # Выполняем атаку на город — теперь вторым параметром передаётся target_faction
-                    self.launch_attack_on_city(attack_city, target_faction)
-
-                # Удаляем обработанный запрос
-                self.cursor.execute("""
-                    DELETE FROM queries 
-                    WHERE resource = ? AND defense_city = ? AND attack_city = ? AND faction = ?
-                """, (resource, defense_city, attack_city, faction))
-                self.db_connection.commit()
-
-            if is_ally_turn:
-                print("Обработка запросов от союзников завершена.")
-            else:
-                print("Обработка запросов завершена. Не было запросов от союзников.")
+            self.db_connection.commit()
+            print(f"Исполнение сделок завершено. Обработано: {len(trade_rows)}")
 
         except Exception as e:
-            print(f"Ошибка при обработке запросов: {e}")
+            print(f"Ошибка при обработке торговых соглашений: {e}")
+
+    def _get_ai_resources(self, faction):
+        """
+        Получает все ресурсы указанной фракции.
+        Возвращает словарь {тип_ресурса: количество}
+        """
+        resources = {}
+        self.cursor.execute('''
+            SELECT resource_type, amount 
+            FROM resources 
+            WHERE faction = ?
+        ''', (faction,))
+
+        for row in self.cursor.fetchall():
+            resource_type, amount = row
+            resources[resource_type] = amount
+
+        return resources
+
+    def execute_trade_from_agreement(self, trade_id, initiator, give_type, give_amount, get_type, get_amount):
+        """
+        Выполняет торговое соглашение и обновляет ресурсы обеих сторон.
+        """
+        try:
+            # 1. Получаем текущие ресурсы ИИ (целевой фракции)
+            ai_resources = {}
+            self.cursor.execute('''
+                SELECT resource_type, amount 
+                FROM resources 
+                WHERE faction = ?
+            ''', (self.faction,))
+
+            for row in self.cursor.fetchall():
+                resource_type, amount = row
+                ai_resources[resource_type] = amount
+
+            # 2. Проверяем наличие нужного ресурса у ИИ (ресурса, который нужно отдать инициатору)
+            if ai_resources.get(get_type, 0) < get_amount:
+                print(
+                    f"У ИИ {self.faction} недостаточно {get_type} для сделки: {ai_resources.get(get_type, 0)} < {get_amount}")
+                return False
+
+            # 3. Вычитаем ресурсы у ИИ (то, что ИИ отдает инициатору)
+            ai_resources[get_type] -= get_amount
+
+            # 4. Добавляем полученные ресурсы ИИ (то, что ИИ получает от инициатора)
+            ai_resources[give_type] = ai_resources.get(give_type, 0) + give_amount
+
+            # 5. Сохраняем ресурсы ИИ
+            for resource_type, amount in ai_resources.items():
+                self.cursor.execute('''
+                    UPDATE resources 
+                    SET amount = ?
+                    WHERE faction = ? AND resource_type = ?
+                ''', (amount, self.faction, resource_type))
+
+            # 6. Теперь обновляем ресурсы инициатора (игрока)
+            # Получаем ресурсы инициатора
+            player_resources = {}
+            self.cursor.execute('''
+                SELECT resource_type, amount 
+                FROM resources 
+                WHERE faction = ?
+            ''', (initiator,))
+
+            for row in self.cursor.fetchall():
+                resource_type, amount = row
+                player_resources[resource_type] = amount
+
+            # Проверяем, есть ли у инициатора достаточно ресурсов (то, что он должен отдать ИИ)
+            if player_resources.get(give_type, 0) >= give_amount:
+                # Вычитаем у игрока (то, что игрок отдает ИИ)
+                player_resources[give_type] -= give_amount
+
+                # Добавляем игроку то, что отдает ИИ (то, что игрок получает от ИИ)
+                player_resources[get_type] = player_resources.get(get_type, 0) + get_amount
+
+                # Сохраняем ресурсы игрока
+                for resource_type, amount in player_resources.items():
+                    self.cursor.execute('''
+                        UPDATE resources 
+                        SET amount = ?
+                        WHERE faction = ? AND resource_type = ?
+                    ''', (amount, initiator, resource_type))
+            else:
+                print(
+                    f"У инициатора {initiator} недостаточно {give_type} для сделки: {player_resources.get(give_type, 0)} < {give_amount}")
+                # Откатываем изменения у ИИ, если у игрока недостаточно ресурсов
+                self.db_connection.rollback()
+                return False
+
+            # 7. Помечаем сделку как выполненную
+            self.cursor.execute('''
+                UPDATE trade_agreements 
+                SET agree = 1 
+                WHERE id = ?
+            ''', (trade_id,))
+
+            self.db_connection.commit()
+
+            # Логируем успешную сделку
+            print(f"Сделка {trade_id} успешно выполнена:")
+            print(f"  {self.faction} отдал {get_amount} {get_type}, получил {give_amount} {give_type}")
+            print(f"  {initiator} отдал {give_amount} {give_type}, получил {get_amount} {get_type}")
+
+            return True
+
+        except Exception as e:
+            print(f"Ошибка при выполнении торгового соглашения: {e}")
+            self.db_connection.rollback()
+            return False
+
+    def _save_ai_resources(self, faction, resources):
+        """Сохраняет ресурсы ИИ фракции"""
+        cursor = self.db_connection.cursor()
+        for resource_type, amount in resources.items():
+            cursor.execute('''
+                UPDATE resources 
+                SET amount = ? 
+                WHERE faction = ? AND resource_type = ?
+            ''', (amount, faction, resource_type))
 
     def execute_chat_trade(self, faction, ai_gives_resource, ai_gives_amount, ai_gets_resource, ai_gets_amount):
         """
