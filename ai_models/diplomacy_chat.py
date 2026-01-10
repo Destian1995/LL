@@ -1,9 +1,11 @@
 # ai_models/diplomacy_chat.py
+import random
+
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
-from kivy.uix.image import Image
+
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.graphics import Color, Rectangle, RoundedRectangle
@@ -11,10 +13,10 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.clock import Clock
 from datetime import datetime
-import os
+
 from .nlp_processor import NaturalLanguageProcessor
 from .manipulation_strategy import ManipulationStrategy
-from .translation import translation_dict
+
 
 class EnhancedDiplomacyChat():
     """Улучшенная версия дипломатического чата с обработкой запросов"""
@@ -46,6 +48,39 @@ class EnhancedDiplomacyChat():
         self.message_input = None
         self.chat_status = None
         self.faction_spinner = None
+
+        self.faction_phrases = {
+            "Эльфы": {
+                "war_declaration": "Еще один решил что может гадить в наших лесах!",
+                "alliance": "Природа восторжествует!",
+                "peace": "Мир в лесах восстановлен.",
+                "rejection": "Деревья шепчут об осторожности..."
+            },
+            "Север": {
+                "war_declaration": "Грядет холодный ветер перемен...",
+                "alliance": "Светлого неба!",
+                "peace": "Мороз больше не кусает.",
+                "rejection": "Снежная буря заставляет быть осторожным."
+            },
+            "Адепты": {
+                "war_declaration": "Смерть еретикам!",
+                "alliance": "Да хранит нас Бог!",
+                "peace": "Божья воля исполнена.",
+                "rejection": "Нам нужно время для молитвы."
+            },
+            "Элины": {
+                "war_declaration": "Песок поглотит Вас...",
+                "alliance": "Огонь пустыни защитит Вас!",
+                "peace": "Знойный ветер утих.",
+                "rejection": "В пустыне нужно взвешивать каждый шаг."
+            },
+            "Вампиры": {
+                "war_declaration": "Что с головушкой совсем беда? Ну ничего....исправим..",
+                "alliance": "Теплокровных оставьте нам...",
+                "peace": "Кровь больше не будет проливаться.",
+                "rejection": "Ночь еще не наступила для таких решений."
+            }
+        }
 
     def open_diplomacy_window(self):
         """Открывает окно дипломатических переговоров"""
@@ -110,13 +145,6 @@ class EnhancedDiplomacyChat():
             padding=[dp(10), 0]
         )
 
-        self.current_faction_icon = Image(
-            source='files/pict/question.png',
-            size_hint=(None, None),
-            size=(dp(40), dp(40)),
-            allow_stretch=True
-        )
-
         self.chat_info_box = BoxLayout(
             orientation='vertical',
             size_hint=(0.8, 1),
@@ -140,7 +168,6 @@ class EnhancedDiplomacyChat():
 
         self.chat_info_box.add_widget(self.chat_title)
         self.chat_info_box.add_widget(self.relation_status)
-        chat_header.add_widget(self.current_faction_icon)
         chat_header.add_widget(self.chat_info_box)
 
         # Область чата (история переписки)
@@ -287,17 +314,12 @@ class EnhancedDiplomacyChat():
 
     def update_chat_header(self, faction):
         """Обновляет заголовок чата"""
-        # Обновляем иконку
-        icon_path = f"files/buildings/{translation_dict.get(faction, faction.lower())}.png"
-        if os.path.exists(icon_path):
-            self.current_faction_icon.source = icon_path
-        else:
-            self.current_faction_icon.source = 'files/pict/question.png'
 
         # Обновляем заголовок
         self.chat_title.text = f"Переписка с {faction}"
 
         # Обновляем статус отношений
+        # Добавляем информацию о коэффициенте сделок
         relations = self.advisor.relations_manager.load_combined_relations()
         relation_data = relations.get(faction, {"relation_level": 0, "status": "нейтралитет"})
 
@@ -306,9 +328,78 @@ class EnhancedDiplomacyChat():
         except (ValueError, TypeError, KeyError):
             relation_level = 0
 
-        rel_color = self.get_relation_color(relation_level)
-        self.relation_status.text = f"Отношения: {relation_level}/100 ({relation_data.get('status', 'нейтралитет')})"
+        # Рассчитываем коэффициент
+        coefficient = self.calculate_coefficient(relation_level)
+
+        # Добавляем информацию о коэффициенте в статус
+        coefficient_text = f" (×{coefficient:.1f})" if coefficient > 0 else " (сделки невозможны)"
+
+        self.relation_status.text = (
+            f"Отношения: {relation_level}/100 "
+            f"({relation_data.get('status', 'нейтралитет')}){coefficient_text}"
+        )
+
+        # Цвет в зависимости от коэффициента
+        if coefficient == 0:
+            rel_color = (0.8, 0.1, 0.1, 1)  # Красный
+        elif coefficient < 0.7:
+            rel_color = (1.0, 0.5, 0.0, 1)  # Оранжевый
+        elif coefficient < 1.0:
+            rel_color = (1.0, 0.8, 0.0, 1)  # Желтый
+        elif coefficient < 1.5:
+            rel_color = (0.2, 0.7, 0.3, 1)  # Зеленый
+        else:
+            rel_color = (0.1, 0.3, 0.9, 1)  # Синий
+
         self.relation_status.color = rel_color
+
+    def _handle_context_reset(self, message, faction):
+        """Обрабатывает команду сброса контекста чата"""
+        # Сбрасываем контекст переговоров для этой фракции
+        if faction in self.negotiation_context:
+            # Полностью очищаем контекст
+            self.negotiation_context[faction] = {
+                "stage": "idle",
+                "counter_offers": 0
+            }
+
+        # Очищаем активные переговоры для этой фракции
+        if faction in self.active_negotiations:
+            del self.active_negotiations[faction]
+
+        # Очищаем текущие предложения
+        if faction in self.current_offers:
+            del self.current_offers[faction]
+
+        # Добавляем сообщение о сбросе контекста
+        reset_responses = [
+            "Хорошо, забыли. Начинаем заново.",
+            "Ладно, сбрасываю контекст. Говори что хотел.",
+            "Забыл. Что там у тебя было?",
+            "Контекст очищен. Можешь начать сначала.",
+            "Принято. Забываю предыдущий разговор.",
+            "Проехали. О чем ты хотел поговорить?."
+        ]
+
+        # В зависимости от отношений можно добавить разные ответы
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 50})
+        relation_level = int(relation_data.get("relation_level", 50))
+
+        if relation_level >= 80:
+            reset_responses.extend([
+                "Как скажешь, друг. Начинаем с чистого листа!",
+                "Хорошо, союзник. Забываю всё предыдущее.",
+                "Понимаю. Иногда нужно начать заново. Забыто!"
+            ])
+        elif relation_level < 30:
+            reset_responses.extend([
+                "Ну ладно, забью. Только говори понятнее.",
+                "Забыл. Только не морочь мне голову снова.",
+                "Сбрасываю. И что теперь тебе нужно?"
+            ])
+
+        return random.choice(reset_responses)
 
     def load_chat_history(self):
         """Загружает историю переписки"""
@@ -533,7 +624,7 @@ class EnhancedDiplomacyChat():
             )
 
     def generate_diplomatic_response(self, player_message, target_faction):
-        """Генерирует ответ ИИ на сообщение игрока с улучшенной обработкой запросов ресурсов"""
+        """Генерирует ответ ИИ на сообщение игрока со всеми политическими функциями"""
 
         print(f"DEBUG: Получено сообщение: '{player_message}' от игрока")
 
@@ -541,33 +632,49 @@ class EnhancedDiplomacyChat():
         relations = self.advisor.relations_manager.load_combined_relations()
         relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
         relation_level = int(relation_data.get("relation_level", 50))
-        coefficient = self.calculate_coefficient(relation_level)
+        status = relation_data.get('status', 'нейтралитет')
 
-        # Если отношения слишком плохие для сделок
-        if coefficient == 0 and self._is_resource_request(player_message):
-            return (f"При нашем текущем уровне отношений ({relation_level}/100) "
-                    f"я не готов обсуждать сделки.")
+        message_lower = player_message.lower()
+        if self._is_context_reset(player_message):
+            return self._handle_context_reset(player_message, target_faction)
 
-        # Получаем контекст переговоров для этой фракции
+        # 1. Проверяем контекст переговоров
         context = self.negotiation_context.get(target_faction, {})
-        print(f"DEBUG: Контекст для {target_faction}: {context}")
-
-        # 1. Проверяем стадии торговли/ресурсов
         if context.get("stage") in ("ask_resource_type", "ask_resource_amount",
                                     "ask_player_offer", "counter_offer", "evaluate"):
-            print(f"DEBUG: Обработка стадии диалога: {context.get('stage')}")
             forced = self._handle_forced_dialog(player_message, target_faction, context)
             if forced:
                 return forced
 
-        # 2. УЛУЧШЕНИЕ: Автоматическая обработка запросов ресурсов с количеством
-        # Проверяем, есть ли в сообщении запрос ресурсов с указанием количества
+        # 2. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ
+        if self._is_status_inquiry(player_message):
+            return self._generate_status_response(target_faction)
+
+        # 3. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
+        if self._is_alliance_proposal(player_message):
+            return self._handle_alliance_proposal(player_message, target_faction, relation_level)
+
+        # 4. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
+        if self._is_peace_proposal(player_message):
+            return self._handle_peace_proposal(player_message, target_faction)
+
+        # 5. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
+        if self._is_war_declaration(player_message):
+            return self._handle_war_declaration(player_message, target_faction)
+
+        # 6. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
+        if self._is_provocation(player_message):
+            return self._handle_provocation(player_message, target_faction, relation_level)
+
+        # 7. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
+        if self._is_relationship_break(player_message):
+            return self._handle_relationship_break(player_message, target_faction)
+
+        # 8. УЛУЧШЕНИЕ: Автоматическая обработка запросов ресурсов с количеством
         trade_offer = self._extract_trade_offer(player_message)
         if trade_offer:
             print(f"DEBUG: Найден готовый trade_offer: {trade_offer}")
-            # Проверяем, есть ли в запросе количество
             if trade_offer.get("amount"):
-                # Инициируем диалог с уже известным количеством
                 self.negotiation_context[target_faction] = {
                     "stage": "ask_player_offer",
                     "resource": trade_offer["type"],
@@ -576,20 +683,14 @@ class EnhancedDiplomacyChat():
                 }
                 return f"Хочешь {trade_offer['amount']} {trade_offer['type']}? Что предлагаешь взамен?"
 
-        # 3. УЛУЧШЕНИЕ: Обработка запросов с типом ресурса, но без количества
+        # 9. Обработка запросов ресурсов
         is_resource_req = self._is_resource_request(player_message)
         resource_mentions = self._extract_resource_mentions(player_message)
 
-        print(f"DEBUG: _is_resource_request вернул: {is_resource_req}")
-        print(f"DEBUG: resource_mentions: {resource_mentions}")
-
         if is_resource_req and resource_mentions:
-            # Определяем, есть ли количество в запросе
             amount = self._extract_number(player_message)
-            print(f"DEBUG: Извлеченное количество: {amount}")
 
             if amount:
-                # Если количество указано - сразу переходим к предложению взамен
                 resource_type = resource_mentions[0]
                 self.negotiation_context[target_faction] = {
                     "stage": "ask_player_offer",
@@ -599,7 +700,6 @@ class EnhancedDiplomacyChat():
                 }
                 return f"Хочешь {amount} {resource_type}? Что предлагаешь взамен?"
             else:
-                # Если количество не указано - уточняем
                 resource_type = resource_mentions[0]
                 self.negotiation_context[target_faction] = {
                     "stage": "ask_resource_amount",
@@ -608,22 +708,18 @@ class EnhancedDiplomacyChat():
                 }
                 return f"Сколько {resource_type} тебе нужно?"
 
-        # 4. Определяем intent через NLP
+        # 10. Определяем intent через NLP
         intent = self.nlp_processor.process_message(player_message, context)
         print(f"DEBUG: Определен intent: {intent.name} с уверенностью {intent.confidence}")
 
-        # 5. Обрабатываем основные интенты
-        # Обработка интентов для торговли
+        # 11. Обработка интентов для торговли
         if intent.name in ("demand_resources", "trade_propose"):
-            print(f"DEBUG: Обработка intent торговли: {intent.name}")
-            # УЛУЧШЕНИЕ: Проверяем, упоминается ли тип ресурса в сообщении
             resource_mentions = self._extract_resource_mentions(player_message)
             if resource_mentions:
                 resource_type = resource_mentions[0]
                 amount = self._extract_number(player_message)
 
                 if amount:
-                    # Если есть и тип и количество
                     self.negotiation_context[target_faction] = {
                         "stage": "ask_player_offer",
                         "resource": resource_type,
@@ -632,7 +728,6 @@ class EnhancedDiplomacyChat():
                     }
                     return f"Хочешь {amount} {resource_type}? Что предлагаешь взамен?"
                 else:
-                    # Если только тип
                     self.negotiation_context[target_faction] = {
                         "stage": "ask_resource_amount",
                         "resource": resource_type,
@@ -640,100 +735,42 @@ class EnhancedDiplomacyChat():
                     }
                     return f"Сколько {resource_type} тебе нужно?"
             else:
-                # Если нет типа ресурса
                 self.negotiation_context[target_faction] = {
                     "stage": "ask_resource_type",
                     "counter_offers": 0
                 }
                 return "Какой ресурс тебе нужен: Кроны, Кристаллы или Рабочие?"
 
-        # Простые интенты для обычного диалога
+        # 12. Простые интенты
         simple_responses = {
-            "greeting": ["Привет! Рад тебя видеть.", "Здравствуйте! Как ваши дела?", "Приветствую!"],
-            "farewell": ["До свидания!", "Пока! Будем ждать ваших предложений.", "Всего хорошего!"],
+            "greeting": self._get_greeting_response(target_faction, relation_level),
+            "farewell": self._get_farewell_response(target_faction),
             "ask_status": [
-                f"Наши отношения с тобой на уровне {relation_data.get('relation_level', 50)} ({relation_data.get('status', 'нейтралитет')}).",
-                f"Я отношусь к тебе {relation_data.get('status', 'нейтралитет')}."
+                f"Наши отношения с тобой на уровне {relation_level}/100 ({status}).",
+                f"Сейчас я отношусь к тебе {status}.",
+                f"Уровень наших отношений: {relation_level}/100 - {status}."
             ],
-            "thanks": ["Пожалуйста!", "Рад помочь!", "Не за что!"],
-            "insult": ["Я не буду отвечать на оскорбления.", "Давай вести переговоры конструктивно."],
-            "threat": ["Угрозы не помогут в переговорах.", "Я не реагирую на угрозы."]
+            "thanks": ["Пожалуйста!", "Рад помочь!", "Не за что!", "Всегда к твоим услугам."],
+            "insult": [
+                "Я не буду отвечать на оскорбления.",
+                "Давай вести переговоры конструктивно.",
+                "Такие слова не помогут нашим отношениям."
+            ],
+            "threat": [
+                "Угрозы не помогут в переговорах.",
+                "Я не реагирую на угрозы.",
+                "Ты хочешь испортить наши отношения?"
+            ]
         }
 
         if intent.name in simple_responses:
-            print(f"DEBUG: Обработка простого intent: {intent.name}")
-            import random
-            return random.choice(simple_responses[intent.name])
-
-        # 6. ФОЛБЭК - если intent неизвестен или уверенность низкая
-        print(f"DEBUG: Intent не распознан или уверенность низкая")
-
-        # Проверяем вручную на ключевые слова
-        message_lower = player_message.lower()
-
-        # РАСШИРЕННЫЙ список ключевых слов для запросов ресурсов
-        request_patterns = [
-            'нужн', 'дай', 'хочу', 'получит', 'можно', 'прошу',
-            'треб', 'жела', 'хотел', 'хотела', 'хотелось',
-            'необходим', 'требуется', 'требуются'
-        ]
-
-        # Проверяем, есть ли хоть одно слово запроса
-        has_request_word = any(pattern in message_lower for pattern in request_patterns)
-        print(f"DEBUG: has_request_word: {has_request_word}")
-
-        # Проверяем наличие ресурсов
-        resource_mentions = self._extract_resource_mentions(player_message)
-        print(f"DEBUG: resource_mentions: {resource_mentions}")
-
-        if has_request_word and resource_mentions:
-            print(f"DEBUG: Найден запрос ресурсов вручную!")
-            resource_type = resource_mentions[0]
-
-            amount = self._extract_number(player_message)
-            print(f"DEBUG: Извлеченное количество: {amount}")
-
-            if amount:
-                self.negotiation_context[target_faction] = {
-                    "stage": "ask_player_offer",
-                    "resource": resource_type,
-                    "amount": amount,
-                    "counter_offers": 0
-                }
-                return f"Хочешь {amount} {resource_type}? Что предлагаешь взамен?"
+            if isinstance(simple_responses[intent.name], list):
+                return random.choice(simple_responses[intent.name])
             else:
-                self.negotiation_context[target_faction] = {
-                    "stage": "ask_resource_amount",
-                    "resource": resource_type,
-                    "counter_offers": 0
-                }
-                return f"Сколько {resource_type} тебе нужно?"
+                return simple_responses[intent.name]
 
-        # 7. Проверяем на простые приветствия/прощания вручную
-        greeting_words = ['привет', 'здравствуй', 'здравствуйте', 'добрый', 'хай', 'здаров', 'ку', 'hello', 'hi']
-        farewell_words = ['пока', 'до свидания', 'прощай', 'удачи', 'всего', 'bye', 'goodbye']
-
-        if any(word in message_lower for word in greeting_words):
-            import random
-            greetings = ["Привет! Рад тебя видеть.", "Здравствуйте! Как ваши дела?", "Приветствую!"]
-            return random.choice(greetings)
-
-        if any(word in message_lower for word in farewell_words):
-            import random
-            farewells = ["До свидания!", "Пока! Будем ждать ваших предложений.", "Всего хорошего!"]
-            return random.choice(farewells)
-
-        # Если ничего не распознано — нейтральный ответ
-        fallback_messages = [
-            "Я не совсем понял твой запрос. Можешь уточнить?",
-            "Попробуй перефразировать....я не понял..",
-            "Я не понимаю о чем речь..."
-        ]
-
-        import random
-        response = random.choice(fallback_messages)
-        print(f"DEBUG: Используется fallback response: '{response}'")
-        return response
+        # 13. ФОЛБЭК
+        return self._generate_fallback_response(player_message, target_faction, relation_level)
 
     def show_relation_tooltip(self, faction, pos=None):
         """Показывает всплывающую подсказку о влиянии отношений на сделки"""
@@ -1750,44 +1787,6 @@ class EnhancedDiplomacyChat():
         except Exception as e:
             print(f"Ошибка при улучшении отношений: {e}")
 
-    def update_chat_header(self, faction):
-        """Обновляет заголовок чата"""
-        # Существующий код...
-
-        # Добавляем информацию о коэффициенте сделок
-        relations = self.advisor.relations_manager.load_combined_relations()
-        relation_data = relations.get(faction, {"relation_level": 0, "status": "нейтралитет"})
-
-        try:
-            relation_level = int(relation_data["relation_level"])
-        except (ValueError, TypeError, KeyError):
-            relation_level = 0
-
-        # Рассчитываем коэффициент
-        coefficient = self.calculate_coefficient(relation_level)
-
-        # Добавляем информацию о коэффициенте в статус
-        coefficient_text = f" (×{coefficient:.1f})" if coefficient > 0 else " (сделки невозможны)"
-
-        self.relation_status.text = (
-            f"Отношения: {relation_level}/100 "
-            f"({relation_data.get('status', 'нейтралитет')}){coefficient_text}"
-        )
-
-        # Цвет в зависимости от коэффициента
-        if coefficient == 0:
-            rel_color = (0.8, 0.1, 0.1, 1)  # Красный
-        elif coefficient < 0.7:
-            rel_color = (1.0, 0.5, 0.0, 1)  # Оранжевый
-        elif coefficient < 1.0:
-            rel_color = (1.0, 0.8, 0.0, 1)  # Желтый
-        elif coefficient < 1.5:
-            rel_color = (0.2, 0.7, 0.3, 1)  # Зеленый
-        else:
-            rel_color = (0.1, 0.3, 0.9, 1)  # Синий
-
-        self.relation_status.color = rel_color
-
     def _extract_trade_info(self, message):
         """Извлекает информацию о торговом предложении"""
         message_lower = message.lower()
@@ -2132,3 +2131,555 @@ class EnhancedDiplomacyChat():
             return (0.1, 0.3, 0.9, 1)
         else:
             return (1, 1, 1, 1)
+
+    def _is_status_inquiry(self, message):
+        """Определяет, является ли сообщение запросом о делах/состоянии"""
+        inquiry_keywords = [
+            'как дела', 'как ты', 'как ваши дела', 'что нового',
+            'как поживаешь', 'как жизнь', 'как успехи', 'что по войскам',
+            'как армия', 'какие ресурсы', 'сколько войск', 'сила армии',
+            'ресурсы есть', 'есть ли войска', 'мощь', 'могущество',
+            'состояние', 'положение', 'обстановка', 'ситуация'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in inquiry_keywords)
+
+    def _generate_status_response(self, faction):
+        """Генерирует ответ о состоянии дел фракции"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # 1. Получаем ресурсы
+            resources = {}
+            cursor.execute("""
+                SELECT resource_type, amount FROM resources 
+                WHERE faction = ? AND resource_type IN ('Кроны', 'Кристаллы', 'Рабочие')
+            """, (faction,))
+            for res_type, amount in cursor.fetchall():
+                resources[res_type] = amount
+
+            # 2. Рассчитываем силу армии
+            army_strength = self._calculate_army_strength(faction)
+
+            # 3. Получаем количество городов
+            cursor.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (faction,))
+            city_count = cursor.fetchone()[0]
+
+            # 4. Получаем текущие отношения
+            relations = self.advisor.relations_manager.load_combined_relations()
+            relation_data = relations.get(self.faction, {"relation_level": 50, "status": "нейтралитет"})
+            relation_level = relation_data.get("relation_level", 50)
+
+            # 5. Формируем ответ
+            responses = [
+                f"Дела идут своим чередом. У нас {city_count} городов, армия силой {army_strength:,}. "
+                f"Ресурсы: {resources.get('Кроны', 0):,} крон, {resources.get('Кристаллы', 0):,} кристаллов, "
+                f"{resources.get('Рабочие', 0):,} рабочих.",
+
+                f"Все под контролем. Владеем {city_count} поселениями, военная мощь - {army_strength:,}. "
+                f"Казна: {resources.get('Кроны', 0):,}, минералы: {resources.get('Кристаллы', 0):,}, "
+                f"рабочие руки: {resources.get('Рабочие', 0):,}.",
+
+                f"Ситуация стабильна. {city_count} городов под нашей властью, армия в {army_strength:,} мощи. "
+                f"Ресурсы позволяют нам развиваться."
+            ]
+
+            return random.choice(responses)
+
+        except Exception as e:
+            print(f"Ошибка при генерации статуса: {e}")
+            return "Дела идут своим чередом. Что конкретно тебя интересует?"
+
+    def _calculate_army_strength(self, faction):
+        """Рассчитывает силу армии фракции"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("""
+                SELECT g.unit_name, g.unit_count, u.attack, u.defense, u.durability, u.unit_class 
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                WHERE u.faction = ?
+            """, (faction,))
+            units_data = cursor.fetchall()
+
+            total_strength = 0
+            class_1_count = 0
+            hero_bonus = 0
+            others_stats = 0
+
+            for unit_name, unit_count, attack, defense, durability, unit_class in units_data:
+                stats_sum = attack + defense + durability
+
+                if unit_class == "1":
+                    class_1_count += unit_count
+                    total_strength += stats_sum * unit_count
+                elif unit_class in ("2", "3"):
+                    hero_bonus += stats_sum * unit_count
+                else:
+                    others_stats += stats_sum * unit_count
+
+            if class_1_count > 0:
+                total_strength += hero_bonus * class_1_count
+
+            total_strength += others_stats
+
+            return total_strength
+
+        except Exception as e:
+            print(f"Ошибка при расчете силы армии: {e}")
+            return 0
+
+    def _is_alliance_proposal(self, message):
+        """Определяет, является ли сообщение предложением союза"""
+        alliance_keywords = [
+            'союз', 'альянс', 'объединиться', 'сотрудничать',
+            'вместе', 'союзники', 'дружить', 'помогать друг другу',
+            'заключить союз', 'создать альянс', 'стать союзниками',
+            'общий союз', 'военный союз', 'договор о союзе'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in alliance_keywords)
+
+    def _handle_alliance_proposal(self, message, faction, relation_level):
+        """Обрабатывает предложение союза"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем существующий союз
+            cursor.execute("""
+                SELECT COUNT(*) FROM diplomacies 
+                WHERE ((faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)) 
+                AND relationship = 'союз'
+            """, (self.faction, faction, faction, self.faction))
+
+            if cursor.fetchone()[0] > 0:
+                return "У нас уже есть действующий союз! Зачем его заключать снова?"
+
+            # Проверяем уровень отношений
+            if relation_level >= 90:
+                # Получаем количество городов у целевой фракции
+                cursor.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (faction,))
+                target_city_count = cursor.fetchone()[0]
+
+                # Стоимость альянса
+                alliance_cost = 100_000 + (300_000 * target_city_count)
+
+                # Получаем фразу для фракции
+                phrase = self.faction_phrases.get(faction, {}).get("alliance", "Союз заключён!")
+
+                # Создаем запись в trade_agreements как запрос на союз
+                cursor.execute("""
+                    INSERT INTO trade_agreements 
+                    (initiator, target_faction, initiator_type_resource, initiator_summ_resource,
+                     target_type_resource, target_summ_resource, agree, agreement_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    self.faction, faction, "Союз", 1,
+                    "Согласие", 1, 0, "alliance"
+                ))
+
+                self.db_connection.commit()
+
+                return f"{phrase} Я согласен на союз! Ожидай подтверждения от моих советников."
+
+            elif 75 <= relation_level < 90:
+                return "Друг. Мы должны сильнее доверять друг другу, тогда союз будет возможен."
+            elif 50 <= relation_level < 75:
+                return "Приятель. Пока сложно о чем-то конкретном говорить, давай лучше поближе узнаем друг друга."
+            elif 30 <= relation_level < 50:
+                return "Не сказал бы, что в данный момент нас интересуют подобные предложения."
+            elif 15 <= relation_level < 30:
+                return "Да я лучше башку в осиное гнездо засуну, чем вообще буду Вам отвечать."
+            else:
+                return "Вы там ещё не сдохли? Ну ничего, мы это исправим."
+
+        except Exception as e:
+            print(f"Ошибка при обработке предложения союза: {e}")
+            return "Что-то пошло не так при обработке твоего предложения."
+
+    def _is_peace_proposal(self, message):
+        """Определяет, является ли сообщение предложением мира"""
+        peace_keywords = [
+            'мир', 'перемирие', 'закончить войну', 'прекратить войну',
+            'договор о мире', 'заключить мир', 'прекратить боевые действия',
+            'остановить войну', 'мирный договор', 'примирение'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in peace_keywords)
+
+    def _handle_peace_proposal(self, message, faction):
+        """Обрабатывает предложение мира"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем текущие отношения
+            cursor.execute("""
+                SELECT relationship FROM diplomacies 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            result = cursor.fetchone()
+            if not result or result[0] != "война":
+                return "Мы с тобой и так не воюем. Зачем мир?"
+
+            # Рассчитываем силы армий
+            player_strength = self._calculate_army_strength(self.faction)
+            enemy_strength = self._calculate_army_strength(faction)
+
+            if player_strength == 0 and enemy_strength > 0:
+                return "Обойдешься. Сейчас я отыграюсь по полной."
+
+            # Если у противника нет армии
+            if enemy_strength == 0 and player_strength >= enemy_strength:
+                cursor.execute("""
+                    UPDATE diplomacies SET relationship = 'нейтралитет' 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (self.faction, faction, faction, self.faction))
+                self.db_connection.commit()
+                return "Мы согласны на мир! Нам пока и воевать то нечем..."
+
+            # Если превосходство игрока
+            if player_strength > enemy_strength:
+                superiority = ((player_strength - enemy_strength) / max(enemy_strength, 1)) * 100
+
+                if superiority >= 70:
+                    response = "Ваша милость наконец соизволила нас пощадить.."
+                elif 50 <= superiority < 70:
+                    response = "Мы уже сдаемся, что Вам еще надо?..."
+                elif 20 <= superiority < 50:
+                    response = "У нас не осталось тех кто готов сопротивляться..."
+                elif 5 <= superiority < 20:
+                    response = "Это геноцид...мы врят ли когда-то сможем воевать..."
+                else:
+                    response = "В следующий раз мы будем лучше готовы"
+
+                cursor.execute("""
+                    UPDATE diplomacies SET relationship = 'нейтралитет' 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (self.faction, faction, faction, self.faction))
+                self.db_connection.commit()
+
+                return response
+
+            # Если превосходство врага
+            elif player_strength < enemy_strength:
+                inferiority = ((enemy_strength - player_strength) / max(player_strength, 1)) * 100
+
+                if inferiority <= 15:
+                    return "Может Вы и правы, но мы еще готовы продолжать сопротивление..."
+                else:
+                    return "Уже сдаетесь?! Мы еще не закончили Вас бить!"
+            else:
+                return "Сейчас передохнем и в рыло дадим"
+
+        except Exception as e:
+            print(f"Ошибка при обработке предложения мира: {e}")
+            return "Что-то пошло не так при рассмотрении твоего предложения."
+
+    def _is_war_declaration(self, message):
+        """Определяет, является ли сообщение объявлением войны"""
+        war_keywords = [
+            'война', 'объявить войну', 'напасть', 'атаковать',
+            'вторгнуться', 'воевать', 'военные действия',
+            'уничтожить', 'разгромить', 'сокрушить', 'битва',
+            'конфликт', 'столкновение', 'военный конфликт'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in war_keywords)
+
+    def _handle_war_declaration(self, message, faction):
+        """Обрабатывает объявление войны"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем текущий ход
+            cursor.execute("SELECT turn_count FROM turn")
+            turn_result = cursor.fetchone()
+            if turn_result is None or turn_result[0] < 14:
+                return "Слишком рано для войны. Подожди 14-го хода."
+
+            # Проверяем текущие отношения
+            cursor.execute("""
+                SELECT relationship FROM diplomacies 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            result = cursor.fetchone()
+            if result and result[0] == "война":
+                return "Мы с тобой уже воюем! Ты что, забыл?"
+
+            # Объявляем войну
+            cursor.execute("""
+                UPDATE diplomacies 
+                SET relationship = 'война' 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            cursor.execute("""
+                UPDATE relations 
+                SET relationship = 0 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            self.db_connection.commit()
+
+            # Получаем фразу для фракции
+            phrase = self.faction_phrases.get(faction, {}).get("war_declaration", f"Война объявлена против {faction}!")
+
+            return phrase
+
+        except Exception as e:
+            print(f"Ошибка при объявлении войны: {e}")
+            return "Что-то пошло не так при объявлении войны."
+
+    def _is_provocation(self, message):
+        """Определяет, является ли сообщение подстрекательством"""
+        provocation_keywords = [
+            'напади на', 'атакуй', 'уничтожь', 'разгроми',
+            'воевать с', 'напасть на', 'атаковать', 'убить',
+            'устранить', 'ликвидировать', 'подстрекать',
+            'спровоцировать', 'спровоцируй', 'спровоцируйте'
+        ]
+
+        message_lower = message.lower()
+
+        # Проверяем наличие ключевых слов провокации
+        has_provocation = any(keyword in message_lower for keyword in provocation_keywords)
+
+        # Проверяем, упоминается ли третья фракция
+        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+        mentioned_factions = [f for f in all_factions if f.lower() in message_lower and f != self.faction]
+
+        return has_provocation and len(mentioned_factions) > 0
+
+    def _handle_provocation(self, message, faction, relation_level):
+        """Обрабатывает подстрекательство"""
+        try:
+            # Извлекаем упомянутую фракцию
+            all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+            mentioned_factions = [f for f in all_factions if f.lower() in message.lower() and f != self.faction]
+
+            if not mentioned_factions:
+                return "На кого именно ты предлагаешь напасть?"
+
+            target_faction = mentioned_factions[0]
+
+            # Проверяем отношения с целевой фракцией
+            cursor = self.db_connection.cursor()
+            cursor.execute("""
+                SELECT relationship FROM relations 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (faction, target_faction, target_faction, faction))
+
+            result = cursor.fetchone()
+            target_relation = result[0] if result else 50
+
+            # Проверяем наши отношения с подстрекателем
+            if relation_level < 30:
+                return "Ты думаешь, я буду слушать твои провокации? У нас с тобой плохие отношения."
+
+            # Анализируем выгоду
+            if target_relation < 30:
+                # Если и так плохие отношения с целью
+                responses = [
+                    f"С {target_faction} у нас и так напряженные отношения. Но зачем мне нападать первым?",
+                    f"Ты хочешь, чтобы я начал войну с {target_faction}? Что ты предлагаешь взамен?",
+                    f"{target_faction} и так нам не друг. Но начинать войну без причины - глупо."
+                ]
+                return random.choice(responses)
+            elif 30 <= target_relation < 60:
+                # Нейтральные отношения
+                if relation_level > 70:
+                    responses = [
+                        f"С {target_faction} у нас нейтральные отношения. Зачем их портить?",
+                        f"Ты предлагаешь мне поссориться с {target_faction}? Это рискованно.",
+                        f"Напасть на {target_faction}? Мне нужно подумать о последствиях."
+                    ]
+                else:
+                    responses = [
+                        f"Я не настолько тебе доверяю, чтобы идти на войну с {target_faction}.",
+                        f"Твои провокации против {target_faction} кажутся мне подозрительными.",
+                        f"Зачем тебе нужно, чтобы я воевал с {target_faction}? Что ты задумал?"
+                    ]
+                return random.choice(responses)
+            else:
+                # Хорошие отношения с целью
+                responses = [
+                    f"С {target_faction} у нас хорошие отношения! Я не собираюсь их портить.",
+                    f"Ты предлагаешь мне предать {target_faction}? Это недостойно.",
+                    f"{target_faction} - наш друг. Я не стану на них нападать."
+                ]
+                return random.choice(responses)
+
+        except Exception as e:
+            print(f"Ошибка при обработке провокации: {e}")
+            return "Я не понимаю, о чем ты говоришь."
+
+    def _is_relationship_break(self, message):
+        """Определяет, является ли сообщение разрывом отношений"""
+        break_keywords = [
+            'разорвать', 'прекратить', 'конец', 'хватит',
+            'достало', 'надоело', 'закончить', 'покончить',
+            'больше не', 'не хочу', 'не буду', 'хватит общаться',
+            'прекращаю', 'заканчиваю', 'прощай навсегда'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in break_keywords)
+
+    def _handle_relationship_break(self, message, faction):
+        """Обрабатывает разрыв отношений"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Ухудшаем отношения
+            cursor.execute("""
+                UPDATE relations 
+                SET relationship = relationship - 30 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            self.db_connection.commit()
+
+            responses = [
+                "Как скажешь. Наши отношения ухудшились.",
+                "Жаль. Теперь ты мне нравишься еще меньше.",
+                "Хорошо, я понял. Но помни - ты сам этого захотел.",
+                "Как хочешь. Тебе будет сложнее вести со мной дела."
+            ]
+
+            return random.choice(responses)
+
+        except Exception as e:
+            print(f"Ошибка при разрыве отношений: {e}")
+            return "Что-то пошло не так."
+
+    def _get_greeting_response(self, faction, relation_level):
+        """Генерирует приветствие в зависимости от отношений"""
+        if relation_level >= 80:
+            greetings = [
+                f"Привет, друг! Рад тебя видеть!",
+                f"Здравствуй, союзник! Как твои дела?",
+                f"Приветствую тебя, верный друг!"
+            ]
+        elif relation_level >= 60:
+            greetings = [
+                f"Привет! Рад тебя видеть.",
+                f"Здравствуйте! Как ваши дела?",
+                f"Приветствую!"
+            ]
+        elif relation_level >= 40:
+            greetings = [
+                f"Здравствуйте.",
+                f"Привет.",
+                f"Добрый день."
+            ]
+        elif relation_level >= 20:
+            greetings = [
+                f"Что тебе нужно?",
+                f"Говори.",
+                f"Я слушаю."
+            ]
+        else:
+            greetings = [
+                f"Чего пришел?",
+                f"Говори быстро.",
+                f"У меня мало времени."
+            ]
+
+        return random.choice(greetings)
+
+    def _get_farewell_response(self, faction):
+        """Генерирует прощание"""
+        farewells = [
+            "До свидания!",
+            "Пока! Будем ждать ваших предложений.",
+            "Всего хорошего!",
+            "Удачи!",
+            "Береги себя!"
+        ]
+
+        return random.choice(farewells)
+
+    def _generate_fallback_response(self, message, faction, relation_level):
+        """Генерирует ответ, когда не распознан интент"""
+
+        # Проверяем вручную на ключевые слова
+        message_lower = message.lower()
+
+        # Приветствия
+        greeting_words = ['привет', 'здравствуй', 'здравствуйте', 'добрый', 'хай', 'здаров', 'ку', 'hello', 'hi']
+        if any(word in message_lower for word in greeting_words):
+            return self._get_greeting_response(faction, relation_level)
+
+        # Прощания
+        farewell_words = ['пока', 'до свидания', 'прощай', 'удачи', 'всего', 'bye', 'goodbye']
+        if any(word in message_lower for word in farewell_words):
+            return self._get_farewell_response(faction)
+
+        # Благодарности
+        thanks_words = ['спасибо', 'благодарю', 'thanks', 'thank you']
+        if any(word in message_lower for word in thanks_words):
+            return random.choice(["Пожалуйста!", "Рад помочь!", "Не за что!"])
+
+        # Если ничего не распознано
+        if relation_level >= 60:
+            fallbacks = [
+                "Я не совсем понял твой запрос. Можешь уточнить?",
+                "Попробуй перефразировать, я не понял.",
+                "Прости, я не уловил суть твоего сообщения."
+            ]
+        elif relation_level >= 30:
+            fallbacks = [
+                "Что?",
+                "Не понял.",
+                "Повтори."
+            ]
+        else:
+            fallbacks = [
+                "Говори понятнее.",
+                "Чего бормочешь?",
+                "Выражайся яснее."
+            ]
+
+        return random.choice(fallbacks)
+
+    def _is_context_reset(self, message):
+        """Определяет, является ли сообщение командой сброса контекста"""
+        reset_keywords = [
+            'забудь', 'забей', 'обнули', 'сбрось', 'начнем заново',
+            'очисти', 'удали контекст', 'стереть', 'забудь все',
+            'сбросить контекст', 'забудь что было', 'начни сначала',
+            'рестарт', 'перезагрузка', 'очистить историю',
+            'сбросим', 'забудем', 'начать с начала',
+            'очистить чат', 'стереть память', 'новый диалог',
+            'сбрось все', 'забудь предыдущее', 'очисти разговор'
+        ]
+
+        message_lower = message.lower()
+
+        # Также проверяем комбинации с дополнениями
+        reset_phrases = [
+            'забудь все что было',
+            'сбрось контекст чата',
+            'очисти историю разговора',
+            'начнем диалог заново',
+            'забудь предыдущий разговор',
+            'стереть память о чате',
+            'новый разговор'
+        ]
+
+        # Проверяем отдельные слова
+        if any(keyword in message_lower for keyword in reset_keywords):
+            return True
+
+        # Проверяем фразы
+        if any(phrase in message_lower for phrase in reset_phrases):
+            return True
+
+        return False
