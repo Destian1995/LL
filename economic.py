@@ -595,9 +595,9 @@ class Faction:
                 trade_id, initiator, target_faction = row
 
                 if initiator == self.faction:
-                    show_message("Отказ", f"{target_faction} свернули сделку...")
+                    show_message("Отказ", f"{target_faction} свернули сделку...\n(возможно у них кончились ресурсы)")
                 elif target_faction == self.faction:
-                    show_message("Отказ", f"{initiator} свернули сделку...")
+                    show_message("Отказ", f"{initiator} свернули сделку...\n(возможно у них кончились ресурсы)")
 
             # Удаляем все неподтвержденные сделки
             self.cursor.execute('''

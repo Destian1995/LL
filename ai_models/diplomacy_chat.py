@@ -50,7 +50,7 @@ class EnhancedDiplomacyChat():
     def open_diplomacy_window(self):
         """Открывает окно дипломатических переговоров"""
         diplomacy_window = BoxLayout(
-            orientation='vertical',
+            orientation='horizontal',
             size_hint=(1, 1),
             spacing=dp(10),
             padding=dp(10)
@@ -61,109 +61,37 @@ class EnhancedDiplomacyChat():
             Color(0.08, 0.08, 0.12, 0.95)
             Rectangle(pos=diplomacy_window.pos, size=diplomacy_window.size)
 
+        # Левая часть - чат (75% ширины)
+        chat_section = BoxLayout(
+            orientation='vertical',
+            size_hint=(0.75, 1),
+            spacing=dp(10)
+        )
+
         # Шапка
         header = self.create_chat_header()
-        diplomacy_window.add_widget(header)
+        chat_section.add_widget(header)
 
         # Основная область чата
         main_area = self.create_chat_main_area()
-        diplomacy_window.add_widget(main_area)
+        chat_section.add_widget(main_area)
 
         # Панель статуса
         status_panel = self.create_status_panel()
-        diplomacy_window.add_widget(status_panel)
+        chat_section.add_widget(status_panel)
+
+        # Правая часть - информация об отношениях (25% ширины)
+        info_section = self.create_relation_sidebar()
+
+        # Добавляем обе секции
+        diplomacy_window.add_widget(chat_section)
+        diplomacy_window.add_widget(info_section)
 
         # Устанавливаем содержимое popup
         self.advisor.popup.content = diplomacy_window
 
         # Фокусируемся на поле ввода
         Clock.schedule_once(lambda dt: setattr(self.message_input, 'focus', True), 0.3)
-
-    def create_chat_header(self):
-        """Создает шапку чата"""
-        header = BoxLayout(
-            orientation='horizontal',
-            size_hint=(1, None),
-            height=dp(60),
-            padding=[dp(15), dp(10)],
-            spacing=dp(10)
-        )
-
-        # Кнопка назад
-        back_button = Button(
-            text="Назад",
-            size_hint=(None, None),
-            size=(dp(100), dp(40)),
-            background_color=(0.3, 0.3, 0.5, 1),
-            background_normal='',
-            font_size='16sp',
-            on_press=lambda x: self.advisor.return_to_main_tab()
-        )
-
-        # Информация о текущей фракции
-        faction_info = BoxLayout(
-            orientation='vertical',
-            size_hint=(0.4, 1),
-            spacing=dp(2)
-        )
-        title_label = Label(
-            text="Дипломатическая переписка",
-            font_size='18sp',
-            bold=True,
-            color=(1, 1, 1, 1),
-            halign='center'
-        )
-        faction_info.add_widget(title_label)
-
-        # Выпадающий список фракций
-        faction_selector_box = BoxLayout(
-            orientation='horizontal',
-            size_hint=(0.4, 1),
-            spacing=dp(10)
-        )
-        selector_label = Label(
-            text="Фракция:",
-            font_size='16sp',
-            color=(0.8, 0.8, 0.9, 1),
-            size_hint=(0.4, 1)
-        )
-
-        self.faction_spinner = Spinner(
-            text='Выберите фракцию',
-            values=[],
-            size_hint=(0.6, None),
-            size=(dp(150), dp(40)),
-            background_color=(0.2, 0.3, 0.5, 1),
-            font_size='14sp'
-        )
-
-        # Заполняем список фракций
-        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
-        for faction in all_factions:
-            if faction != self.faction:
-                self.faction_spinner.values.append(faction)
-
-        self.faction_spinner.bind(text=self.on_faction_selected)
-        faction_selector_box.add_widget(selector_label)
-        faction_selector_box.add_widget(self.faction_spinner)
-
-        # Кнопка обновления
-        refresh_button = Button(
-            text="🔄",
-            size_hint=(None, None),
-            size=(dp(40), dp(40)),
-            background_color=(0.4, 0.4, 0.6, 1),
-            background_normal='',
-            font_size='18sp',
-            on_press=lambda x: self.load_chat_history()
-        )
-
-        header.add_widget(back_button)
-        header.add_widget(faction_info)
-        header.add_widget(faction_selector_box)
-        header.add_widget(refresh_button)
-
-        return header
 
     def create_chat_main_area(self):
         """Создает основную область чата"""
@@ -308,11 +236,59 @@ class EnhancedDiplomacyChat():
             self.selected_faction = text
             self.load_chat_history()
             self.update_chat_header(text)
+            self.update_relation_display(text)  # Добавляем обновление отображения
+            self.load_trade_history(text)  # Загружаем историю сделок
+
+    def load_trade_history(self, faction):
+        """Загружает историю сделок с фракцией"""
+        if not hasattr(self, 'trade_history_label'):
+            return
+
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute('''
+                SELECT initiator, initiator_type_resource, initiator_summ_resource,
+                       target_type_resource, target_summ_resource, timestamp
+                FROM trade_agreements
+                WHERE (initiator = ? AND target_faction = ?)
+                   OR (initiator = ? AND target_faction = ?)
+                ORDER BY timestamp DESC
+                LIMIT 10
+            ''', (self.faction, faction, faction, self.faction))
+
+            trades = cursor.fetchall()
+
+            if trades:
+                history_text = "Последние сделки:\n\n"
+                for trade in trades:
+                    initiator, give_type, give_amount, get_type, get_amount, timestamp = trade
+
+                    if initiator == self.faction:
+                        direction = "Вы → "
+                    else:
+                        direction = "← " + faction
+
+                    history_text += (
+                            f"{direction}\n"
+                            f"Отдали: {give_amount} {give_type}\n"
+                            f"Получили: {get_amount} {get_type}\n"
+                            f"[size=10]{timestamp}[/size]\n"
+                            + "-" * 30 + "\n"
+                    )
+            else:
+                history_text = "Нет истории сделок"
+
+            self.trade_history_label.text = history_text
+            self.trade_history_label.markup = True
+
+        except Exception as e:
+            print(f"Ошибка загрузки истории сделок: {e}")
+            self.trade_history_label.text = "Ошибка загрузки истории"
 
     def update_chat_header(self, faction):
         """Обновляет заголовок чата"""
         # Обновляем иконку
-        icon_path = f"files/pict/factions/{translation_dict.get(faction, faction.lower())}.png"
+        icon_path = f"files/buildings/{translation_dict.get(faction, faction.lower())}.png"
         if os.path.exists(icon_path):
             self.current_faction_icon.source = icon_path
         else:
@@ -419,7 +395,7 @@ class EnhancedDiplomacyChat():
         )
 
         sender_label = Label(
-            text=f"{'👑' if is_player else '🏛️'} {sender}",
+            text=f"{'Справка' if is_player else '🏛️'} {sender}",
             font_size='11sp',
             color=(0.8, 0.8, 0.8, 1) if is_player else (0.7, 0.8, 1, 1),
             size_hint=(0.7, 1),
@@ -564,7 +540,13 @@ class EnhancedDiplomacyChat():
         # Загружаем данные об отношениях
         relations = self.advisor.relations_manager.load_combined_relations()
         relation_data = relations.get(target_faction, {"relation_level": 50, "status": "нейтралитет"})
+        relation_level = int(relation_data.get("relation_level", 50))
+        coefficient = self.calculate_coefficient(relation_level)
 
+        # Если отношения слишком плохие для сделок
+        if coefficient == 0 and self._is_resource_request(player_message):
+            return (f"При нашем текущем уровне отношений ({relation_level}/100) "
+                    f"я не готов обсуждать сделки.")
         # Получаем контекст переговоров для этой фракции
         context = self.negotiation_context.get(target_faction, {})
         print(f"DEBUG: Контекст для {target_faction}: {context}")  # Отладка
@@ -692,6 +674,576 @@ class EnhancedDiplomacyChat():
         response = random.choice(fallback_messages)
         print(f"DEBUG: Используется fallback response: '{response}'")  # Отладка
         return response
+
+    def show_relation_tooltip(self, faction, pos=None):
+        """Показывает всплывающую подсказку о влиянии отношений на сделки"""
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.gridlayout import GridLayout
+        from kivy.uix.label import Label
+        from kivy.uix.button import Button
+        from kivy.metrics import dp
+        from kivy.graphics import Color, Rectangle, RoundedRectangle
+
+        # Получаем данные об отношениях
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 50, "status": "нейтралитет"})
+
+        try:
+            relation_level = int(relation_data.get("relation_level", 50))
+        except (ValueError, TypeError):
+            relation_level = 50
+
+        coefficient = self.calculate_coefficient(relation_level)
+        status = relation_data.get('status', 'нейтралитет')
+
+        # Определяем цвет статуса
+        if relation_level < 15:
+            status_color = (0.8, 0.1, 0.1, 1)  # Красный
+            status_desc = "Вражда"
+        elif relation_level < 35:
+            status_color = (1.0, 0.5, 0.0, 1)  # Оранжевый
+            status_desc = "Напряженные"
+        elif relation_level < 50:
+            status_color = (1.0, 0.8, 0.0, 1)  # Желтый
+            status_desc = "Прохладные"
+        elif relation_level < 60:
+            status_color = (0.2, 0.7, 0.3, 1)  # Зеленый
+            status_desc = "Нейтральные"
+        elif relation_level < 75:
+            status_color = (0.0, 0.8, 0.8, 1)  # Бирюзовый
+            status_desc = "Дружественные"
+        elif relation_level < 90:
+            status_color = (0.1, 0.3, 0.9, 1)  # Синий
+            status_desc = "Очень дружественные"
+        else:
+            status_color = (1, 1, 1, 1)  # Белый
+            status_desc = "Союзнические"
+
+        # Создаем содержимое popup
+        content = BoxLayout(
+            orientation='vertical',
+            spacing=dp(10),
+            padding=dp(15)
+        )
+
+        # Фон
+        with content.canvas.before:
+            Color(0.1, 0.1, 0.15, 0.98)
+            RoundedRectangle(
+                pos=content.pos,
+                size=content.size,
+                radius=[dp(10), ]
+            )
+
+        # Заголовок
+        header = Label(
+            text=f"Отношения с {faction}",
+            font_size='18sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            size_hint=(1, None),
+            height=dp(40)
+        )
+        content.add_widget(header)
+
+        # Основная информация
+        main_info = GridLayout(
+            cols=2,
+            spacing=dp(10),
+            size_hint=(1, None),
+            height=dp(80)
+        )
+
+        # Уровень отношений
+        rel_label = Label(
+            text="Уровень отношений:",
+            font_size='14sp',
+            color=(0.8, 0.8, 0.9, 1),
+            halign='left'
+        )
+
+        rel_value = Label(
+            text=f"{relation_level}/100",
+            font_size='16sp',
+            bold=True,
+            color=status_color,
+            halign='right'
+        )
+
+        # Коэффициент сделок
+        coeff_label = Label(
+            text="Коэффициент сделок:",
+            font_size='14sp',
+            color=(0.8, 0.8, 0.9, 1),
+            halign='left'
+        )
+
+        coeff_value = Label(
+            text=f"×{coefficient:.2f}",
+            font_size='16sp',
+            bold=True,
+            color=status_color,
+            halign='right'
+        )
+
+        main_info.add_widget(rel_label)
+        main_info.add_widget(rel_value)
+        main_info.add_widget(coeff_label)
+        main_info.add_widget(coeff_value)
+
+        content.add_widget(main_info)
+
+        # Прогресс-бар отношений (визуализация)
+        progress_container = BoxLayout(
+            orientation='vertical',
+            spacing=dp(5),
+            size_hint=(1, None),
+            height=dp(40)
+        )
+
+        progress_bg = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height=dp(20)
+        )
+
+        # Визуализация прогресса отношений
+        with progress_bg.canvas.before:
+            Color(0.2, 0.2, 0.3, 1)
+            Rectangle(pos=progress_bg.pos, size=progress_bg.size)
+
+            # Заливка в зависимости от уровня
+            fill_width = (relation_level / 100) * progress_bg.width
+            Color(*status_color[:3], 0.7)
+            Rectangle(
+                pos=progress_bg.pos,
+                size=(fill_width if fill_width > 0 else 0, progress_bg.height)
+            )
+
+        progress_label = Label(
+            text=f"Статус: {status} ({status_desc})",
+            font_size='12sp',
+            color=status_color,
+            size_hint=(1, None),
+            height=dp(20)
+        )
+
+        progress_container.add_widget(progress_bg)
+        progress_container.add_widget(progress_label)
+        content.add_widget(progress_container)
+
+        # Детали влияния на переговоры
+        details = BoxLayout(
+            orientation='vertical',
+            spacing=dp(5),
+            size_hint=(1, None),
+            height=dp(150)
+        )
+
+        details_title = Label(
+            text="Влияние на переговоры:",
+            font_size='14sp',
+            bold=True,
+            color=(0.9, 0.9, 0.5, 1),
+            size_hint=(1, None),
+            height=dp(25)
+        )
+        details.add_widget(details_title)
+
+        # Динамическое описание в зависимости от коэффициента
+        descriptions = []
+
+        if coefficient == 0:
+            descriptions = [
+                "• Сделки полностью невозможны",
+                "• Любые предложения будут отклонены",
+                "• Требуется улучшить отношения"
+            ]
+        elif coefficient < 0.5:
+            descriptions = [
+                "• Сделки крайне невыгодны для нас",
+                "• Требуются предложения с премией 100%+",
+                "• Могут обсуждаться только критически важные сделки"
+            ]
+        elif coefficient < 1.0:
+            descriptions = [
+                f"• Сделки требуют премии {int((1 / coefficient - 1) * 100)}%",
+                "• Предложения оцениваются строго",
+                "• Торг возможен, но сложен"
+            ]
+        elif coefficient < 1.5:
+            descriptions = [
+                "• Стандартные условия сделок",
+                "• Рыночные цены и условия",
+                "• Торг ведется на равных"
+            ]
+        elif coefficient < 2.0:
+            descriptions = [
+                "• Готовность идти на уступки",
+                f"• Возможны скидки до {int((coefficient - 1) * 100)}%",
+                "• Приоритет долгосрочным отношениям"
+            ]
+        else:
+            descriptions = [
+                "• Максимально выгодные условия",
+                "• Готовы помочь в ущерб себе",
+                "• Сделки укрепляют альянс"
+            ]
+
+        for desc in descriptions:
+            desc_label = Label(
+                text=desc,
+                font_size='12sp',
+                color=(0.8, 0.8, 0.9, 1),
+                size_hint=(1, None),
+                height=dp(20),
+                halign='left'
+            )
+            details.add_widget(desc_label)
+
+        content.add_widget(details)
+
+        # Советы по улучшению отношений
+        tips = BoxLayout(
+            orientation='vertical',
+            spacing=dp(5),
+            size_hint=(1, None),
+            height=dp(80)
+        )
+
+        tips_title = Label(
+            text="Как улучшить отношения:",
+            font_size='12sp',
+            bold=True,
+            color=(0.7, 0.9, 0.7, 1),
+            size_hint=(1, None),
+            height=dp(20)
+        )
+        tips.add_widget(tips_title)
+
+        # Динамические советы
+        improvement_tips = []
+
+        if relation_level < 25:
+            improvement_tips = [
+                "✓ Заключите перемирие через посла",
+                "✓ Предложите взаимовыгодную сделку",
+                "✓ Избегайте конфликтных действий"
+            ]
+        elif relation_level < 50:
+            improvement_tips = [
+                "✓ Регулярно торгуйте с нами",
+                "✓ Помогите в совместных задачах",
+                "✓ Проявляйте дипломатичность"
+            ]
+        else:
+            improvement_tips = [
+                "✓ Заключайте долгосрочные соглашения",
+                "✓ Оказывайте военную поддержку",
+                "✓ Участвуйте в совместных проектах"
+            ]
+
+        for tip in improvement_tips:
+            tip_label = Label(
+                text=tip,
+                font_size='11sp',
+                color=(0.6, 0.8, 0.6, 1),
+                size_hint=(1, None),
+                height=dp(18),
+                halign='left'
+            )
+            tips.add_widget(tip_label)
+
+        content.add_widget(tips)
+
+        # Кнопка закрытия
+        close_btn = Button(
+            text="Закрыть",
+            size_hint=(1, None),
+            height=dp(40),
+            background_color=(0.3, 0.3, 0.5, 1),
+            background_normal='',
+            font_size='14sp'
+        )
+        content.add_widget(close_btn)
+
+        # Создаем popup
+        popup = Popup(
+            title='',
+            content=content,
+            size_hint=(0.8, 0.7),
+            auto_dismiss=True,
+            separator_color=(0.3, 0.3, 0.5, 1),
+            background=''
+        )
+
+        # Стилизуем фон popup
+        popup.background_color = (0, 0, 0, 0.3)
+
+        # Обработчик закрытия
+        close_btn.bind(on_press=popup.dismiss)
+
+        # Показываем popup
+        popup.open()
+
+        return popup
+
+    def create_chat_header(self):
+        """Создает шапку чата с иконками"""
+        header = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height=dp(60),
+            padding=[dp(15), dp(10)],
+            spacing=dp(10)
+        )
+
+        # Кнопка назад с иконкой
+        back_button = Button(
+            text="",
+            size_hint=(None, None),
+            size=(dp(40), dp(40)),
+            background_normal='files/pict/sov/back.png',  # Путь к иконке "назад"
+            background_color=(0.3, 0.3, 0.5, 1),
+            border=(0, 0, 0, 0),
+            on_press=lambda x: self.advisor.return_to_main_tab()
+        )
+
+        # Информация о текущей фракции
+        faction_info = BoxLayout(
+            orientation='vertical',
+            size_hint=(0.4, 1),
+            spacing=dp(2)
+        )
+        title_label = Label(
+            text="Дипломатическая переписка",
+            font_size='18sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            halign='center'
+        )
+        faction_info.add_widget(title_label)
+
+        # Выпадающий список фракций
+        faction_selector_box = BoxLayout(
+            orientation='horizontal',
+            size_hint=(0.4, 1),
+            spacing=dp(10)
+        )
+        selector_label = Label(
+            text="Фракция:",
+            font_size='16sp',
+            color=(0.8, 0.8, 0.9, 1),
+            size_hint=(0.4, 1)
+        )
+
+        self.faction_spinner = Spinner(
+            text='Выберите фракцию',
+            values=[],
+            size_hint=(0.6, None),
+            size=(dp(150), dp(40)),
+            background_color=(0.2, 0.3, 0.5, 1),
+            font_size='14sp',
+            background_normal='',
+            background_down=''
+        )
+
+        # Заполняем список фракций
+        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+        for faction in all_factions:
+            if faction != self.faction:
+                self.faction_spinner.values.append(faction)
+
+        self.faction_spinner.bind(text=self.on_faction_selected)
+        faction_selector_box.add_widget(selector_label)
+        faction_selector_box.add_widget(self.faction_spinner)
+
+        # Кнопка обновления с иконкой
+        refresh_button = Button(
+            text="",
+            size_hint=(None, None),
+            size=(dp(40), dp(40)),
+            background_normal='files/pict/sov/switch.png',
+            background_color=(0.4, 0.4, 0.6, 1),
+            border=(0, 0, 0, 0),
+            on_press=lambda x: self.load_chat_history()
+        )
+
+        # Кнопка информации об отношениях с иконкой
+        info_button = Button(
+            text="",
+            size_hint=(None, None),
+            size=(dp(40), dp(40)),
+            background_normal='files/pict/sov/warning.png',
+            background_color=(0.4, 0.4, 0.6, 1),
+            border=(0, 0, 0, 0),
+            on_press=self.show_relation_info
+        )
+
+        header.add_widget(back_button)
+        header.add_widget(faction_info)
+        header.add_widget(faction_selector_box)
+        header.add_widget(info_button)
+        header.add_widget(refresh_button)
+
+        return header
+
+    def create_relation_sidebar(self):
+        """Создает боковую панель с информацией об отношениях (упрощенная версия)"""
+        sidebar = BoxLayout(
+            orientation='vertical',
+            size_hint=(0.25, 1),
+            spacing=dp(10),
+            padding=dp(5)
+        )
+
+        # Заголовок панели
+        sidebar_title = Label(
+            text="Информация",
+            font_size='16sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            size_hint=(1, None),
+            height=dp(30)
+        )
+        sidebar.add_widget(sidebar_title)
+
+        # Область отображения отношений
+        relations_box = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 0.6),
+            spacing=dp(5),
+            padding=dp(5)
+        )
+
+        self.relation_display = Label(
+            text="Выберите фракцию",
+            font_size='12sp',
+            color=(0.9, 0.9, 0.9, 1),
+            size_hint=(1, 1),
+            valign='top',
+            halign='center',
+            text_size=(None, None)
+        )
+        relations_box.add_widget(self.relation_display)
+        sidebar.add_widget(relations_box)
+
+        # Кнопка подробной информации
+        details_button = Button(
+            text="Подробнее об отношениях",
+            size_hint=(1, None),
+            height=dp(40),
+            background_color=(0.3, 0.3, 0.5, 1),
+            background_normal='',
+            font_size='12sp',
+            on_press=self.show_relation_info
+        )
+        sidebar.add_widget(details_button)
+
+        # История сделок
+        history_box = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 0.4),
+            spacing=dp(5),
+            padding=dp(5)
+        )
+
+        history_title = Label(
+            text="История сделок:",
+            font_size='13sp',
+            bold=True,
+            color=(0.8, 0.8, 0.8, 1),
+            size_hint=(1, None),
+            height=dp(25)
+        )
+        history_box.add_widget(history_title)
+
+        history_scroll = ScrollView(
+            size_hint=(1, 1),
+            bar_width=dp(5)
+        )
+
+        self.trade_history_label = Label(
+            text="Нет истории сделок",
+            font_size='11sp',
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint_y=None,
+            valign='top',
+            halign='left'
+        )
+        self.trade_history_label.bind(
+            texture_size=lambda *x: self.trade_history_label.setter('height')(
+                self.trade_history_label, self.trade_history_label.texture_size[1])
+        )
+
+        history_scroll.add_widget(self.trade_history_label)
+        history_box.add_widget(history_scroll)
+        sidebar.add_widget(history_box)
+
+        return sidebar
+
+    def show_relation_info(self, instance):
+        """Показывает информацию об отношениях с текущей выбранной фракцией"""
+        if hasattr(self, 'selected_faction') and self.selected_faction:
+            self.show_relation_tooltip(self.selected_faction)
+        else:
+            # Используем метод для добавления системного сообщения
+            self.add_chat_message_system("Сначала выберите фракцию для просмотра информации об отношениях")
+
+    def update_relation_display(self, faction=None):
+        """Обновляет отображение информации об отношениях"""
+        if not faction and hasattr(self, 'selected_faction'):
+            faction = self.selected_faction
+
+        if not faction:
+            return
+
+        # Получаем данные об отношениях
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 50, "status": "нейтралитет"})
+
+        try:
+            relation_level = int(relation_data.get("relation_level", 50))
+        except (ValueError, TypeError):
+            relation_level = 50
+
+        coefficient = self.calculate_coefficient(relation_level)
+        status = relation_data.get('status', 'нейтралитет')
+
+        # Форматируем текст для отображения
+        display_text = f"""Отношения с {faction}
+
+    Уровень: [b]{relation_level}/100[/b]
+    Статус: {status}
+    Коэффициент: ×{coefficient:.2f}
+
+    [b]Влияние на сделки:[/b]
+    """
+
+        # Добавляем динамическое описание
+        if coefficient == 0:
+            display_text += "• Сделки невозможны\n"
+        elif coefficient < 0.7:
+            display_text += "• Требуется премия\n• Строгие условия\n"
+        elif coefficient < 1.3:
+            display_text += "• Стандартные условия\n• Равный торг\n"
+        else:
+            display_text += "• Выгодные условия\n• Готовы к уступкам\n"
+
+        # Добавляем совет
+        display_text += "\n[b]Совет:[/b]\n"
+        if relation_level < 30:
+            display_text += "Улучшите отношения\nперед сделками"
+        elif relation_level < 60:
+            display_text += "Торгуйтесь аккуратно"
+        else:
+            display_text += "Используйте преимущество"
+
+        # Обновляем label
+        if hasattr(self, 'relation_display'):
+            self.relation_display.text = display_text
+            self.relation_display.markup = True
 
     def _is_resource_request(self, message):
         """Определяет, является ли сообщение запросом ресурсов - УПРОЩЕННЫЙ ВАРИАНТ"""
@@ -951,62 +1503,171 @@ class EnhancedDiplomacyChat():
         )
 
     def _evaluate_trade(self, faction, context):
-        relation_data = self.advisor.relations_manager.load_combined_relations().get(
-            faction, {"relation_level": 50}
-        )
+        """Оценивает торговое предложение с учетом отношений"""
+        # Получаем данные о сделке из контекста
+        resource = context.get("resource")
+        amount = context.get("amount")
+        player_offer = context.get("player_offer")
 
-        offer = {
-            "player_offers": context["player_offer"],
-            "ai_offers": {
-                "type": context["resource"],
-                "amount": context["amount"]
-            }
+        if not all([resource, amount, player_offer]):
+            return "Что-то пошло не так. Давайте начнем переговоры заново."
+
+        # Создаем информацию о сделке
+        deal_info = {
+            'ai_gives_type': resource,
+            'ai_gives_amount': amount,
+            'player_gives_type': player_offer['type'],
+            'player_gives_amount': player_offer['amount']
         }
 
-        ratio = self._calculate_trade_ratio({
-            "give_type": offer["ai_offers"]["type"],
-            "give_amount": offer["ai_offers"]["amount"],
-            "get_type": offer["player_offers"]["type"],
-            "get_amount": offer["player_offers"]["amount"],
-        }, faction, relation_data)
+        # Рассчитываем привлекательность
+        attractiveness_data = self.calculate_deal_attractiveness(faction, deal_info, is_ai_giving=True)
+        attractiveness = attractiveness_data['attractiveness']
 
-        print(f"DEBUG: Trade ratio = {ratio}, threshold = 0.9")  # Отладочная информация
-
-        # Уменьшаем порог для завершения сделки и учитываем отношения
+        # Определяем порог принятия на основе отношений
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 50})
         relation_level = int(relation_data.get("relation_level", 50))
-        threshold = 0.9 - (relation_level - 50) * 0.002  # Чем лучше отношения, тем ниже порог
 
-        if ratio >= threshold:
+        # Динамический порог: лучше отношения = более выгодные сделки для игрока
+        if relation_level < 35:
+            threshold = 1.5  # При плохих отношениях требуем очень выгодную сделку
+        elif relation_level < 60:
+            threshold = 1.2  # При нейтральных отношениях
+        elif relation_level < 80:
+            threshold = 1.0  # При дружественных
+        else:
+            threshold = 0.9  # При союзнических готовы на менее выгодные сделки
+
+        # Отладочная информация
+        print(f"DEBUG: Привлекательность сделки: {attractiveness:.2f}")
+        print(f"DEBUG: Порог принятия: {threshold}")
+        print(f"DEBUG: Коэффициент отношений: {attractiveness_data['relation_coefficient']}")
+
+        # Принимаем решение
+        if attractiveness >= threshold:
+            # Сделка выгодна
             context["stage"] = "agreement"
             context["active_request"] = {
                 "type": "resource_trade",
-                "player_offers": offer["player_offers"],
-                "ai_offers": offer["ai_offers"],
+                "player_offers": player_offer,
+                "ai_offers": {"type": resource, "amount": amount},
             }
 
             # Выполняем сделку
             if self.execute_agreed_trade(faction, context["active_request"]):
-                return "Согласен. Принимаю сделку! Ресурсы будут переданы."
+                # Улучшаем отношения при успешной сделке
+                self.improve_relations_from_trade(faction, amount)
+                return f"Согласен! Отношения позволяют нам заключить эту сделку."
             else:
                 context["stage"] = "idle"
-                return "Согласен, но возникла ошибка при обработке сделки."
+                return "Согласен, но возникла ошибка при обработке."
 
-        # Если сделка не выгодна, предлагаем улучшение
-        context["stage"] = "counter_offer"
-        suggested_improvement = self._suggest_trade_improvement(
-            {
-                "give_type": offer["ai_offers"]["type"],
-                "give_amount": offer["ai_offers"]["amount"],
-                "get_type": offer["player_offers"]["type"],
-                "get_amount": offer["player_offers"]["amount"],
-            },
-            ratio,
-            threshold
+        else:
+            # Сделка невыгодна - предлагаем улучшение
+            context["stage"] = "counter_offer"
+
+            # Рассчитываем, что нужно изменить
+            needed_improvement = threshold - attractiveness
+
+            # Предлагаем конкретные изменения
+            if needed_improvement > 0.5:
+                # Нужно значительно улучшить предложение
+                suggested_multiplier = 1.0 + needed_improvement
+                suggested_amount = int(player_offer['amount'] * suggested_multiplier)
+
+                return (f"При наших отношениях ({relation_level}/100) это предложение недостаточно выгодно. "
+                        f"Предложи хотя бы {suggested_amount} {player_offer['type'].lower()}.")
+
+            elif needed_improvement > 0.2:
+                # Небольшое улучшение
+                suggested_amount = int(player_offer['amount'] * 1.3)
+
+                return (f"Для текущего уровня отношений ({relation_level}/100) нужно немного улучшить предложение. "
+                        f"Добавь еще {suggested_amount - player_offer['amount']} {player_offer['type'].lower()}.")
+
+            else:
+                # Почти достигли порога
+                return (f"Мы почти договорились! При наших отношениях ({relation_level}/100) "
+                        f"нужно совсем немного улучшить предложение. Можешь добавить еще "
+                        f"{int(player_offer['amount'] * 0.1)} {player_offer['type'].lower()}?")
+
+    def improve_relations_from_trade(self, faction, trade_amount):
+        """Улучшает отношения после успешной сделки"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Рассчитываем улучшение отношений в зависимости от размера сделки
+            if trade_amount < 100:
+                improvement = 1
+            elif trade_amount < 500:
+                improvement = 2
+            elif trade_amount < 1000:
+                improvement = 3
+            else:
+                improvement = 5
+
+            # Обновляем отношения
+            cursor.execute('''
+                UPDATE ai_relations 
+                SET relation_level = relation_level + ? 
+                WHERE ai_faction = ? AND target_faction = ?
+            ''', (improvement, faction, self.faction))
+
+            # Также обновляем в другую сторону
+            cursor.execute('''
+                UPDATE ai_relations 
+                SET relation_level = relation_level + ? 
+                WHERE ai_faction = ? AND target_faction = ?
+            ''', (improvement, self.faction, faction))
+
+            self.db_connection.commit()
+
+            # Обновляем кэш отношений
+            self.advisor.relations_manager.refresh_relations()
+
+            print(f"Отношения с {faction} улучшены на {improvement} пунктов")
+
+        except Exception as e:
+            print(f"Ошибка при улучшении отношений: {e}")
+
+    def update_chat_header(self, faction):
+        """Обновляет заголовок чата"""
+        # Существующий код...
+
+        # Добавляем информацию о коэффициенте сделок
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 0, "status": "нейтралитет"})
+
+        try:
+            relation_level = int(relation_data["relation_level"])
+        except (ValueError, TypeError, KeyError):
+            relation_level = 0
+
+        # Рассчитываем коэффициент
+        coefficient = self.calculate_coefficient(relation_level)
+
+        # Добавляем информацию о коэффициенте в статус
+        coefficient_text = f" (×{coefficient:.1f})" if coefficient > 0 else " (сделки невозможны)"
+
+        self.relation_status.text = (
+            f"Отношения: {relation_level}/100 "
+            f"({relation_data.get('status', 'нейтралитет')}){coefficient_text}"
         )
 
-        # Сохраняем текущее предложение для сравнения
-        context["last_ratio"] = ratio
-        return suggested_improvement
+        # Цвет в зависимости от коэффициента
+        if coefficient == 0:
+            rel_color = (0.8, 0.1, 0.1, 1)  # Красный
+        elif coefficient < 0.7:
+            rel_color = (1.0, 0.5, 0.0, 1)  # Оранжевый
+        elif coefficient < 1.0:
+            rel_color = (1.0, 0.8, 0.0, 1)  # Желтый
+        elif coefficient < 1.5:
+            rel_color = (0.2, 0.7, 0.3, 1)  # Зеленый
+        else:
+            rel_color = (0.1, 0.3, 0.9, 1)  # Синий
+
+        self.relation_status.color = rel_color
 
     def _extract_trade_info(self, message):
         """Извлекает информацию о торговом предложении"""
@@ -1232,6 +1893,102 @@ class EnhancedDiplomacyChat():
         """Прокручивает чат вниз"""
         if self.chat_scroll:
             self.chat_scroll.scroll_y = 0
+
+    def calculate_deal_attractiveness(self, faction, deal_info, is_ai_giving=True):
+        """
+        Рассчитывает привлекательность сделки с учетом отношений
+        deal_info: словарь с информацией о сделке
+        is_ai_giving: True если ИИ отдает ресурсы, False если получает
+        """
+        # Получаем уровень отношений
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 50})
+        relation_level = int(relation_data.get("relation_level", 50))
+
+        # Базовый коэффициент отношений
+        relation_coefficient = self.calculate_coefficient(relation_level)
+
+        # Получаем ресурсы ИИ
+        ai_resources = self._get_ai_resources(faction)
+
+        # Определяем что ИИ отдает и получает
+        if is_ai_giving:
+            give_type = deal_info.get('ai_gives_type')
+            give_amount = deal_info.get('ai_gives_amount', 0)
+            get_type = deal_info.get('player_gives_type')
+            get_amount = deal_info.get('player_gives_amount', 0)
+        else:
+            give_type = deal_info.get('player_gives_type')
+            give_amount = deal_info.get('player_gives_amount', 0)
+            get_type = deal_info.get('ai_gives_type')
+            get_amount = deal_info.get('ai_gives_amount', 0)
+
+        # Базовые ценности ресурсов (можно настроить)
+        resource_values = {
+            'Кроны': 1.0,
+            'Кристаллы': 1.1,
+            'Рабочие': 1.5
+        }
+
+        # Рассчитываем базовую стоимость
+        give_value = give_amount * resource_values.get(give_type, 1.0)
+        get_value = get_amount * resource_values.get(get_type, 1.0)
+
+        # Учитываем доступность ресурсов у ИИ
+        if give_type in ai_resources:
+            ai_has = ai_resources[give_type]
+            availability_factor = min(1.0, ai_has / max(1, give_amount))
+        else:
+            availability_factor = 0
+
+        # Учитываем потребность в ресурсах
+        need_factor = 1.0
+        if get_type in ai_resources:
+            # Если у ИИ мало этого ресурса, ценность выше
+            current_amount = ai_resources[get_type]
+            if current_amount < 100:  # Порог недостатка
+                need_factor = 1.5
+
+        # Итоговая формула привлекательности
+        if give_value > 0:
+            base_ratio = get_value / give_value
+            attractiveness = base_ratio * relation_coefficient * availability_factor * need_factor
+        else:
+            attractiveness = 0
+
+        return {
+            'attractiveness': attractiveness,
+            'base_ratio': get_value / give_value if give_value > 0 else 0,
+            'relation_coefficient': relation_coefficient,
+            'availability_factor': availability_factor,
+            'need_factor': need_factor
+        }
+
+    def calculate_coefficient(self, relation_level):
+        """Рассчитывает коэффициент на основе уровня отношений"""
+        try:
+            rel = int(relation_level)
+        except (ValueError, TypeError):
+            rel = 50
+
+        # Уточненные диапазоны для более плавного перехода
+        if rel < 15:
+            return 0  # Вражда - сделки невозможны
+        if 15 <= rel < 25:
+            return 0.2  # Очень плохие отношения
+        if 25 <= rel < 35:
+            return 0.5  # Плохие отношения
+        if 35 <= rel < 50:
+            return 0.8  # Нейтральные
+        if 50 <= rel < 60:
+            return 1.0  # Нормальные (базовый коэффициент)
+        if 60 <= rel < 75:
+            return 1.3  # Дружественные
+        if 75 <= rel < 90:
+            return 1.7  # Очень дружественные
+        if 90 <= rel <= 100:
+            return 2.0  # Союзники
+        return 0
 
     def get_relation_color(self, value):
         """Возвращает цвет в зависимости от значения"""
