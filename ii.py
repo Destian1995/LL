@@ -2460,10 +2460,9 @@ class AIController:
                     print(f"Сделка #{trade_id} исполнена")
                 else:
                     print(f"Не удалось исполнить сделку #{trade_id}")
-                    # Даже если не удалось, помечаем как обработанную
                     self.cursor.execute("""
                         UPDATE trade_agreements 
-                        SET agree = 2 
+                        SET agree = 1 
                         WHERE id = ?
                     """, (trade_id,))
 
