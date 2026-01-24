@@ -599,12 +599,6 @@ class Faction:
                 elif target_faction == self.faction:
                     show_message("Отказ", f"{initiator} свернули сделку...\n(возможно у них кончились ресурсы)")
 
-            # Удаляем все неподтвержденные сделки
-            self.cursor.execute('''
-                DELETE FROM trade_agreements 
-                WHERE (initiator = ? OR target_faction = ?) AND agree = 7
-            ''', (self.faction, self.faction))
-
             # Извлекаем все подтвержденные сделки
             self.cursor.execute('''
                 SELECT id, initiator, target_faction, initiator_type_resource, 

@@ -74,6 +74,43 @@ def transform_filename(file_path):
                 path_parts[i] = part.replace(ru_name, en_name)
     return '/'.join(path_parts)
 
+# Класс для кнопки с изображением
+class ImageButton(ButtonBehavior, Image):
+    pass
+
+class BlinkingImageButton(ImageButton):
+    """ImageButton с поддержкой мигания."""
+
+    def __init__(self, **kwargs):
+        super(BlinkingImageButton, self).__init__(**kwargs)
+        self.blinking = False
+        self.blink_event = None
+        self.original_source = self.source
+
+    def start_blinking(self):
+        """Запускает мигание кнопки."""
+        if not self.blinking:
+            self.blinking = True
+            self.blink_event = Clock.schedule_interval(self._blink, 0.5)
+
+    def stop_blinking(self):
+        """Останавливает мигание кнопки."""
+        if self.blinking:
+            self.blinking = False
+            if self.blink_event:
+                self.blink_event.cancel()
+            self.source = self.original_source
+
+    def _blink(self, dt):
+        """Переключает видимость кнопки для эффекта мигания."""
+        if self.source == '':
+            self.source = self.original_source
+        else:
+            self.source = ''
+
+    def cleanup(self):
+        """Очистка ресурсов."""
+        self.stop_blinking()
 
 class GameStateManager:
     def __init__(self, conn):
@@ -448,11 +485,6 @@ class ResourceBox(BoxLayout):
         self.scheduled_animate_event = Clock.schedule_once(do_animate, 0)
 
 
-# Класс для кнопки с изображением
-class ImageButton(ButtonBehavior, Image):
-    pass
-
-
 class CircularProgressButton(Button):
     progress = NumericProperty(0)
 
@@ -737,8 +769,12 @@ class GameScreen(Screen):
                 RoundedRectangle(pos=instance.pos, size=instance.size, radius=[15])
 
         mode_panel_container.bind(pos=update_mode_rect, size=update_mode_rect)
-        btn_advisor = ImageButton(source=transform_filename(f'files/sov/{self.selected_faction}.jpg'),
-                                  size_hint=(1, None), height=dp(60), on_release=self.show_advisor)
+        btn_advisor = BlinkingImageButton(
+            source=transform_filename(f'files/sov/{self.selected_faction}.jpg'),
+            size_hint=(1, None),
+            height=dp(60),
+            on_release=self.show_advisor
+        )
         btn_economy = ImageButton(source='files/status/economy.png', size_hint=(1, None), height=dp(60),
                                   on_release=self.switch_to_economy)
         btn_army = ImageButton(source='files/status/army.png', size_hint=(1, None), height=dp(60),
@@ -749,6 +785,7 @@ class GameScreen(Screen):
         mode_panel_container.add_widget(btn_economy)
         mode_panel_container.add_widget(btn_army)
         mode_panel_container.add_widget(btn_politics)
+        self.btn_advisor = btn_advisor
         self.root_overlay.add_widget(mode_panel_container)
         self.save_interface_element("ModePanel", "bottom", mode_panel_container)
 
@@ -893,10 +930,7 @@ class GameScreen(Screen):
         # Проверяем, есть ли Мятежники в городах, и создаём ИИ для них
         self.ensure_rebellion_ai_controller()
 
-        # Обновляем данные для нейронной сети перед выполнением ходов ИИ
-
-
-        # ИСПРАВЛЕНИЕ: Правильный перебор словаря ai_controllers
+        # Обновляем данные перед выполнением ходов ИИ
         for faction_name, ai_controller in self.ai_controllers.items():
             ai_controller.make_turn()
 
@@ -909,8 +943,8 @@ class GameScreen(Screen):
         # Обновляем статус ходов
         self.reset_check_attack_flags()
 
-        # Обучаем нейронную сеть на основе результатов хода
-
+        # Проверяем входящие сообщения от дипломатии
+        self.check_and_update_diplomacy_notifications()
 
         # Обработка дворян
         process_nobles_turn(self.conn, self.turn_counter)
@@ -937,6 +971,19 @@ class GameScreen(Screen):
 
         print(f"Ход {self.turn_counter} завершён")
 
+    def check_and_update_diplomacy_notifications(self):
+        """Проверяет входящие сообщения и обновляет мигание кнопки."""
+        has_incoming = self.check_recent_incoming_messages(self.conn)
+
+        if hasattr(self, 'btn_advisor'):
+            if has_incoming:
+                self.btn_advisor.start_blinking()
+            else:
+                self.btn_advisor.stop_blinking()
+
+        # Также можно сохранить состояние для использования в других местах
+        self.has_diplomacy_notifications = has_incoming
+
     def ensure_rebellion_ai_controller(self):
         """Проверяет, есть ли в городах Мятежники, и добавляет ИИ, если его ещё нет."""
         cursor = self.conn.cursor()
@@ -946,9 +993,6 @@ class GameScreen(Screen):
         if rebellion_exists and 'Мятежники' not in self.ai_controllers:
             print("Фракция 'Мятежники' обнаружена в городах. Создаём AIController.")
             self.ai_controllers['Мятежники'] = AIController('Мятежники', self.conn)
-
-
-
 
     def get_city_data(self):
         """Получает стратегически важные данные о городах для ИИ"""
@@ -1346,14 +1390,18 @@ class GameScreen(Screen):
     def cleanup(self):
         """Очистка ресурсов: таймеры, привязки, анимации."""
         print("Очистка GameScreen...")
-        # 1. Отменить все запланированные события
+        # 1. Отменить мигание кнопки советника
+        if hasattr(self, 'btn_advisor'):
+            self.btn_advisor.cleanup()
+
+        # 2. Отменить все запланированные события
         for event_name, event_obj in self.scheduled_events.items():
             if event_obj: # Проверяем, что объект не None
                 Clock.unschedule(event_obj)
                 print(f"  Отменен таймер: {event_name}")
         self.scheduled_events.clear() # Очищаем словарь
 
-        # 2. Отвязать привязки
+        # 3. Отвязать привязки
         # Примеры, могут потребоваться другие в зависимости от реализации виджетов
         if self.resource_box:
             self.resource_box.unbind(size=lambda *a: self.resource_box.update_resources()) # Убираем привязку из init_ui
@@ -1364,7 +1412,7 @@ class GameScreen(Screen):
         # Привязка к Window
         Window.unbind(on_resize=self.update_resource_box_position)
 
-        # 3. Очистить виджеты (если они содержат свои таймеры/анимации)
+        # 4. Очистить виджеты (если они содержат свои таймеры/анимации)
         if self.resource_box:
             self.resource_box.cleanup() # Вызываем cleanup у ResourceBox, если он реализован там
 
@@ -1959,10 +2007,34 @@ class GameScreen(Screen):
         self.game_state_manager.close_connection()
 
     def show_advisor(self, instance):
-        """Показать экран советника"""
+        """Показать экран советника и остановить мигание."""
+        # Останавливаем мигание при нажатии
+        if hasattr(self, 'btn_advisor'):
+            self.btn_advisor.stop_blinking()
+
         self.clear_game_area()
         advisor_view = AdvisorView(self.selected_faction, self.conn, game_screen_instance=self)
         self.game_area.add_widget(advisor_view)
+
+        # Можно пометить сообщения как прочитанные
+        self.mark_messages_as_read()
+
+    def mark_messages_as_read(self, conn=None):
+        """Помечает входящие сообщения как прочитанные."""
+        if conn is None:
+            conn = self.conn
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE negotiation_history 
+                SET is_incoming = FALSE 
+                WHERE faction2 = ? AND is_incoming = TRUE
+            """, (self.selected_faction,))
+            conn.commit()
+            print(f"Сообщения для {self.selected_faction} помечены как прочитанные")
+        except sqlite3.Error as e:
+            print(f"Ошибка при пометке сообщений как прочитанных: {e}")
 
     def update_destroyed_factions(self):
         """
@@ -2599,6 +2671,39 @@ class GameScreen(Screen):
                 finally:
                     cur.close()
 
+    def check_recent_incoming_messages(self, conn):
+        """
+        Проверяет, есть ли в последних 5 записях negotiation_history
+        входящие сообщения (is_incoming = TRUE).
+
+        Возвращает:
+            bool: True если есть входящие сообщения в последних 5 записях
+        """
+        try:
+            cursor = conn.cursor()
+
+            # Получаем последние 5 записей для текущей фракции игрока
+            cursor.execute("""
+                SELECT is_incoming 
+                FROM negotiation_history 
+                WHERE faction2 = ? OR faction1 = ?
+                ORDER BY timestamp DESC 
+                LIMIT 5
+            """, (self.selected_faction, self.selected_faction))
+
+            recent_records = cursor.fetchall()
+
+            # Проверяем, есть ли среди них входящие сообщения
+            for record in recent_records:
+                if record[0]:  # is_incoming = TRUE
+                    return True
+
+            return False
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при проверке входящих сообщений: {e}")
+            return False
+
     def on_leave(self, *args):
         """Вызывается при уходе с экрана."""
         self.cleanup()
@@ -2606,7 +2711,9 @@ class GameScreen(Screen):
 
     def on_pre_enter(self, *args):
         """Вызывается перед входом на экран."""
-        # Инициализация при повторном входе, если нужно
+        # Проверяем входящие сообщения при входе
+        Clock.schedule_once(lambda dt: self.check_and_update_diplomacy_notifications(), 0.5)
+
         return super().on_pre_enter(*args)
 
     def reset_game(self):

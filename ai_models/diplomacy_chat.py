@@ -1,5 +1,6 @@
 # ai_models/diplomacy_chat.py
 import random
+import re
 
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
@@ -14,7 +15,6 @@ from kivy.metrics import dp
 from kivy.clock import Clock
 from datetime import datetime
 
-from .nlp_processor import NaturalLanguageProcessor
 from .manipulation_strategy import ManipulationStrategy
 
 
@@ -25,8 +25,6 @@ class EnhancedDiplomacyChat():
         self.advisor = advisor_view
         self.db_connection = db_connection
         self.faction = advisor_view.faction
-        # Инициализируем NLP процессор
-        self.nlp_processor = NaturalLanguageProcessor()
 
         # Инициализируем стратегию манипуляций
         self.manipulation_strategy = ManipulationStrategy()
@@ -633,84 +631,136 @@ class EnhancedDiplomacyChat():
         status = relation_data.get('status', 'нейтралитет')
 
         message_lower = player_message.lower()
+
+        # Проверяем на сброс контекста (добавляем в самое начало)
         if self._is_context_reset(player_message):
             return self._handle_context_reset(player_message, target_faction)
 
         # 1. Проверяем контекст переговоров
         context = self.negotiation_context.get(target_faction, {})
+
+        # Добавляем обработку улучшения отношений в контекст
+        if context.get("stage") == "improve_relations_choice":
+            response = self._process_improvement_choice(player_message, target_faction, context)
+            if response:
+                return response
+
         if context.get("stage") in ("ask_resource_type", "ask_resource_amount",
                                     "ask_player_offer", "counter_offer", "evaluate"):
             forced = self._handle_forced_dialog(player_message, target_faction, context)
             if forced:
                 return forced
 
-        # 2. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ
-        if self._is_status_inquiry(player_message):
-            return self._generate_status_response(target_faction)
+        # 2. Проверка на социальные вопросы "Как дела?"
+        if self._is_how_are_you_social(player_message):
+            return self._handle_how_are_you_social(player_message, target_faction, relation_level)
 
-        # 3. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
+        # 3. Проверка на другие социальные вопросы
+        if self._is_what_do_you_think(player_message):
+            return self._handle_what_do_you_think(player_message, target_faction, relation_level)
+
+        if self._is_relationship_status_inquiry(player_message):
+            return self._handle_relationship_status_inquiry(player_message, target_faction, relation_level, status)
+
+        # 4. Проверка запроса о текущих отношениях (числовой уровень)
+        if self._is_relation_check(player_message):
+            return self._handle_relation_check(player_message, target_faction, relation_level, status)
+
+        # 5. Проверка на запрос улучшения отношений
+        if self._is_improve_relations_request(player_message):
+            return self._handle_improve_relations_request(player_message, target_faction, relation_level)
+
+        # 6. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ (общие)
+        if self._is_status_inquiry(player_message):
+            # При плохих отношениях - хамим на запросы о ресурсах/армии
+            if relation_level < 20:
+                rude_responses = [
+                    "Тебя не касается что у меня с ресурсами! Убирайся!",
+                    "Хватит выспрашивать! Мои дела - не твои дела!",
+                    "Иди к чёрту со своими вопросами о ресурсах!",
+                    "Ты что, шпион? Заткнись уже!",
+                    "Не твоё собачье дело что у меня есть! Пошёл вон!",
+                    "Хватит лезть в мои дела! Проваливай!"
+                ]
+                return random.choice(rude_responses)
+            # При хороших отношениях - нормальный ответ
+            else:
+                return self._generate_status_response(target_faction)
+
+        # 7. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
         if self._is_alliance_proposal(player_message):
             return self._handle_alliance_proposal(player_message, target_faction, relation_level)
 
-        # 4. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
+        # 8. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
         if self._is_peace_proposal(player_message):
             return self._handle_peace_proposal(player_message, target_faction)
 
-        # 5. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
+        # 9. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
         if self._is_war_declaration(player_message):
             return self._handle_war_declaration(player_message, target_faction)
 
-        # 6. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
+        # 10. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
         if self._is_provocation(player_message):
             return self._handle_provocation(player_message, target_faction, relation_level)
 
-        # 7. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
+        # 11. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
         if self._is_relationship_break(player_message):
             return self._handle_relationship_break(player_message, target_faction)
 
-        # 8. УЛУЧШЕНИЕ: Автоматическая обработка запросов ресурсов с количеством
-        # ПРОБЛЕМА: _extract_trade_offer не правильно парсит "50 тыс"
-        # Вместо этого сначала пробуем извлечь данные напрямую
-        print(f"DEBUG: Проверяем сообщение на прямой запрос ресурсов")
+        # 12. НОВАЯ ЛОГИКА: Определяем запрос ресурсов БЕЗ указания типа/количества
+        is_resource_request = self._is_resource_request(player_message)
 
-        # Сначала ищем прямой шаблон "мне [число] [ресурс]"
-        import re
+        if is_resource_request:
+            # При плохих отношениях - сразу хамим на запросы ресурсов
+            if relation_level < 20:
+                rude_responses = [
+                    "Ты что, совсем охренел?! Ресурсы у меня просить?!",
+                    "Ресурсы? Да ты совсем рехнулся! Убирайся!",
+                    "Какие ещё нахрен ресурсы?! Пошёл вон!",
+                    "Ресурсы? Для тебя? Ты мне насрал в борщ!",
+                    "Хватит попрошайничать! Исчезни!",
+                    "Тебе нужны ресурсы? А мне нужен мир без тебя! Убирайся!"
+                ]
+                return random.choice(rude_responses)
 
-        # Шаблоны для прямого поиска
-        direct_patterns = [
-            r'(?:да\s+)?(?:мне|хочу|нужно|нужен|нужны|дай|дайте)\s+(?P<amount>[\d\sтысмил\.]+)\s*(?P<resource>крон|золот|деньг|кристалл|ресурс|рабоч|люд|работник)',
-            r'(?:хочу|нужно|получить|взять|предоставь)\s+(?P<amount>[\d\sтысмил\.]+)\s+(?P<resource>крон|золот|деньг|кристалл|ресурс|рабоч|люд)',
-        ]
+            # Извлекаем упоминания ресурсов (очищенные от общих слов)
+            resource_mentions = self._extract_resource_mentions(player_message)
+            amount = self._extract_number(player_message)
 
-        for pattern in direct_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                amount_str = match.group('amount').strip()
-                resource_word = match.group('resource')
+            print(
+                f"DEBUG: is_resource_request={is_resource_request}, resource_mentions={resource_mentions}, amount={amount}")
 
-                # Преобразуем ресурс
-                resource_map = {
-                    'крон': 'Кроны', 'золот': 'Кроны', 'деньг': 'Кроны',
-                    'кристалл': 'Кристаллы', 'ресурс': 'Кристаллы',
-                    'рабоч': 'Рабочие', 'люд': 'Рабочие', 'работник': 'Рабочие'
+            # Случай 1: Общий запрос без указания типа ("мне нужны ресурсы")
+            if not resource_mentions:
+                # Инициируем уточнение типа ресурса
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_resource_type",
+                    "counter_offers": 0
                 }
+                return "Какой именно ресурс тебе нужен: Кроны (деньги), Кристаллы (минералы) или Рабочие (люди)?"
 
-                resource_type = resource_map.get(resource_word, 'Кроны')
+            # Случай 2: Указан тип ресурса, но не количество ("мне нужны деньги")
+            elif resource_mentions and not amount:
+                resource_type = resource_mentions[0]
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_resource_amount",
+                    "resource": resource_type,
+                    "counter_offers": 0
+                }
+                return f"Сколько {resource_type} тебе нужно?"
 
-                # Парсим количество с поддержкой "тыс", "миллионов" и т.д.
-                amount = self._extract_number_from_text(amount_str)
+            # Случай 3: Указан тип и количество ("дай 1000 крон")
+            elif resource_mentions and amount:
+                resource_type = resource_mentions[0]
+                self.negotiation_context[target_faction] = {
+                    "stage": "ask_player_offer",
+                    "resource": resource_type,
+                    "amount": amount,
+                    "counter_offers": 0
+                }
+                return f"Хочешь {amount:,} {resource_type}? Что предлагаешь взамен?"
 
-                if amount and amount > 0:
-                    print(f"DEBUG: Найден прямой запрос: {amount} {resource_type}")
-                    self.negotiation_context[target_faction] = {
-                        "stage": "ask_player_offer",
-                        "resource": resource_type,
-                        "amount": amount,
-                        "counter_offers": 0
-                    }
-                    return f"Хочешь {amount:,} {resource_type}? Что предлагаешь взамен?"
-
-        # Старый метод как запасной вариант
+        # 13. Старый метод как запасной вариант для прямых запросов
         trade_offer = self._extract_trade_offer(player_message)
         if trade_offer:
             print(f"DEBUG: Найден готовый trade_offer: {trade_offer}")
@@ -723,65 +773,7 @@ class EnhancedDiplomacyChat():
                 }
                 return f"Хочешь {trade_offer['amount']:,} {trade_offer['type']}? Что предлагаешь взамен?"
 
-        # 9. Обработка запросов ресурсов
-        is_resource_req = self._is_resource_request(player_message)
-        resource_mentions = self._extract_resource_mentions(player_message)
-
-        if is_resource_req and resource_mentions:
-            amount = self._extract_number(player_message)
-
-            if amount:
-                resource_type = resource_mentions[0]
-                self.negotiation_context[target_faction] = {
-                    "stage": "ask_player_offer",
-                    "resource": resource_type,
-                    "amount": amount,
-                    "counter_offers": 0
-                }
-                return f"Хочешь {amount:,} {resource_type}? Что предлагаешь взамен?"
-            else:
-                resource_type = resource_mentions[0]
-                self.negotiation_context[target_faction] = {
-                    "stage": "ask_resource_amount",
-                    "resource": resource_type,
-                    "counter_offers": 0
-                }
-                return f"Сколько {resource_type} тебе нужно?"
-
-        # 10. Определяем intent через NLP
-        intent = self.nlp_processor.process_message(player_message, context)
-        print(f"DEBUG: Определен intent: {intent.name} с уверенностью {intent.confidence}")
-
-        # 11. Обработка интентов для торговли
-        if intent.name in ("demand_resources", "trade_propose"):
-            resource_mentions = self._extract_resource_mentions(player_message)
-            if resource_mentions:
-                resource_type = resource_mentions[0]
-                amount = self._extract_number(player_message)
-
-                if amount:
-                    self.negotiation_context[target_faction] = {
-                        "stage": "ask_player_offer",
-                        "resource": resource_type,
-                        "amount": amount,
-                        "counter_offers": 0
-                    }
-                    return f"Хочешь {amount:,} {resource_type}? Что предлагаешь взамен?"
-                else:
-                    self.negotiation_context[target_faction] = {
-                        "stage": "ask_resource_amount",
-                        "resource": resource_type,
-                        "counter_offers": 0
-                    }
-                    return f"Сколько {resource_type} тебе нужно?"
-            else:
-                self.negotiation_context[target_faction] = {
-                    "stage": "ask_resource_type",
-                    "counter_offers": 0
-                }
-                return "Какой ресурс тебе нужен: Кроны, Кристаллы или Рабочие?"
-
-        # 12. Простые интенты
+        # 16. Простые интенты
         simple_responses = {
             "greeting": self._get_greeting_response(target_faction, relation_level),
             "farewell": self._get_farewell_response(target_faction),
@@ -803,53 +795,288 @@ class EnhancedDiplomacyChat():
             ]
         }
 
-        if intent.name in simple_responses:
-            if isinstance(simple_responses[intent.name], list):
-                return random.choice(simple_responses[intent.name])
-            else:
-                return simple_responses[intent.name]
-
-        # 13. ФОЛБЭК
+        # 17. ФОЛБЭК
         return self._generate_fallback_response(player_message, target_faction, relation_level)
 
+    def _is_what_do_you_think(self, message):
+        """Определяет, является ли сообщение вопросом 'Что думаешь?'"""
+        think_keywords = [
+            'что думаешь', 'что скажешь', 'как считаешь', 'как думаешь',
+            'твоё мнение', 'ты как', 'что на это скажешь', 'что скажешь по поводу',
+            'как тебе', 'что думаешь о', 'что скажешь насчёт', 'твои мысли'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in think_keywords)
+
+    def _handle_what_do_you_think(self, message, target_faction, relation_level):
+        """Обрабатывает вопрос 'Что думаешь?' с учетом отношений"""
+
+        # При плохих отношениях - хамим
+        if relation_level < 20:
+            responses = [
+                "Думаю, что ты идиот!",
+                "Что думаю? Думаю, как бы тебя поскорее отвадить!",
+                "Моё мнение - убирайся к чёрту!",
+                "Думаю, что пора тебе заткнуться!",
+                "Что думаю? Думаю, что ты мне надоел!",
+                "Моё мнение тебя не интересует! Заткнись!"
+            ]
+            return random.choice(responses)
+
+        # При нейтральных отношениях
+        elif relation_level < 60:
+            responses = [
+                "Хм... Интересный вопрос. Дай подумать.",
+                "Сложно сказать сразу. Нужно время на размышление.",
+                "Не знаю, что и думать. Сам как считаешь?",
+                "Моё мнение? Пока не определился.",
+                "Думаю... пока не придумал что.",
+                "Нужно подумать над этим."
+            ]
+            return random.choice(responses)
+
+        # При хороших отношениях
+        else:
+            responses = [
+                "Думаю, что ты задаёшь интересные вопросы, друг!",
+                "Скажу честно - мне нравится, как ты мыслишь.",
+                "Твои вопросы заставляют задуматься. Это хорошо!",
+                "Размышляю... и прихожу к выводу, что с тобой приятно общаться.",
+                "Думаю, что у нас хорошие перспективы сотрудничества!",
+                "Моё мнение - ты надёжный партнёр!"
+            ]
+            return random.choice(responses)
+
+    def _is_relationship_status_inquiry(self, message):
+        """Определяет, является ли сообщение запросом о статусе отношений (друзья/приятели и т.д.)"""
+        status_keywords = [
+            'мы друзья', 'друзья ли мы', 'мы с тобой друзья', 'дружим ли мы',
+            'мы приятели', 'приятели ли мы', 'мы с тобой приятели',
+            'мы партнеры', 'партнеры ли мы', 'мы с тобой партнеры',
+            'как ты меня считаешь', 'кто я для тебя', 'ты меня как воспринимаешь',
+            'ты меня как считаешь', 'какой у нас статус', 'какой наш статус',
+            'ты мой друг', 'я тебе друг', 'ты мне друг',
+            'ты мой приятель', 'я тебе приятель', 'ты мне приятель',
+            'ты мой партнер', 'я тебе партнер', 'ты мне партнер',
+            'кем я для тебя являюсь', 'кем ты меня считаешь'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in status_keywords)
+
+    def _handle_relationship_status_inquiry(self, message, target_faction, relation_level, status):
+        """Обрабатывает запрос о статусе отношений (друзья/приятели и т.д.)"""
+
+        # Формируем ответ в зависимости от уровня отношений
+        if relation_level >= 90:
+            responses = [
+                "Конечно, мы друзья! И не просто друзья - мы союзники! {}/100 - это говорит само за себя.".format(
+                    relation_level),
+                "Друг? Ты мне как брат! Наши отношения {}/100 - мы практически семья.".format(relation_level),
+                "Да что ты спрашиваешь! Мы лучшие друзья и верные союзники! {}/100 - отличный результат.".format(
+                    relation_level),
+                "Ты мне не просто друг, ты мне брат по оружию! {}/100 - это высший уровень доверия.".format(
+                    relation_level)
+            ]
+
+        elif relation_level >= 80:
+            responses = [
+                "Да, мы определённо друзья! {}/100 - это хороший показатель.".format(relation_level),
+                "Конечно дружим! {}/100 - мы надёжные партнёры.".format(relation_level),
+                "Без сомнений, мы друзья! {}/100 говорит о нашем взаимопонимании.".format(relation_level),
+                "Ты мой друг, это несомненно! {}/100 - прекрасные отношения.".format(relation_level)
+            ]
+
+        elif relation_level >= 70:
+            responses = [
+                "Да, можно сказать, что мы друзья. {}/100 - неплохой уровень.".format(relation_level),
+                "Мы скорее друзья, чем просто знакомые. {}/100 - это уже что-то.".format(relation_level),
+                "Друзья? Да, пожалуй. {}/100 - мы на пути к настоящей дружбе.".format(relation_level),
+                "Ты мне не враг, это точно. Можно считать, что дружим. {}/100.".format(relation_level)
+            ]
+
+        elif relation_level >= 60:
+            responses = [
+                "Хм... Мы скорее приятели, чем друзья. {}/100 - нейтрально-положительные отношения.".format(
+                    relation_level),
+                "Друзьями нас пока не назовёшь, но мы определённо приятели. {}/100.".format(relation_level),
+                "Мы приятели. {}/100 - ничего особенного, но и не плохо.".format(relation_level),
+                "Приятели, да. Друзьями пока рано. {}/100 - средний уровень.".format(relation_level)
+            ]
+
+        elif relation_level >= 50:
+            responses = [
+                "Мы... знакомые. {}/100 - нейтральные отношения.".format(relation_level),
+                "Друзья? Нет. Просто знакомые. {}/100 - ничего личного.".format(relation_level),
+                "Мы не друзья и не враги. Просто... есть. {}/100.".format(relation_level),
+                "Знакомые, не более того. {}/100 - обычные деловые отношения.".format(relation_level)
+            ]
+
+        elif relation_level >= 40:
+            responses = [
+                "Мы... деловые партнёры. Не более. {}/100 - прохладные отношения.".format(relation_level),
+                "Партнёры по необходимости. {}/100 - лучше не задавай таких вопросов.".format(relation_level),
+                "Мы сотрудничаем, но это не значит, что мы друзья. {}/100.".format(relation_level),
+                "Деловые отношения, и точка. {}/100 - не лезь в душу.".format(relation_level)
+            ]
+
+        elif relation_level >= 30:
+            responses = [
+                "Партнёры? Скорее вынужденные союзники. {}/100 - напряжённые отношения.".format(relation_level),
+                "Мы не партнёры, мы... соседи по несчастью. {}/100.".format(relation_level),
+                "Не партнёры мы с тобой. Просто пока не воюем. {}/100.".format(relation_level),
+                "Какие партнёры? {}/100 - еле терпим друг друга.".format(relation_level)
+            ]
+
+        elif relation_level >= 20:
+            responses = [
+                "Партнёры? Ты смеёшься? {}/100 - мы почти враги!".format(relation_level),
+                "Какие могут быть партнёры при {}/100? Ты мне не нравишься.".format(relation_level),
+                "Партнёры? Да ты шутишь! {}/100 говорит о том, что я тебя терпеть не могу.".format(relation_level),
+                "Ты мне не партнёр, ты мне головная боль. {}/100.".format(relation_level)
+            ]
+
+        elif relation_level >= 10:
+            responses = [
+                "Друзья? Партнёры? Да ты вообще кто такой? {}/100 - убирайся!".format(relation_level),
+                "Какой ещё статус? Ты мне враг! {}/100 - хватит задавать глупые вопросы.".format(relation_level),
+                "Ты серьёзно спрашиваешь? При {}/100? Да пошёл ты!".format(relation_level),
+                "Статус? Враг! {}/100 - и не задавай больше таких вопросов.".format(relation_level)
+            ]
+
+        else:  # 0-9
+            responses = [
+                "Ты мой смертельный враг! {}/100 - я бы тебя убил, если бы мог!".format(relation_level),
+                "Какой статус?! Ты для меня хуже чумы! {}/100 - исчезни!".format(relation_level),
+                "Ты спрашиваешь о статусе при {}/100? Ты конченый идиот!".format(relation_level),
+                "Ты мне не друг, не приятель и не партнёр. Ты - гнида! {}/100.".format(relation_level)
+            ]
+
+        return random.choice(responses)
+
+    def _is_how_are_you_social(self, message):
+        """Определяет, является ли сообщение чисто социальным вопросом 'Как дела?' без запроса о ресурсах/армии"""
+        social_keywords = [
+            'как дела', 'как ты', 'как ваши дела', 'что нового', 'как твои дела',
+            'как поживаешь', 'как жизнь', 'как успехи', 'как сам', 'как ты там',
+            'как оно', 'как делишки', 'что по жизни', 'как настроение',
+            'как здоровье', 'как ты себя чувствуешь'
+        ]
+
+        # Исключаем слова, связанные с ресурсами/армией
+        exclude_keywords = [
+            'ресурсы', 'ресурс', 'войск', 'арми', 'сила', 'мощь', 'могущество',
+            'казна', 'крон', 'кристалл', 'рабоч', 'люд', 'состояние', 'положение'
+        ]
+
+        message_lower = message.lower()
+
+        # Проверяем наличие социальных ключевых слов
+        has_social = any(keyword in message_lower for keyword in social_keywords)
+
+        # Проверяем отсутствие ключевых слов ресурсов/армии
+        has_resource = any(keyword in message_lower for keyword in exclude_keywords)
+
+        return has_social and not has_resource
+
+    def _handle_how_are_you_social(self, message, target_faction, relation_level):
+        """Обрабатывает социальный вопрос 'Как дела?' с учетом отношений"""
+
+        # При плохих отношениях - хамим
+        if relation_level < 20:
+            responses = [
+                "Да пошёл ты со своими 'как дела'!",
+                "Какие дела?! Убирайся отсюда!",
+                "Мои дела тебя не касаются, ублюдок!",
+                "Дела? Сейчас я тебе устрою дела!",
+                "Отвали с этими вопросами!",
+                "Иди к чёрту со своими 'как дела'!",
+                "Закрой уже свою пасть!",
+                "Заткнись и убирайся!"
+            ]
+            return random.choice(responses)
+
+        # При нейтральных отношениях - даем краткий ответ
+        elif relation_level < 60:
+            responses = [
+                "Дела идут. Чего хотел?",
+                "Ничего особенного. К делу.",
+                "Жив-здоров. Говори, что нужно.",
+                "Всё нормально. Чего тебе?",
+                "Пока не помер. Что там у тебя?",
+                "Держусь. В чём дело?",
+                "Дела как дела. Короче говоря.",
+                "Поживаем. Быстрей к сути."
+            ]
+            return random.choice(responses)
+
+        # При хороших отношениях - используем существующий метод генерации статуса
+        else:
+            # Используем существующий метод генерации ответа о делах
+            return self._generate_status_response(target_faction)
+
     def _extract_number_from_text(self, text):
-        """Извлекает число из текста с поддержкой 'тыс', 'миллионов' и т.д."""
+        """Извлекает число из текста с поддержкой 'тыс', 'миллионов' и т.д. - УЛУЧШЕННАЯ ВЕРСИЯ"""
         import re
 
         text = text.lower().strip()
 
-        # Удаляем точки в числах (1.000 -> 1000)
-        text = re.sub(r'(\d)\.(\d)', r'\1\2', text)
+        # Если текст пустой, возвращаем None
+        if not text:
+            return None
 
-        # Прямые сопоставления
-        if 'тыс' in text:
-            # Ищем число перед "тыс"
-            match = re.search(r'(\d+)\s*тыс', text)
+        # 1. Обработка "70 тыс", "10 тысяч" и т.д.
+        # Улучшенный паттерн для распознавания чисел с множителями
+        thousand_patterns = [
+            r'(\d+(?:\.\d+)?)\s*(?:тыс|тысяч|тысячи|т\s*ыс|т\.)',
+            r'(\d+(?:\.\d+)?)\s*(?:k|к)',
+        ]
+
+        million_patterns = [
+            r'(\d+(?:\.\d+)?)\s*(?:миллион|миллионов|милл|млн|м\.)',
+            r'(\d+(?:\.\d+)?)\s*(?:m|м)',
+        ]
+
+        # Проверяем тысячи
+        for pattern in thousand_patterns:
+            match = re.search(pattern, text)
             if match:
-                return int(match.group(1)) * 1000
+                try:
+                    number = float(match.group(1).replace('.', ''))
+                    return int(number * 1000)
+                except:
+                    pass
 
-        if 'миллион' in text or 'милл' in text:
-            match = re.search(r'(\d+)\s*(?:миллион|милл)', text)
+        # Проверяем миллионы
+        for pattern in million_patterns:
+            match = re.search(pattern, text)
             if match:
-                return int(match.group(1)) * 1000000
+                try:
+                    number = float(match.group(1).replace('.', ''))
+                    return int(number * 1000000)
+                except:
+                    pass
 
-        # Просто число
-        match = re.search(r'(\d+)', text)
+        # 2. Проверяем запись типа "70тыс" (без пробела)
+        compact_pattern = r'(\d+)(тыс|к|k|миллион|млн|м)'
+        match = re.search(compact_pattern, text)
         if match:
-            return int(match.group(1))
+            number = int(match.group(1))
+            multiplier = match.group(2)
 
-        # Словарные числа
-        word_numbers = {
-            'один': 1, 'два': 2, 'три': 3, 'четыре': 4, 'пять': 5,
-            'шесть': 6, 'семь': 7, 'восемь': 8, 'девять': 9, 'десять': 10,
-            'сто': 100, 'тысяча': 1000, 'миллион': 1000000
-        }
+            if multiplier in ['тыс', 'к', 'k']:
+                return number * 1000
+            elif multiplier in ['миллион', 'млн', 'м']:
+                return number * 1000000
 
-        for word, value in word_numbers.items():
-            if word in text:
-                return value
+        # 3. Пробуем просто число
+        numbers = re.findall(r'\d+', text)
+        if numbers:
+            return int(numbers[0])
 
-        return None
+        # 4. Словарные числительные (используем общий словарь)
+        return self._extract_number(text)  # Используем основной метод
 
     def show_relation_tooltip(self, faction, pos=None):
         """Показывает всплывающую подсказку о влиянии отношений на сделки"""
@@ -1427,7 +1654,7 @@ class EnhancedDiplomacyChat():
             display_text += "• Сделки невозможны\n"
         elif coefficient < 0.7:
             display_text += "• Требуется премия\n• Строгие условия\n"
-        elif coefficient < 1.3:
+        elif coefficient < 2:
             display_text += "• Стандартные условия\n• Равный торг\n"
         else:
             display_text += "• Выгодные условия\n• Готовы к уступкам\n"
@@ -1447,12 +1674,10 @@ class EnhancedDiplomacyChat():
             self.relation_display.markup = True
 
     def _is_resource_request(self, message):
-        """Определяет, является ли сообщение запросом ресурсов - УПРОЩЕННЫЙ ВАРИАНТ"""
+        """Определяет, является ли сообщение запросом ресурсов"""
         message_lower = message.lower().strip()
 
-        print(f"DEBUG _is_resource_request: Анализируем '{message_lower}'")  # Отладка
-
-        # Список ВСЕХ возможных слов для запросов
+        # Список слов для запросов (расширенный)
         request_words = [
             'нужен', 'нужны', 'нужно', 'нуждаюсь', 'нуждается',
             'дай', 'дайте', 'предоставь', 'предоставьте', 'отдай', 'отдайте',
@@ -1462,63 +1687,70 @@ class EnhancedDiplomacyChat():
             'прошу', 'просим', 'просят', 'просите',
             'требую', 'требуем', 'требуют', 'требуется', 'требуются',
             'необходим', 'необходимы', 'необходимо', 'необходима',
-            'хотелось бы', 'хотеться', 'хотят'
+            'хотелось бы', 'хотеться', 'хотят', 'хотим',
+            'выдели', 'выделите', 'предоставишь', 'можешь дать',
+            'помоги с', 'нужна помощь', 'помоги получить'
         ]
 
-        # Список ВСЕХ возможных ресурсов
-        resource_words = [
-            'крон', 'кронн', 'золот', 'золота', 'деньг', 'денег', 'монет', 'монеты',
-            'кристалл', 'кристал', 'кристалы', 'руда', 'руды', 'минерал', 'минералы',
-            'ресурс', 'ресурсы', 'ресурсов',
-            'рабоч', 'рабочих', 'рабочего', 'люд', 'людей', 'крестьян', 'работник', 'работников',
-            'арми', 'солдат', 'войск', 'воин', 'воинов'
-        ]
-
-        # Проверяем наличие хотя бы одного слова запроса
+        # Проверяем наличие слов запроса
         has_request = any(req_word in message_lower for req_word in request_words)
-        print(f"DEBUG _is_resource_request: has_request = {has_request}")  # Отладка
 
-        # Проверяем наличие хотя бы одного слова ресурса
-        has_resource = any(res_word in message_lower for res_word in resource_words)
-        print(f"DEBUG _is_resource_request: has_resource = {has_resource}")  # Отладка
-
-        # ДОПОЛНИТЕЛЬНО: проверяем на специальные фразы
+        # Проверяем специальные фразы
         special_phrases = [
             'мне нужны', 'нужно мне', 'дайте мне', 'хочу получить',
-            'можно получить', 'могли бы дать', 'хотел бы получить'
+            'можно получить', 'могли бы дать', 'хотел бы получить',
+            'прошу тебя о', 'выдели мне', 'предоставь мне'
         ]
 
         has_special_phrase = any(phrase in message_lower for phrase in special_phrases)
-        print(f"DEBUG _is_resource_request: has_special_phrase = {has_special_phrase}")  # Отладка
 
-        # Возвращаем True если:
-        # 1. Есть слово запроса И слово ресурса ИЛИ
-        # 2. Есть специальная фраза
-        result = (has_request and has_resource) or has_special_phrase
-        print(f"DEBUG _is_resource_request: результат = {result}")  # Отладка
+        # Если есть запрос, но нет упоминания конкретного ресурса - это общий запрос
+        if has_request or has_special_phrase:
+            # Извлекаем упоминания ресурсов (с очисткой от общих слов)
+            resource_mentions = self._extract_resource_mentions(message)
 
-        return result
+            # Если нет конкретных упоминаний - это общий запрос
+            if not resource_mentions:
+                return True  # Это общий запрос "мне нужны ресурсы"
+            else:
+                return True  # Это конкретный запрес "мне нужны деньги"
+
+        return False
 
     def _extract_resource_mentions(self, message):
-        """Извлекает все упоминания ресурсов из сообщения - РАСШИРЕННАЯ ВЕРСИЯ"""
+        """Извлекает все упоминания ресурсов из сообщения - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         message_lower = message.lower()
 
-        # Расширенное сопоставление
+        # Удаляем общие слова, которые не указывают на конкретный ресурс
+        general_resource_words = ['ресурс', 'ресурсы', 'ресурсов']
+
+        # Создаем копию сообщения без общих слов
+        cleaned_message = message_lower
+        for word in general_resource_words:
+            cleaned_message = cleaned_message.replace(word, '')
+
+        # Расширенное сопоставление (БЕЗ общих слов в маппинге)
         resource_mapping = {
             'крон': 'Кроны', 'кронн': 'Кроны', 'золот': 'Кроны', 'деньг': 'Кроны',
             'денег': 'Кроны', 'монет': 'Кроны', 'монеты': 'Кроны', 'золота': 'Кроны',
+            'золото': 'Кроны', 'казна': 'Кроны', 'финанс': 'Кроны',
+
             'кристалл': 'Кристаллы', 'кристал': 'Кристаллы', 'кристалы': 'Кристаллы',
             'руда': 'Кристаллы', 'руды': 'Кристаллы', 'минерал': 'Кристаллы',
-            'минералы': 'Кристаллы', 'ресурс': 'Кристаллы', 'ресурсы': 'Кристаллы',
+            'минералы': 'Кристаллы', 'камн': 'Кристаллы', 'самоцвет': 'Кристаллы',
+            'эссенци': 'Кристаллы', 'магическ': 'Кристаллы',
+
             'рабоч': 'Рабочие', 'рабочих': 'Рабочие', 'рабочего': 'Рабочие',
             'люд': 'Рабочие', 'людей': 'Рабочие', 'крестьян': 'Рабочие',
-            'работник': 'Рабочие', 'работников': 'Рабочие', 'рабочей': 'Рабочие'
+            'работник': 'Рабочие', 'работников': 'Рабочие', 'рабочей': 'Рабочие',
+            'населен': 'Рабочие', 'граждан': 'Рабочие', 'подданн': 'Рабочие',
+            'жител': 'Рабочие', 'персон': 'Рабочие'
         }
 
         found_resources = []
 
-        # Проверяем каждое слово в сообщении
-        words = message_lower.split()
+        # Проверяем каждое слово в ОЧИЩЕННОМ сообщении
+        words = cleaned_message.split()
         for word in words:
             for keyword, resource_type in resource_mapping.items():
                 # Проверяем вхождение ключевого слова в слово
@@ -1527,7 +1759,24 @@ class EnhancedDiplomacyChat():
                         found_resources.append(resource_type)
                     break  # переходим к следующему слову
 
-        print(f"DEBUG _extract_resource_mentions: found {found_resources} in '{message}'")  # Отладка
+        # Также проверяем оригинальное сообщение для определенных паттернов
+        if not found_resources:
+            # Проверяем конкретные паттерны
+            patterns = [
+                (['крон', 'золот', 'деньг', 'монет'], 'Кроны'),
+                (['кристалл', 'руда', 'минерал', 'камн'], 'Кристаллы'),
+                (['рабоч', 'люд', 'работник', 'крестьян'], 'Рабочие')
+            ]
+
+            for pattern_list, resource_type in patterns:
+                for pattern in pattern_list:
+                    if pattern in message_lower:
+                        if resource_type not in found_resources:
+                            found_resources.append(resource_type)
+                        break
+
+        print(
+            f"DEBUG _extract_resource_mentions: found {found_resources} in '{message}' (cleaned: '{cleaned_message}')")
         return found_resources
 
     def _extract_resource_request_info(self, message):
@@ -1556,17 +1805,45 @@ class EnhancedDiplomacyChat():
         return None
 
     def _extract_number(self, message):
-        """Извлекает число из сообщения - улучшенная версия с поддержкой тысяч, миллионов и т.д."""
+        """Извлекает число из сообщения - улучшенная версия с поддержкой тысяч, миллионов"""
         import re
 
         message_lower = message.lower()
 
-        # 1. Сначала ищем простые цифры (100, 5000 и т.д.)
+        # 1. Сначала пробуем распознать комбинации типа "70 тыс", "10 тысяч"
+        # Паттерн для "число + множитель"
+        pattern = r'(\d+)\s*(тыс|тысяч|тысячи|т\s*ыс|миллион|миллионов|милл|млн|м)'
+        match = re.search(pattern, message_lower)
+        if match:
+            number = int(match.group(1))
+            multiplier = match.group(2)
+
+            if any(word in multiplier for word in ['тыс', 'тысяч', 'тысячи', 'тс']):
+                return number * 1000
+            elif any(word in multiplier for word in ['миллион', 'миллионов', 'милл', 'млн']):
+                return number * 1000000
+            elif multiplier == 'м':
+                # Определяем по контексту - обычно "м" это тысячи
+                return number * 1000
+
+        # 2. Пробуем словарные числа с множителями
+        word_patterns = [
+            (r'(\d+)\s*к', 1000),  # "10к" = 10000
+            (r'(\d+)\s*k', 1000),  # "10k" = 10000
+            (r'(\d+)\s*т', 1000),  # "10т" = 10000
+        ]
+
+        for pattern, multiplier in word_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                return int(match.group(1)) * multiplier
+
+        # 3. Пробуем просто число
         numbers = re.findall(r'\d+', message_lower)
         if numbers:
             return int(numbers[0])
 
-        # 2. Словарь числительных с поддержкой тысяч и миллионов
+        # 4. Словарные числительные
         numeral_map = {
             # Единицы
             'один': 1, 'одну': 1, 'одного': 1, 'одной': 1,
@@ -1578,9 +1855,9 @@ class EnhancedDiplomacyChat():
             'семь': 7, 'семи': 7,
             'восемь': 8, 'восьми': 8,
             'девять': 9, 'девяти': 9,
+            'десять': 10, 'десяти': 10,
 
             # Десятки
-            'десять': 10, 'десяти': 10,
             'одиннадцать': 11, 'двенадцать': 12,
             'тринадцать': 13, 'четырнадцать': 14,
             'пятнадцать': 15, 'шестнадцать': 16,
@@ -1597,8 +1874,7 @@ class EnhancedDiplomacyChat():
             'шестьсот': 600, 'семьсот': 700,
             'восемьсот': 800, 'девятьсот': 900,
 
-            # Тысячи
-            'тыс': 1000,
+            # Тысячи словами
             'тысяча': 1000, 'тысячу': 1000, 'тысяч': 1000,
             'одна тысяча': 1000, 'две тысячи': 2000,
             'три тысячи': 3000, 'четыре тысячи': 4000,
@@ -1606,121 +1882,35 @@ class EnhancedDiplomacyChat():
             'семь тысяч': 7000, 'восемь тысяч': 8000,
             'девять тысяч': 9000,
 
-            # Миллионы
+            # Миллионы словами
             'миллион': 1000000, 'миллиона': 1000000, 'миллионов': 1000000,
             'один миллион': 1000000, 'два миллиона': 2000000,
             'три миллиона': 3000000, 'четыре миллиона': 4000000,
             'пять миллионов': 5000000, 'шесть миллионов': 6000000,
             'семь миллионов': 7000000, 'восемь миллионов': 8000000,
             'девять миллионов': 9000000,
-
-            # Десятки миллионов
-            'десять миллионов': 10000000,
-            'одиннадцать миллионов': 11000000,
-            'двадцать миллионов': 20000000,
-            'тридцать миллионов': 30000000,
-            'сорок миллионов': 40000000,
-            'пятьдесят миллионов': 50000000,
-            'сто миллионов': 100000000,
-
-            # Неопределенные количества
-            'немного': 100, 'немножко': 100, 'чуть-чуть': 50,
-            'мало': 50, 'немного': 100, 'кучу': 1000,
-            'массу': 1000, 'уйму': 1000, 'гору': 1000,
-            'пару': 2, 'несколько': 5, 'десяток': 10,
-            'дюжину': 12, 'сотню': 100
         }
 
-        # 3. Проверяем составные числительные (например, "четыре тысячи")
-        # Обрабатываем фразы вроде "четыре тысячи пятьсот"
-        compound_patterns = [
-            # Паттерн для "4 тысячи 500"
-            r'(?P<number1>\d+)\s*(?P<multiplier>тысяч|миллионов)\s*(?P<number2>\d+)',
-            # Паттерн для "четыре тысячи пятьсот"
-            r'(?P<word1>один|две|три|четыре|пять|шесть|семь|восемь|девять)\s+(?P<multiplier_word>тысяч|тысячи|тысяча|миллионов|миллиона)\s+(?P<word2>\w+)',
-        ]
-
-        for pattern in compound_patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                try:
-                    # Для цифрового формата "4 тысячи 500"
-                    if 'number1' in match.groupdict():
-                        num1 = int(match.group('number1'))
-                        num2 = int(match.group('number2'))
-                        multiplier = match.group('multiplier')
-
-                        if 'тысяч' in multiplier:
-                            return num1 * 1000 + num2
-                        elif 'миллионов' in multiplier:
-                            return num1 * 1000000 + num2
-
-                    # Для словесного формата "четыре тысячи пятьсот"
-                    elif 'word1' in match.groupdict():
-                        word_to_num = {
-                            'один': 1, 'две': 2, 'три': 3, 'четыре': 4,
-                            'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8,
-                            'девять': 9
-                        }
-
-                        num1 = word_to_num.get(match.group('word1'), 0)
-                        multiplier_word = match.group('multiplier_word')
-                        word2 = match.group('word2')
-
-                        # Преобразуем вторую часть
-                        for word, value in numeral_map.items():
-                            if word in word2:
-                                num2 = value
-                                break
-                        else:
-                            num2 = 0
-
-                        if 'тысяч' in multiplier_word or 'тысяча' in multiplier_word or 'тысячи' in multiplier_word:
-                            return num1 * 1000 + num2
-                        elif 'миллион' in multiplier_word:
-                            return num1 * 1000000 + num2
-                except:
-                    pass
-
-        # 4. Проверяем отдельные слова и простые комбинации
-        words = message_lower.split()
-
-        # Проверяем комбинации вроде "4 тысячи"
-        for i in range(len(words) - 1):
-            word1 = words[i]
-            word2 = words[i + 1]
-
-            # Проверяем цифру + множитель
-            if word1.isdigit():
-                num = int(word1)
-                if 'тысяч' in word2 or 'тысяча' in word2:
-                    return num * 1000
-                elif 'миллион' in word2:
-                    return num * 1000000
-
-            # Проверяем словесную комбинацию
-            word_to_num_small = {
-                'один': 1, 'две': 2, 'три': 3, 'четыре': 4,
-                'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8,
-                'девять': 9, 'десять': 10
-            }
-
-            if word1 in word_to_num_small:
-                num = word_to_num_small[word1]
-                if 'тысяч' in word2 or 'тысяча' in word2:
-                    return num * 1000
-                elif 'миллион' in word2:
-                    return num * 1000000
-
-        # 5. Проверяем отдельные слова из словаря
+        # Проверяем каждую пару в словаре
         for numeral, value in numeral_map.items():
             if numeral in message_lower:
+                # Для составных числительных типа "семьдесят тысяч"
+                if 'тысяч' in numeral and 'тысяч' in message_lower:
+                    # Ищем число перед "тысяч"
+                    before_thousand = re.search(r'(\w+)\s+тысяч', message_lower)
+                    if before_thousand:
+                        before_word = before_thousand.group(1)
+                        if before_word in ['двадцать', 'тридцать', 'сорок', 'пятьдесят',
+                                           'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто']:
+                            # Для "двадцать тысяч" и т.д.
+                            tens_map = {
+                                'двадцать': 20, 'тридцать': 30, 'сорок': 40,
+                                'пятьдесят': 50, 'шестьдесят': 60,
+                                'семьдесят': 70, 'восемьдесят': 80,
+                                'девяносто': 90
+                            }
+                            return tens_map.get(before_word, 0) * 1000
                 return value
-
-        # 6. Проверяем отдельные слова в сообщении
-        for word in words:
-            if word in numeral_map:
-                return numeral_map[word]
 
         return None
 
@@ -1728,7 +1918,6 @@ class EnhancedDiplomacyChat():
         """Полностью извлекает информацию о запросе ресурсов с поддержкой любых числительных"""
         message_lower = message.lower()
 
-        # Ресурсы для поиска
         resource_patterns = {
             r'крон': 'Кроны',
             r'золот': 'Кроны',
@@ -1837,28 +2026,75 @@ class EnhancedDiplomacyChat():
             "amount": amount
         }
 
+    def _improve_resource_clarification(self):
+        """Дополнительные улучшения для уточнения ресурсов"""
+
+        # Можно добавить более умные подсказки
+        clarification_responses = {
+            "ask_resource_type": [
+                "Какой ресурс тебя интересует? Выбери: Кроны (деньги), Кристаллы (минералы) или Рабочие (люди).",
+                "Уточни, что тебе нужно: золото (Кроны), драгоценные камни (Кристаллы) или рабочие руки (Рабочие)?",
+                "Я могу предоставить: Кроны для казны, Кристаллы для магии и строительства, Рабочих для работы."
+            ],
+            "ask_resource_amount": [
+                "Назови количество цифрами или словами (например: 1000, пятьсот, 2 тысячи).",
+                "Сколько именно? Укажи число.",
+                "Какое количество тебе нужно?"
+            ]
+        }
+
+        return clarification_responses
+
     def _handle_forced_dialog(self, message, faction, context):
+        """Обрабатывает принудительный диалог (уточнение деталей)"""
         message_lower = message.lower()
 
+        # Этап 1: Уточнение типа ресурса
         if context.get("stage") == "ask_resource_type":
             resource = self._extract_resource_type(message)
             if not resource:
-                # Ресурс не распознан → уточняем
-                return "Какой ресурс тебе нужен: Кроны, Кристаллы или Рабочие?"
+                # Если ресурс не распознан, предлагаем варианты
+                responses = [
+                    "Пожалуйста, укажи какой ресурс: Кроны (деньги), Кристаллы (минералы) или Рабочие (люди)?",
+                    "Какой ресурс тебе нужен? Выбери: Кроны, Кристаллы или Рабочие.",
+                    "Уточни, что тебе нужно: золото (Кроны), драгоценные камни (Кристаллы) или рабочие руки (Рабочие)?"
+                ]
+                return random.choice(responses)
+
             context["resource"] = resource
             context["stage"] = "ask_resource_amount"
-            return f"Сколько {resource} тебе нужно?"
+            return f"Хорошо, тебе нужны {resource}. Сколько именно?"
 
-        if context.get("stage") == "ask_resource_amount":
-            amount = self._extract_number(message)
-            if not amount:
-                return "Назови конкретное количество."
+        # Этап 2: Уточнение количества
+        elif context.get("stage") == "ask_resource_amount":
+            # Используем улучшенный метод для парсинга чисел
+            amount = self._extract_number_from_text(message)
+            if not amount or amount <= 0:
+                responses = [
+                    "Пожалуйста, назови конкретное количество. Примеры: 100, 1.000, 10 тыс, пятьсот, тысяча.",
+                    "Сколько именно? Можешь указать: 500, 2 тысячи, 1 млн, 70к и т.д.",
+                    "Какое количество тебе нужно? Назови число цифрами или словами."
+                ]
+                return random.choice(responses)
+
+            # Проверяем, не слишком ли большое количество
+            max_reasonable = 5000000  # Максимальное разумное количество
+            if amount > max_reasonable:
+                return f"Слишком большое количество! Назови число не больше {max_reasonable:,}."
+
             context["amount"] = amount
             context["stage"] = "ask_player_offer"
+
+            # Проверяем наличие ресурсов у ИИ
             return self._check_ai_stock_and_respond(faction, context)
 
+            # Добавляем обработку улучшения отношений
+        if context.get("stage") == "improve_relations_choice":
+            return self._process_improvement_choice(message, faction, context)
+
         if context.get("stage") == "ask_player_offer":
-            offer = self._extract_trade_offer(message)
+            # Используем улучшенный парсинг для торговых предложений
+            offer = self._extract_trade_offer_enhanced(message)  # Нужно создать этот метод
             if not offer:
                 # Проверяем, может быть игрок говорит "ничего" или отказывается
                 if any(word in message_lower for word in
@@ -1870,7 +2106,7 @@ class EnhancedDiplomacyChat():
                 resource = self._extract_resource_type(message)
                 if resource:
                     # Если есть число, создаем предложение
-                    amount = self._extract_number(message)
+                    amount = self._extract_number_from_text(message)
                     if amount:
                         offer = {
                             "type": resource,
@@ -1899,7 +2135,7 @@ class EnhancedDiplomacyChat():
                 return "Хорошо, тогда сделку отменяем."
             else:
                 # Игрок предлагает новый вариант
-                offer = self._extract_trade_offer(message)
+                offer = self._extract_trade_offer_enhanced(message)
                 if offer:
                     context["player_offer"] = offer
                     context["stage"] = "evaluate"
@@ -1909,19 +2145,123 @@ class EnhancedDiplomacyChat():
 
         return None
 
+    def _is_relation_check(self, message):
+        """Определяет, является ли сообщение запросом о текущих отношениях"""
+        relation_keywords = [
+            'какие отношения', 'как ты ко мне относишься', 'как наши отношения',
+            'отношения с', 'что думаешь о', 'как воспринимаешь',
+            'наши взаимоотношения', 'как обстоят дела между нами',
+            'что скажешь о наших отношениях', 'как мы ладим'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in relation_keywords)
+
+    def _handle_relation_check(self, message, target_faction, relation_level, status):
+        """Обрабатывает запрос о текущих отношениях"""
+        responses = []
+
+        if relation_level >= 90:
+            responses = [
+                f"Ты мой верный союзник! Наши отношения на уровне {relation_level}/100. Я доверяю тебе как себе!",
+                f"Мы как братья! {relation_level}/100 - что может быть лучше?",
+                f"Наши знамёна реют вместе! Отношения: {relation_level}/100 ({status}).",
+                f"С тобой я готов идти в огонь и воду! {relation_level}/100 говорит само за себя."
+            ]
+        elif relation_level >= 75:
+            responses = [
+                f"Ты мой хороший друг! Наши отношения: {relation_level}/100 ({status}).",
+                f"Мы находим общий язык! {relation_level}/100 - неплохой результат.",
+                f"Я тебе доверяю, но не безоговорочно. Отношения: {relation_level}/100.",
+                f"Ты надёжный партнёр! {relation_level}/100 - мы на правильном пути."
+            ]
+        elif relation_level >= 60:
+            responses = [
+                f"Наши отношения нейтральны: {relation_level}/100 ({status}).",
+                f"Ты мне не враг, но и не друг. {relation_level}/100 - так себе.",
+                f"Мы сотрудничаем, но без особого энтузиазма. {relation_level}/100.",
+                f"Отношения на среднем уровне: {relation_level}/100."
+            ]
+        elif relation_level >= 40:
+            responses = [
+                f"Между нами напряжённость: {relation_level}/100 ({status}).",
+                f"Ты мне не очень нравишься. {relation_level}/100 - могло быть и хуже.",
+                f"Наши отношения прохладные: {relation_level}/100.",
+                f"Я к тебе не испытываю симпатии. {relation_level}/100."
+            ]
+        elif relation_level >= 20:
+            responses = [
+                f"Ты мой враг! {relation_level}/100 ({status}) - лучше держись подальше!",
+                f"Я тебя ненавижу! {relation_level}/100 - даже смотреть на тебя противно!",
+                f"Наши отношения враждебные: {relation_level}/100.",
+                f"Ты мне откровенно не нравишься! {relation_level}/100."
+            ]
+        else:
+            responses = [
+                f"Ты смертельный враг! {relation_level}/100 ({status}) - готов убить при первой возможности!",
+                f"Ненавижу всем сердцем! {relation_level}/100 - не хочу даже разговаривать!",
+                f"Отношения на дне: {relation_level}/100.",
+                f"Ты для меня хуже чумы! {relation_level}/100."
+            ]
+
+        return random.choice(responses)
+
+    def _extract_trade_offer_enhanced(self, message):
+        """Улучшенное извлечение торгового предложения с поддержкой разных форматов чисел"""
+        import re
+
+        message_lower = message.lower()
+
+        # Словарь соответствий ресурсов
+        resource_map = {
+            'крон': 'Кроны', 'кронн': 'Кроны', 'золот': 'Кроны', 'деньг': 'Кроны',
+            'кристалл': 'Кристаллы', 'кристал': 'Кристаллы', 'минерал': 'Кристаллы',
+            'рабоч': 'Рабочие', 'люд': 'Рабочие', 'работник': 'Рабочие'
+        }
+
+        # Ищем тип ресурса
+        resource_type = None
+        for key, resource in resource_map.items():
+            if key in message_lower:
+                resource_type = resource
+                break
+
+        if not resource_type:
+            return None
+
+        # Используем улучшенный метод для парсинга чисел
+        amount = self._extract_number_from_text(message_lower)
+
+        if amount is None or amount <= 0:
+            return None
+
+        return {
+            "type": resource_type,
+            "amount": amount
+        }
+
     def _check_ai_stock_and_respond(self, faction, context):
+        """Проверяет наличие ресурсов у ИИ и генерирует ответ"""
         ai_resources = self._get_ai_resources(faction)
         have = ai_resources.get(context["resource"], 0)
+        need = context["amount"]
 
-        if have < context["amount"]:
+        # Форматируем количество для читаемости
+        formatted_amount = f"{need:,}"
+        if need >= 1000:
+            # Добавляем удобное представление
+            if need < 1000000:
+                formatted_amount = f"{formatted_amount} ({need // 1000} тыс)"
+            else:
+                formatted_amount = f"{formatted_amount} ({need // 1000000} млн)"
+
+        if have < need:
             context["stage"] = "idle"
-            return f"У меня нет столько {context['resource']}. Сделка невозможна."
+            formatted_have = f"{have:,}"
+            return f"У меня нет столько {context['resource']}. У меня всего {formatted_have}, а ты просишь {formatted_amount}. Сделка невозможна."
 
         context["stage"] = "ask_player_offer"
-        return (
-            f"У меня есть {context['amount']} {context['resource']}. "
-            "Что ты предлагаешь взамен?"
-        )
+        return f"У меня есть {formatted_amount} {context['resource']}. Что ты предлагаешь взамен?"
 
     def _evaluate_trade(self, faction, context):
         """Оценивает торговое предложение с учетом отношений"""
@@ -2349,23 +2689,22 @@ class EnhancedDiplomacyChat():
         except (ValueError, TypeError):
             rel = 50
 
-        # Уточненные диапазоны для более плавного перехода
         if rel < 15:
-            return 0  # Вражда - сделки невозможны
+            return 0
         if 15 <= rel < 25:
-            return 0.2  # Очень плохие отношения
+            return 0.1
         if 25 <= rel < 35:
-            return 0.5  # Плохие отношения
+            return 0.4
         if 35 <= rel < 50:
-            return 0.8  # Нейтральные
+            return 0.9
         if 50 <= rel < 60:
-            return 1.0  # Нормальные (базовый коэффициент)
+            return 1.5
         if 60 <= rel < 75:
-            return 1.3  # Дружественные
+            return 2
         if 75 <= rel < 90:
-            return 1.7  # Очень дружественные
+            return 3.1
         if 90 <= rel <= 100:
-            return 2.0  # Союзники
+            return 4
         return 0
 
     def get_relation_color(self, value):
@@ -2630,7 +2969,7 @@ class EnhancedDiplomacyChat():
                     f"Приятель, пока рано говорить о союзе. Для начала {alliance_cost:,} крон нужно накопить.",
                     f"Интересное предложение, но спешить не стоит. Союз стоит {alliance_cost:,} крон - серьёзная сумма.",
                     f"Союз — серьёзный шаг. Начнём с малого, а там посмотрим. Кстати, цена вопроса: {alliance_cost:,} крон.",
-                    f"Ты забегаешь вперёд, друг мой. Сначала докажи, что нам можно доверять. И накопи {alliance_cost:,} крон."
+                    f"Ты забегаешь вперёд, друг мой. Сначала докажи, что вам можно доверять. {alliance_cost:,} крон. были бы убедительным доводом"
                 ]
                 return random.choice(neutral_responses)
 
@@ -3154,6 +3493,246 @@ class EnhancedDiplomacyChat():
             ]
 
         return random.choice(fallbacks)
+
+    def _is_improve_relations_request(self, message):
+        """Определяет, является ли сообщение запросом на улучшение отношений"""
+        improve_keywords = [
+            'улучшить отношения', 'наладить отношения', 'налаживать отношения',
+            'подружиться', 'стать друзьями', 'укрепить отношения',
+            'наладить связи', 'улучшить контакт', 'наладить диалог',
+            'сблизиться', 'наладить дружбу', 'улучшить взаимопонимание',
+            'построить мосты', 'наладить сотрудничество'
+        ]
+
+        message_lower = message.lower()
+        return any(keyword in message_lower for keyword in improve_keywords)
+
+    def _handle_improve_relations_request(self, message, target_faction, relation_level):
+        """Обрабатывает запрос на улучшение отношений"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем текущие отношения
+            cursor.execute("""
+                SELECT relationship FROM relations 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, target_faction, target_faction, self.faction))
+
+            result = cursor.fetchone()
+            if not result:
+                return "У нас с тобой ещё не установлены отношения. Сначала нужно познакомиться."
+
+            current_relationship = int(result[0])
+
+            # Если отношения уже максимальные
+            if current_relationship >= 90:
+                responses = [
+                    f"Наши отношения уже прекрасны! {current_relationship}/100 - что ещё можно улучшить?",
+                    f"Мы и так хорошие друзья! Отношения на уровне {current_relationship}/100.",
+                    f"Ты что, не видишь? Мы уже почти родственники! {current_relationship}/100."
+                ]
+                return random.choice(responses)
+
+            # Рассчитываем стоимость улучшения
+            cursor.execute("SELECT COUNT(*) FROM cities WHERE faction = ?", (target_faction,))
+            target_city_count = cursor.fetchone()[0]
+
+            # Стоимость улучшения зависит от:
+            # 1. Количества городов цели
+            # 2. Текущего уровня отношений (чем лучше отношения, тем дешевле)
+            base_cost = 50000  # Базовая стоимость
+
+            # Модификатор количества городов
+            city_modifier = 1 + (target_city_count * 0.1)
+
+            # Модификатор текущих отношений (чем лучше, тем дешевле)
+            relation_modifier = max(0.5, 1.0 - (current_relationship / 200))
+
+            # Итоговая стоимость
+            cost = int(base_cost * city_modifier * relation_modifier)
+
+            # Проверяем ресурсы игрока
+            cursor.execute("SELECT amount FROM resources WHERE faction = ? AND resource_type = 'Кроны'",
+                           (self.faction,))
+            player_resources = cursor.fetchone()
+
+            if not player_resources or player_resources[0] < cost:
+                return (f"Для улучшения отношений нужно {cost:,} крон. "
+                        f"У тебя всего {player_resources[0] if player_resources else 0:,}. "
+                        f"Сначала накопи нужную сумму.")
+
+            # Генерируем предложение с вариантами
+            improvement_options = [
+                {
+                    'name': 'культурный обмен',
+                    'cost': cost,
+                    'improvement': 7,
+                    'description': 'Обмен культурными ценностями и традициями'
+                },
+                {
+                    'name': 'торговый договор',
+                    'cost': int(cost * 0.8),
+                    'improvement': 5,
+                    'description': 'Соглашение о взаимовыгодной торговле'
+                },
+                {
+                    'name': 'дипломатический визит',
+                    'cost': int(cost * 1.2),
+                    'improvement': 10,
+                    'description': 'Официальный визит делегации'
+                }
+            ]
+
+            # Сохраняем варианты в контексте
+            self.negotiation_context[target_faction] = {
+                'stage': 'improve_relations_choice',
+                'options': improvement_options,
+                'counter_offers': 0
+            }
+
+            # Формируем предложение
+            response = (f"Я могу предложить несколько вариантов улучшения отношений:\n\n"
+                        f"1. **Культурный обмен** ({improvement_options[0]['description']}) - "
+                        f"{improvement_options[0]['improvement']} к отношениям, стоимость {improvement_options[0]['cost']:,} крон\n"
+                        f"2. **Торговый договор** ({improvement_options[1]['description']}) - "
+                        f"{improvement_options[1]['improvement']} к отношениям, стоимость {improvement_options[1]['cost']:,} крон\n"
+                        f"3. **Дипломатический визит** ({improvement_options[2]['description']}) - "
+                        f"{improvement_options[2]['improvement']} к отношениям, стоимость {improvement_options[2]['cost']:,} крон\n\n"
+                        f"Выбери вариант (1, 2 или 3) или откажись ('нет').")
+
+            return response
+
+        except Exception as e:
+            print(f"Ошибка при обработке запроса улучшения отношений: {e}")
+            return "Что-то пошло не так. Попробуй позже."
+
+    def _process_improvement_choice(self, message, target_faction, context):
+        """Обрабатывает выбор варианта улучшения отношений"""
+        message_lower = message.lower()
+
+        # Проверяем отказ
+        if any(word in message_lower for word in ['нет', 'отказываюсь', 'не хочу', 'не буду', 'отмена']):
+            context['stage'] = 'idle'
+            return "Хорошо, может быть в другой раз."
+
+        # Проверяем выбор варианта
+        if '1' in message_lower or 'культур' in message_lower or 'обмен' in message_lower:
+            choice_index = 0
+        elif '2' in message_lower or 'торгов' in message_lower or 'договор' in message_lower:
+            choice_index = 1
+        elif '3' in message_lower or 'визит' in message_lower or 'дипломат' in message_lower:
+            choice_index = 2
+        else:
+            return "Пожалуйста, выбери вариант: 1 (культурный обмен), 2 (торговый договор) или 3 (дипломатический визит)."
+
+        options = context.get('options', [])
+        if not options or choice_index >= len(options):
+            return "Что-то пошло не так. Попробуй начать заново."
+
+        chosen_option = options[choice_index]
+
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем текущие отношения
+            cursor.execute("""
+                SELECT relationship FROM relations 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, target_faction, target_faction, self.faction))
+
+            result = cursor.fetchone()
+            if not result:
+                return "Что-то пошло не так. Отношения не найдены."
+
+            current_relationship = int(result[0])
+
+            # Если отношения уже максимальные
+            if current_relationship >= 90:
+                context['stage'] = 'idle'
+                return f"Наши отношения уже прекрасны! {current_relationship}/100 - дальнейшее улучшение невозможно."
+
+            # Проверяем ресурсы игрока
+            cursor.execute("SELECT amount FROM resources WHERE faction = ? AND resource_type = 'Кроны'",
+                           (self.faction,))
+            player_resources = cursor.fetchone()
+
+            cost = chosen_option['cost']
+            if not player_resources or player_resources[0] < cost:
+                context['stage'] = 'idle'
+                return (
+                    f"У тебя недостаточно крон! Нужно {cost:,}, а у тебя {player_resources[0] if player_resources else 0:,}. "
+                    f"Накопи нужную сумму и возвращайся.")
+
+            # Списываем ресурсы
+            cursor.execute("""
+                UPDATE resources 
+                SET amount = amount - ? 
+                WHERE faction = ? AND resource_type = 'Кроны'
+            """, (cost, self.faction))
+
+            # Улучшаем отношения
+            new_relationship = min(100, current_relationship + chosen_option['improvement'])
+
+            cursor.execute("""
+                UPDATE relations 
+                SET relationship = ? 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (new_relationship, self.faction, target_faction, target_faction, self.faction))
+
+            # Обновляем дипломатии если нужно
+            if new_relationship >= 80:
+                new_status = "союз" if new_relationship >= 90 else "дружба"
+                cursor.execute("""
+                    UPDATE diplomacies 
+                    SET relationship = ? 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (new_status, self.faction, target_faction, target_faction, self.faction))
+
+            # Создаем запись в trade_agreements как подтверждение
+            cursor.execute("""
+                INSERT INTO trade_agreements 
+                (initiator, target_faction, initiator_type_resource, initiator_summ_resource,
+                 target_type_resource, target_summ_resource, agree, agreement_type, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """, (
+                self.faction, target_faction, "Кроны", cost,
+                "Улучшение отношений", chosen_option['improvement'], 1, "relation_improvement"
+            ))
+
+            # Добавляем запись в историю переговоров
+            cursor.execute("""
+                INSERT INTO negotiation_history 
+                (faction1, faction2, message, is_player, timestamp)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            """, (self.faction, target_faction,
+                  f"Улучшение отношений через {chosen_option['name']}. Улучшено на {chosen_option['improvement']} пунктов.",
+                  0))
+
+            self.db_connection.commit()
+
+            # Очищаем контекст
+            context['stage'] = 'idle'
+
+            # Формируем ответ
+            improvement = chosen_option['improvement']
+            response_options = [
+                f"Отлично! Наши отношения улучшились на {improvement} пунктов! Теперь они на уровне {new_relationship}/100.",
+                f"Прекрасно! Благодаря {chosen_option['name']} наши отношения выросли до {new_relationship}/100 (+{improvement}).",
+                f"Принято! Отношения улучшены. Теперь они составляют {new_relationship}/100.",
+                f"Соглашение заключено! Наше взаимопонимание улучшилось на {improvement} пунктов."
+            ]
+
+            # Добавляем фразы фракций
+            faction_response = self.faction_phrases.get(target_faction, {}).get("rejection", "")
+            if faction_response and random.random() > 0.5:
+                return f"{faction_response} {random.choice(response_options)}"
+
+            return random.choice(response_options)
+
+        except Exception as e:
+            print(f"Ошибка при обработке улучшения отношений: {e}")
+            context['stage'] = 'idle'
+            return "Произошла ошибка при обработке. Попробуй позже."
 
     def _is_context_reset(self, message):
         """Определяет, является ли сообщение командой сброса контекста"""

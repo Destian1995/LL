@@ -2982,19 +2982,6 @@ class AIController:
             print(f"Ошибка при поиске нейтрального города: {e}")
             return None
 
-    def get_factions_at_war(self):
-        """
-        Возвращает список фракций, с которыми текущая фракция находится в состоянии войны.
-        """
-        try:
-            query = """SELECT faction2 FROM diplomacies WHERE faction1 = ? AND relationship = 'война'"""
-            self.cursor.execute(query, (self.faction,))
-            rows = self.cursor.fetchall()
-            return [row[0] for row in rows]
-        except sqlite3.Error as e:
-            print(f"Ошибка при получении списка вражеских фракций: {e}")
-            return []
-
     def attack_enemy_cities(self):
         """
         Организует атаки на вражеские города.
@@ -3016,6 +3003,271 @@ class AIController:
 
         except Exception as e:
             print(f"Ошибка при атаке вражеских городов: {e}")
+
+    def send_help_request_if_needed(self):
+        """
+        Отправляет сообщение с просьбой о помощи, если выполняются условия:
+        - Осталось 3 и менее городов
+        - Текущая армия слабее армии противника
+        - Отношения с игроком > 40
+        """
+        try:
+            # 1. Проверяем количество городов
+            current_city_count = self.get_city_count_for_faction()
+            if current_city_count > 3:
+                return  # Условие не выполняется
+
+            # 2. Находим противников, с которыми ведется война
+            enemies = self.get_factions_at_war()
+            if not enemies:
+                return  # Нет врагов
+
+            # 3. Рассчитываем нашу силу армии
+            our_strength = self._calculate_army_strength(self.faction)
+
+            # 4. Находим самого сильного противника
+            strongest_enemy = None
+            strongest_enemy_strength = 0
+
+            for enemy in enemies:
+                enemy_strength = self._calculate_army_strength(enemy)
+                if enemy_strength > strongest_enemy_strength:
+                    strongest_enemy_strength = enemy_strength
+                    strongest_enemy = enemy
+
+            # 5. Проверяем, слабее ли мы противника
+            if our_strength >= strongest_enemy_strength:
+                return  # Мы не слабее
+
+            # 6. Получаем отношения с игроком
+            cursor = self.db_connection.cursor()
+            cursor.execute("""
+                SELECT relationship 
+                FROM relations 
+                WHERE faction1 = ? AND faction2 = ?
+            """, (self.faction, "Игрок"))
+
+            result = cursor.fetchone()
+            if not result:
+                return  # Нет отношений с игроком
+
+            relations_with_player = int(result[0])
+
+            # 7. Определяем тип сообщения в зависимости от уровня отношений
+            message_content = ""
+            resource_offer = ""
+
+            if relations_with_player > 95:
+                # Предлагаем союз и помощь в войне
+                message_content = f"[СОЮЗ] {self.faction} предлагает вам военный союз и помощь в войнах."
+
+                # Проверяем, воюет ли игрок с кем-то
+                cursor.execute("""
+                    SELECT faction2 FROM diplomacies 
+                    WHERE faction1 = 'Игрок' AND relationship = 'война'
+                """)
+                player_enemies = [row[0] for row in cursor.fetchall()]
+
+                if player_enemies:
+                    message_content += f" Мы готовы помочь вам против {', '.join(player_enemies)}."
+
+                resource_offer = self._generate_resource_offer(50)  # 50% ресурсов
+                if resource_offer:
+                    message_content += f" {resource_offer}"
+
+            elif relations_with_player > 80:
+                # Умоляем о помощи с предложением ресурсов
+                message_content = f"[УМОЛЯЮ] {self.faction} умоляет о помощи! Враг ({strongest_enemy}) слишком силен. Городов осталось: {current_city_count}"
+                resource_offer = self._generate_resource_offer(30)  # 30% ресурсов
+                if resource_offer:
+                    message_content += f" {resource_offer}"
+
+            elif relations_with_player > 40:
+                # Просим о помощи
+                message_content = f"[ПОМОЩЬ] {self.faction} просит о помощи против {strongest_enemy}. Городов осталось: {current_city_count}"
+            else:
+                return  # Отношения слишком низкие
+
+            # 8. Создаем сообщение в таблице negotiation_history
+            self._create_message_in_negotiation_history(
+                faction1=self.faction,
+                faction2="Игрок",
+                message=message_content,
+                is_player=False,
+                is_incoming=True
+            )
+
+            print(f"[AI MESSAGE] Отправлено сообщение от {self.faction}: {message_content}")
+
+        except Exception as e:
+            print(f"Ошибка при отправке сообщения о помощи: {e}")
+
+    def send_mercy_request_if_needed(self):
+        """
+        Отправляет сообщение с просьбой о пощаде и мире, если:
+        - ИИ воюет с игроком
+        - У ИИ осталось меньше 3 городов
+        """
+        try:
+            # 1. Проверяем, воюем ли мы с игроком
+            cursor = self.db_connection.cursor()
+            cursor.execute("""
+                SELECT relationship 
+                FROM diplomacies 
+                WHERE faction1 = ? AND faction2 = ? AND relationship = 'война'
+            """, (self.faction, "Игрок"))
+
+            result = cursor.fetchone()
+            if not result:
+                return  # Не воюем с игроком
+
+            # 2. Проверяем количество городов
+            current_city_count = self.get_city_count_for_faction()
+            if current_city_count >= 3:
+                return  # Условие не выполняется
+
+            # 3. Рассчитываем силу армии
+            our_strength = self._calculate_army_strength(self.faction)
+            player_strength = self._calculate_army_strength("Игрок")
+
+            # 4. Проверяем, проигрываем ли мы войну
+            if our_strength >= player_strength * 0.7:  # Если наша сила > 70% от силы игрока
+                return  # Не проигрываем критически
+
+            # 5. Получаем текущие отношения
+            cursor.execute("""
+                SELECT relationship 
+                FROM relations 
+                WHERE faction1 = ? AND faction2 = ?
+            """, (self.faction, "Игрок"))
+
+            result = cursor.fetchone()
+            if not result:
+                return
+
+            relations_with_player = int(result[0])
+
+            # 6. Создаем сообщение о пощаде
+            message_content = f"[ПОЩАДА] {self.faction} умоляет о пощаде! Мы проигрываем войну. Городов осталось: {current_city_count}"
+
+            # Добавляем предложение ресурсов в зависимости от отношений
+            if relations_with_player > 20:
+                resource_offer = self._generate_resource_offer(40)  # 40% ресурсов
+                message_content += f" {resource_offer}"
+
+            # 7. Добавляем предложение мира
+            message_content += " Мы готовы заключить мир на ваших условиях."
+
+            # 8. Создаем сообщение в таблице negotiation_history
+            self._create_message_in_negotiation_history(
+                faction1=self.faction,
+                faction2="Игрок",
+                message=message_content,
+                is_player=False,
+                is_incoming=True
+            )
+
+            print(f"[AI MESSAGE] Отправлено сообщение о пощаде от {self.faction}")
+
+        except Exception as e:
+            print(f"Ошибка при отправке сообщения о пощаде: {e}")
+
+    def _calculate_army_strength(self, faction):
+        """
+        Рассчитывает силу армии фракции
+        """
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("""
+                SELECT g.unit_name, g.unit_count, u.attack, u.defense, u.durability, u.unit_class 
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                WHERE u.faction = ?
+            """, (faction,))
+            units_data = cursor.fetchall()
+
+            total_strength = 0
+            class_1_count = 0
+            hero_bonus = 0
+            others_stats = 0
+
+            for unit_name, unit_count, attack, defense, durability, unit_class in units_data:
+                stats_sum = attack + defense + durability
+
+                if unit_class == "1":
+                    class_1_count += unit_count
+                    total_strength += stats_sum * unit_count
+                elif unit_class in ("2", "3"):
+                    hero_bonus += stats_sum * unit_count
+                else:
+                    others_stats += stats_sum * unit_count
+
+            if class_1_count > 0:
+                total_strength += hero_bonus * class_1_count
+
+            total_strength += others_stats
+
+            return total_strength
+
+        except Exception as e:
+            print(f"Ошибка при расчете силы армии: {e}")
+            return 0
+
+    def _generate_resource_offer(self, percentage):
+        """
+        Генерирует предложение ресурсов в процентах от текущих запасов
+        """
+        try:
+            resources_to_offer = []
+
+            # Проверяем каждый ресурс
+            for resource_type in ['Кроны', 'Кристаллы', 'Рабочие']:
+                if resource_type in self.resources and self.resources[resource_type] > 0:
+                    amount = int(self.resources[resource_type] * percentage / 100)
+                    if amount > 0:
+                        resources_to_offer.append(f"{amount} {resource_type}")
+
+            if resources_to_offer:
+                return f"Предлагаем: {', '.join(resources_to_offer)}."
+            return ""
+
+        except Exception as e:
+            print(f"Ошибка при генерации предложения ресурсов: {e}")
+            return ""
+
+    def _create_message_in_negotiation_history(self, faction1, faction2, message, is_player=False, is_incoming=True):
+        """
+        Создает сообщение в таблице negotiation_history
+        """
+        try:
+            cursor = self.db_connection.cursor()
+
+            cursor.execute("""
+                INSERT INTO negotiation_history (faction1, faction2, message, is_player, is_incoming, timestamp)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """, (faction1, faction2, message, is_player, is_incoming))
+
+            self.db_connection.commit()
+
+            print(f"[MESSAGE SAVED] Сохранено сообщение в negotiation_history: {faction1} -> {faction2}")
+
+        except Exception as e:
+            print(f"Ошибка при создании сообщения в negotiation_history: {e}")
+
+    def get_factions_at_war(self):
+        """
+        Возвращает список фракций, с которыми текущая фракция находится в состоянии войны.
+        """
+        try:
+            cursor = self.db_connection.cursor()
+            query = """SELECT faction2 FROM diplomacies WHERE faction1 = ? AND relationship = 'война'"""
+            cursor.execute(query, (self.faction,))
+            rows = cursor.fetchall()
+            return [row[0] for row in rows]
+        except Exception as e:
+            print(f"Ошибка при получении списка вражеских фракций: {e}")
+            return []
 
     # ---------------------------------------------------------------------
 
@@ -3055,8 +3307,11 @@ class AIController:
                 # 8. Найм армии (на оставшиеся деньги после строительства и продажи Кристаллы)
                 if self.resources['Кроны'] > 0:
                     self.hire_army()
-                # 9. (Новый пункт) Генерация и покупка артефактов ИИ (после 50 хода)
+                # 9. Генерация и покупка артефактов ИИ (после 50 хода)
                 self.generate_and_buy_artifacts_for_ai_hero()
+                # 10. Проверяем и отправляем дипломатические сообщения если нужно
+                self.send_help_request_if_needed()
+                self.send_mercy_request_if_needed()
             # 10. Сохраняем все изменения в базу данных
             self.save_all_data()
             # Увеличиваем счетчик ходов
