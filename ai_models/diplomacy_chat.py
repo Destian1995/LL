@@ -16,7 +16,8 @@ from kivy.clock import Clock
 from datetime import datetime
 
 from .manipulation_strategy import ManipulationStrategy
-
+import platform
+from .android_keyboard import AndroidKeyboardHelper
 
 class EnhancedDiplomacyChat():
     """Улучшенная версия дипломатического чата с обработкой запросов"""
@@ -38,7 +39,8 @@ class EnhancedDiplomacyChat():
         # История предложений в текущей сессии
         self.current_offers = {}
 
-        # Ожидаемые ответы от ИИ
+        # Инициализация помощника для Android клавиатуры
+        self.keyboard_helper = AndroidKeyboardHelper(self)
 
         # Ссылки на UI элементы
         self.chat_scroll = None
@@ -152,15 +154,16 @@ class EnhancedDiplomacyChat():
         self.chat_scroll = ScrollView(
             size_hint=(1, 1),
             do_scroll_x=False,
-            bar_width=dp(6),
-            scroll_type=['bars']
+            bar_width=dp(8) if platform == 'android' else dp(6),  # Толще для Android
+            scroll_type=['bars', 'content'] if platform == 'android' else ['bars'],  # Лучшая прокрутка на Android
+            effect_cls='ScrollEffect' if platform == 'android' else 'DampedScrollEffect'
         )
 
         self.chat_container = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            spacing=dp(8),
-            padding=[dp(10), dp(10)]
+            spacing=dp(10) if platform == 'android' else dp(8),  # Больше пространства на Android
+            padding=[dp(10), dp(10), dp(10), dp(10)]
         )
         self.chat_container.bind(minimum_height=self.chat_container.setter('height'))
 
@@ -189,17 +192,33 @@ class EnhancedDiplomacyChat():
             size=lambda i, v: setattr(bg, 'size', v)
         )
 
-        self.message_input = TextInput(
-            hint_text="Введите сообщение…",
-            multiline=False,
-            background_normal='',
-            background_active='',
-            background_color=(0.18, 0.18, 0.25, 1),
-            foreground_color=(1, 1, 1, 1),
-            cursor_color=(0.5, 0.7, 1, 1),
-            padding=[dp(12), dp(12)],
-            font_size='14sp'
-        )
+        # Определяем размер шрифта в зависимости от платформы
+        input_font_size = '16sp' if platform == 'android' else '14sp'
+        button_font_size = '16sp' if platform == 'android' else '14sp'
+
+        # Создаем TextInput с правильными параметрами
+        textinput_kwargs = {
+            'hint_text': "Введите сообщение…",
+            'multiline': False,
+            'background_normal': '',
+            'background_active': '',
+            'background_color': (0.18, 0.18, 0.25, 1),
+            'foreground_color': (1, 1, 1, 1),
+            'cursor_color': (0.5, 0.7, 1, 1),
+            'padding': [dp(12), dp(12)],
+            'font_size': input_font_size,
+            'write_tab': False,  # Отключаем табуляцию
+        }
+
+        # Добавляем keyboard_mode только для Android
+        if platform == 'android':
+            textinput_kwargs['keyboard_mode'] = 'managed'
+
+        self.message_input = TextInput(**textinput_kwargs)
+
+        # Для Android добавляем специальную обработку
+        if platform == 'android':
+            self.message_input.bind(focus=self._on_textinput_focus_android)
 
         with self.message_input.canvas.after:
             Color(0.3, 0.3, 0.4, 1)
@@ -214,16 +233,41 @@ class EnhancedDiplomacyChat():
         send_btn = Button(
             text="Отправить",
             size_hint=(None, 1),
-            width=dp(120),
+            width=dp(140) if platform == 'android' else dp(120),
             background_normal='',
             background_color=(0.25, 0.5, 0.9, 1),
-            font_size='14sp'
+            font_size=button_font_size
         )
         send_btn.bind(on_press=self.send_diplomatic_message)
 
         panel.add_widget(self.message_input)
         panel.add_widget(send_btn)
         return panel
+
+    def _on_textinput_focus_android(self, instance, value):
+        """Обработка фокуса для Android (чтобы клавиатура не перекрывала поле ввода)"""
+        if platform != 'android':
+            return
+
+        if value:  # Если поле получило фокус
+            # Запланируем прокрутку через короткое время, чтобы клавиатура успела появиться
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: self._scroll_to_input_android(), 0.3)
+
+    def _scroll_to_input_android(self):
+        """Прокручивает чат так, чтобы поле ввода было видно над клавиатурой"""
+        if not hasattr(self, 'chat_scroll') or not self.chat_scroll:
+            return
+
+        try:
+            # Прокручиваем в самый низ
+            self.scroll_chat_to_bottom()
+
+            # Дополнительная прокрутка для уверенности
+            if hasattr(self.chat_scroll, 'scroll_y'):
+                Animation(scroll_y=0, duration=0.2).start(self.chat_scroll)
+        except:
+            pass
 
     def create_status_panel(self):
         """Создает панель статуса"""
@@ -541,7 +585,14 @@ class EnhancedDiplomacyChat():
         """Прокручивает чат вниз - с плавной анимацией"""
         if self.chat_scroll and hasattr(self.chat_scroll, 'scroll_y'):
             try:
-                # Используем анимацию для плавной прокрутки
+                # Учитываем Android клавиатуру
+                if platform == 'android' and hasattr(self, 'keyboard_helper'):
+                    if self.keyboard_helper.is_keyboard_shown():
+                        # Для Android делаем более быструю прокрутку
+                        Animation(scroll_y=0, duration=0.15).start(self.chat_scroll)
+                        return
+
+                # Обычная прокрутка для других платформ
                 Animation(scroll_y=0, duration=0.3).start(self.chat_scroll)
             except:
                 # Если анимация не работает, просто устанавливаем scroll_y
@@ -1537,33 +1588,10 @@ class EnhancedDiplomacyChat():
         faction_selector_box.add_widget(selector_label)
         faction_selector_box.add_widget(self.faction_spinner)
 
-        # Кнопка информации об отношениях
-        info_button = Button(
-            text="",
-            size_hint=(None, None),
-            size=(dp(40), dp(40)),
-            background_normal='files/pict/sov/warning.png',
-            background_color=(0.4, 0.4, 0.6, 1),
-            border=(0, 0, 0, 0),
-            on_press=self.show_relation_info
-        )
-
-        # Кнопка обновления
-        refresh_button = Button(
-            text="",
-            size_hint=(None, None),
-            size=(dp(40), dp(40)),
-            background_normal='files/pict/sov/switch.png',
-            background_color=(0.4, 0.4, 0.6, 1),
-            border=(0, 0, 0, 0),
-            on_press=lambda x: self.load_chat_history()
-        )
-
         header.add_widget(back_button)
         header.add_widget(faction_info)
         header.add_widget(faction_selector_box)
-        header.add_widget(info_button)
-        header.add_widget(refresh_button)
+
 
         return header
 
