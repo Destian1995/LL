@@ -665,6 +665,7 @@ class MapWidget(Widget):
 
     def draw_fortresses(self):
         """Рисует крепости на карте, создавая виджеты Image для каждой иконки."""
+
         # Очищаем предыдущие виджеты и данные
         self.clear_widgets()
         self.fortress_icon_widgets.clear()
@@ -693,27 +694,6 @@ class MapWidget(Widget):
             print("[DEBUG] Нет данных о крепостях в базе данных.")
             return
 
-        # Определяем размеры для Android и других платформ
-        import platform
-
-        # Размер иконки
-        if platform == 'android':
-            icon_size = 60  # Уменьшаем для Android
-        else:
-            icon_size = 77
-
-        # Размер шрифта
-        if platform == 'android':
-            font_size = '14sp'  # Уменьшаем шрифт для Android
-        else:
-            font_size = '22sp'
-
-        # Отступ от иконки
-        if platform == 'android':
-            text_offset_y = -10  # Меньший отступ для Android
-        else:
-            text_offset_y = -5
-
         for row in fortresses_data:
             fortress_name, kingdom, coords_str = row
             try:
@@ -738,7 +718,7 @@ class MapWidget(Widget):
 
             icon_widget = Image(
                 source=image_path,
-                size=(icon_size, icon_size),  # Адаптивный размер
+                size=(77, 77),
                 pos=(drawn_x, drawn_y),
                 allow_stretch=True,
                 keep_ratio=True,
@@ -749,32 +729,52 @@ class MapWidget(Widget):
             # --- Сохраняем данные для кликов ---
             self.fortress_data_for_canvas.append((fortress_name, kingdom, fort_x, fort_y, drawn_x, drawn_y))
 
-            # --- Создание надписи города с белой обводкой ---
+            # --- Рисуем название города с обводкой ---
             display_name = f"{fortress_name}({kingdom})"
 
-            # Используем виджет Label с обводкой вместо CoreLabel
-            label_widget = Label(
-                text=display_name,
-                font_size=font_size,  # Адаптивный размер шрифта
-                color=(0, 0, 0, 1),  # Черный текст
-                outline_color=(1, 1, 1, 1),  # Белая обводка
-                outline_width=1,  # Толщина обводки
-                bold=True,
-                size_hint=(None, None),
-                halign='center',
-                valign='middle'
-            )
+            # Создаем CoreLabel для основного текста
+            label = CoreLabel(text=display_name, font_size=25, color=(1, 1, 1, 1))  # Черный цвет текста
+            label.refresh()
+            text_texture = label.texture
+            text_width, text_height = text_texture.size
 
-            # Принудительно обновляем текстуру, чтобы получить корректный размер
-            label_widget.texture_update()
-            label_size = label_widget.texture_size
+            # Позиционирование текста
+            text_x = drawn_x + (40 - text_width) / 2
+            text_y = drawn_y - text_height - 5
 
-            # Позиционируем под иконкой
-            label_widget.pos = (drawn_x + icon_size / 2 - label_size[0] / 2,
-                                drawn_y + text_offset_y - label_size[1])  # Адаптивный отступ
-            label_widget.size = label_size
+            # Толщина обводки (в пикселях)
+            outline_width = 2
 
-            self.add_widget(label_widget)
+            with self.canvas:
+                # 1. Рисуем обводку (контур) - 8 направлений
+                Color(1, 1, 1, 1)  # Белый цвет обводки
+                # Смещения для создания эффекта обводки
+                offsets = [
+                    (-outline_width, -outline_width),  # нижний левый
+                    (-outline_width, 0),  # левый
+                    (-outline_width, outline_width),  # верхний левый
+                    (0, outline_width),  # верхний
+                    (outline_width, outline_width),  # верхний правый
+                    (outline_width, 0),  # правый
+                    (outline_width, -outline_width),  # нижний правый
+                    (0, -outline_width)  # нижний
+                ]
+
+                # Рисуем обводку в 8 направлениях
+                for offset_x, offset_y in offsets:
+                    Rectangle(
+                        texture=text_texture,
+                        pos=(text_x + offset_x, text_y + offset_y),
+                        size=(text_width, text_height)
+                    )
+
+                # 2. Рисуем основной текст поверх обводки
+                Color(0, 0, 0, 1)  # Черный цвет основного текста
+                Rectangle(
+                    texture=text_texture,
+                    pos=(text_x, text_y),
+                    size=(text_width, text_height)
+                )
 
             # --- Обновляем icon_coordinates в БД ---
             try:
