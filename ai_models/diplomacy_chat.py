@@ -632,6 +632,51 @@ class EnhancedDiplomacyChat():
 
         message_lower = player_message.lower()
 
+        # ===== ПЕРВЫЙ ПРИОРИТЕТ: Проверка на плохие отношения =====
+        if relation_level < 20:
+            # Если отношения очень плохие, проверяем на оскорбления/угрозы
+            if self._is_insult_or_threat(player_message):
+                # Усиливаем агрессию в ответ
+                hostile_responses = [
+                    "Ах ты сучий потрох! Да я тебя самого в мясо порублю! Война!",
+                    "Как ты смеешь?! За такие слова твоя голова будет на пике! Война объявлена!",
+                    "Ты перешёл все границы! Тебе конец! Между нами война!",
+                    "Я из тебя кишки наматывать буду! Война! Сейчас же!",
+                    "Твои слова - твой смертный приговор! Готовься к войне!",
+                    "За такое оскорбление я сотру твою фракцию с лица земли! Война!"
+                ]
+                # Пытаемся объявить войну
+                try:
+                    cursor = self.db_connection.cursor()
+                    cursor.execute("""
+                        UPDATE diplomacies 
+                        SET relationship = 'война' 
+                        WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                    """, (self.faction, target_faction, target_faction, self.faction))
+
+                    cursor.execute("""
+                        UPDATE relations 
+                        SET relationship = 0 
+                        WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                    """, (self.faction, target_faction, target_faction, self.faction))
+
+                    self.db_connection.commit()
+
+                    return random.choice(hostile_responses)
+                except:
+                    return random.choice(hostile_responses)
+
+            # При плохих отношениях на любой запрос ресурсов/армии - хамство
+            if self._is_resource_request(player_message) or self._is_status_inquiry(player_message):
+                rude_responses = [
+                    "Ты что, совсем охренел?! Ресурсы у меня просить?! Иди к чёрту!",
+                    "Ресурсы? Да ты совсем рехнулся! Убирайся, пока цел!",
+                    "Какие ещё нахрен ресурсы?! Пошёл вон, говно собачье!",
+                    "Хватит попрошайничать! Исчезни, тварь!",
+                    "Тебе нужны ресурсы? А мне нужен мир без тебя! Проваливай!"
+                ]
+                return random.choice(rude_responses)
+
         # Проверяем на сброс контекста (добавляем в самое начало)
         if self._is_context_reset(player_message):
             return self._handle_context_reset(player_message, target_faction)
@@ -670,7 +715,11 @@ class EnhancedDiplomacyChat():
         if self._is_improve_relations_request(player_message):
             return self._handle_improve_relations_request(player_message, target_faction, relation_level)
 
-        # 6. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ (общие)
+        # 6. ПРОВЕРКА НА ОСКОРБЛЕНИЯ И УГРОЗЫ (ПЕРЕД ВОЙНОЙ)
+        if self._is_insult_or_threat(player_message):
+            return self._handle_insult_or_threat(player_message, target_faction, relation_level)
+
+        # 7. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ (общие)
         if self._is_status_inquiry(player_message):
             # При плохих отношениях - хамим на запросы о ресурсах/армии
             if relation_level < 20:
@@ -687,23 +736,23 @@ class EnhancedDiplomacyChat():
             else:
                 return self._generate_status_response(target_faction)
 
-        # 7. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
+        # 8. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
         if self._is_alliance_proposal(player_message):
             return self._handle_alliance_proposal(player_message, target_faction, relation_level)
 
-        # 8. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
+        # 9. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
         if self._is_peace_proposal(player_message):
             return self._handle_peace_proposal(player_message, target_faction)
 
-        # 9. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
+        # 10. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
         if self._is_war_declaration(player_message):
             return self._handle_war_declaration(player_message, target_faction)
 
-        # 10. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
+        # 11. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
         if self._is_provocation(player_message):
             return self._handle_provocation(player_message, target_faction, relation_level)
 
-        # 11. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
+        # 12. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
         if self._is_relationship_break(player_message):
             return self._handle_relationship_break(player_message, target_faction)
 
@@ -1107,10 +1156,10 @@ class EnhancedDiplomacyChat():
         elif relation_level < 35:
             status_color = (1.0, 0.5, 0.0, 1)  # Оранжевый
             status_desc = "Напряженные"
-        elif relation_level < 50:
+        elif relation_level < 54:
             status_color = (1.0, 0.8, 0.0, 1)  # Желтый
             status_desc = "Прохладные"
-        elif relation_level < 60:
+        elif relation_level < 65:
             status_color = (0.2, 0.7, 0.3, 1)  # Зеленый
             status_desc = "Нейтральные"
         elif relation_level < 75:
@@ -2387,7 +2436,7 @@ class EnhancedDiplomacyChat():
             # Обновляем кэш отношений
             self.advisor.relations_manager.refresh_relations()
 
-            print(f"Отношения с {faction} улучшены на {improvement} пунктов")
+            print(f"Отношения с {faction} улучшены на {improvement}")
 
         except Exception as e:
             print(f"Ошибка при улучшении отношений: {e}")
@@ -2695,11 +2744,11 @@ class EnhancedDiplomacyChat():
             return 0.1
         if 25 <= rel < 35:
             return 0.4
-        if 35 <= rel < 50:
-            return 0.9
-        if 50 <= rel < 60:
+        if 35 <= rel < 54:
+            return 0.95
+        if 54 <= rel < 65:
             return 1.5
-        if 60 <= rel < 75:
+        if 65 <= rel < 75:
             return 2
         if 75 <= rel < 90:
             return 3.1
@@ -2720,11 +2769,11 @@ class EnhancedDiplomacyChat():
             return (1.0, 0.5, 0.0, 1)
         elif 25 < value <= 35:
             return (1.0, 0.8, 0.0, 1)
-        elif 35 < value <= 50:
+        elif 35 < value <= 54:
             return (0.2, 0.7, 0.3, 1)
-        elif 50 < value <= 60:
+        elif 54 < value <= 65:
             return (0.0, 0.8, 0.8, 1)
-        elif 60 < value <= 75:
+        elif 65 < value <= 75:
             return (0.0, 0.6, 1.0, 1)
         elif 75 < value <= 90:
             return (0.1, 0.3, 0.9, 1)
@@ -3166,204 +3215,399 @@ class EnhancedDiplomacyChat():
             ]
             return random.choice(error_responses)
 
-    def _is_war_declaration(self, message):
-        """Определяет, является ли сообщение объявлением войны"""
-        war_keywords = [
-            'война', 'объявить войну', 'напасть', 'атаковать',
-            'вторгнуться', 'воевать', 'военные действия',
-            'уничтожить', 'разгромить', 'сокрушить', 'битва',
-            'конфликт', 'столкновение', 'военный конфликт'
-        ]
-
-        message_lower = message.lower()
-        return any(keyword in message_lower for keyword in war_keywords)
-
-    def _handle_war_declaration(self, message, faction):
-        """Обрабатывает объявление войны с разнообразными репликами"""
-        try:
-            cursor = self.db_connection.cursor()
-
-            # Проверяем текущий ход
-            cursor.execute("SELECT turn_count FROM turn")
-            turn_result = cursor.fetchone()
-            if turn_result is None or turn_result[0] < 14:
-                early_turn_responses = [
-                    "Слишком рано для войны. Подожди 14-го хода.",
-                    "Ещё не время начинать войны. Давай подождём 14 ходов.",
-                    "Потерпи до 14-го хода. Тогда и поговорим о войне.",
-                    "Рано размахивать мечами. Сначала окрепнем."
-                ]
-                return random.choice(early_turn_responses)
-
-            # Проверяем текущие отношения
-            cursor.execute("""
-                SELECT relationship FROM diplomacies 
-                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
-            """, (self.faction, faction, faction, self.faction))
-
-            result = cursor.fetchone()
-            if result and result[0] == "война":
-                already_war_responses = [
-                    "Мы с тобой уже воюем! Ты что, забыл?",
-                    "Война уже идёт! Ты опоздал с объявлением.",
-                    "Наши мечи уже скрестились! Не нужно повторных объявлений.",
-                    "Битва продолжается. Зачем объявлять войну дважды?"
-                ]
-                return random.choice(already_war_responses)
-
-            # Объявляем войну
-            cursor.execute("""
-                UPDATE diplomacies 
-                SET relationship = 'война' 
-                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
-            """, (self.faction, faction, faction, self.faction))
-
-            cursor.execute("""
-                UPDATE relations 
-                SET relationship = 0 
-                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
-            """, (self.faction, faction, faction, self.faction))
-
-            self.db_connection.commit()
-
-            # Получаем фразу для фракции
-            phrases = self.faction_phrases.get(faction, {})
-            war_phrase = phrases.get("war_declaration", f"Война объявлена против {faction}!")
-
-            # Дополнительные вариации в зависимости от фракции
-            faction_war_responses = {
-                "Эльфы": [
-                    "Ты осквернил наши леса в последний раз!",
-                    "Природа восстанет против тебя!",
-                    "Деревья запомнят твоё предательство!",
-                    "Ты разбудил древний гнев леса!"
-                ],
-                "Север": [
-                    "Холодная смерть найдёт тебя!",
-                    "Ледяной ветер выдует твою жизнь!",
-                    "Мороз скрепил наши клинки!",
-                    "Зима пришла за твоей душой!"
-                ],
-                "Адепты": [
-                    "Ересь будет сожжена!",
-                    "Бог покарает тебя через нашу руку!",
-                    "Священная война началась!",
-                    "Очистим мир от неверного!"
-                ],
-                "Элины": [
-                    "Песок поглотит твои кости!",
-                    "Зной пустыни иссушит твою кровь!",
-                    "Огонь пустыни сожжёт тебя!",
-                    "Ветер унесёт память о тебе!"
-                ],
-                "Вампиры": [
-                    "Твоя кровь будет нашей!",
-                    "Ночь вечной тьмы настала для тебя!",
-                    "Ты станешь нашей вечной игрушкой!",
-                    "Кровная вражда началась!"
-                ]
-            }
-
-            # Добавляем случайную реплику для фракции
-            faction_responses = faction_war_responses.get(faction, [])
-            if faction_responses:
-                additional_response = random.choice(faction_responses)
-                return f"{war_phrase} {additional_response}"
-
-            return war_phrase
-
-        except Exception as e:
-            print(f"Ошибка при объявлении войны: {e}")
-            error_responses = [
-                "Что-то пошло не так при объявлении войны.",
-                "Моя канцелярия не смогла обработать объявление.",
-                "Войну объявить не удалось. Попробуй позже.",
-                "Не могу начать войну сейчас. Что-то мешает."
-            ]
-            return random.choice(error_responses)
-
     def _is_provocation(self, message):
-        """Определяет, является ли сообщение подстрекательством"""
-        provocation_keywords = [
-            'напади на', 'атакуй', 'уничтожь', 'разгроми',
-            'воевать с', 'напасть на', 'атаковать', 'убить',
-            'устранить', 'ликвидировать', 'подстрекать',
-            'спровоцировать', 'спровоцируй', 'спровоцируйте'
-        ]
-
+        """Определяет, является ли сообщение подстрекательством - УЛУЧШЕННАЯ ВЕРСИЯ"""
         message_lower = message.lower()
+
+        # Словарь склонений фракций
+        faction_declensions = {
+            "эльфы": ["эльф", "эльфа", "эльфу", "эльфов", "эльфам", "эльфами",
+                      "остроух", "остроухих", "лесн", "лесных", "древних"],
+            "север": ["север", "севера", "северу", "северян", "северянам",
+                      "северянин", "северянка", "холодн", "морозн", "ледян"],
+            "адепты": ["адепт", "адепта", "адепту", "адептов", "адептам",
+                       "адепти", "сектант", "сектантов", "верующий", "верующих"],
+            "вампиры": ["вампир", "вампира", "вампиру", "вампиров", "вампирам",
+                        "кровосос", "кровопийц", "ночн", "ночных", "нежить"],
+            "элины": ["элин", "элина", "элину", "элинов", "элинам",
+                      "песчан", "пустынн", "южан", "южанин", "южанка"]
+        }
+
+        # Ключевые слова для подстрекательства (расширенные)
+        provocation_keywords = [
+            'напади', 'атакуй', 'уничтожь', 'разгроми', 'бей', 'вреж', 'ударь',
+            'воевать', 'воюй', 'сражайся', 'воевал', 'воевать с', 'воюй с',
+            'устрани', 'ликвидируй', 'уничтожить', 'раздави', 'сотри', 'стереть',
+            'напасть', 'атаковать', 'нападение', 'атака', 'вторжение',
+            'подстрека', 'спровоцируй', 'спровоцировать', 'провоцируй',
+            'объяви войну', 'объявить войну', 'объявляй войну',
+            'иди войной', 'иди на', 'иди против', 'выступи против',
+            'уничтожь их', 'разбей их', 'победи их', 'расправься с'
+        ]
 
         # Проверяем наличие ключевых слов провокации
         has_provocation = any(keyword in message_lower for keyword in provocation_keywords)
 
-        # Проверяем, упоминается ли третья фракция
-        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
-        mentioned_factions = [f for f in all_factions if f.lower() in message_lower and f != self.faction]
+        if not has_provocation:
+            return False
 
-        return has_provocation and len(mentioned_factions) > 0
+        # Проверяем, упоминается ли любая фракция (кроме своей) с учетом склонений
+        all_factions = ["Эльфы", "Север", "Адепты", "Вампиры", "Элины"]
+        mentioned_factions = []
+
+        for faction in all_factions:
+            if faction.lower() == self.faction.lower():
+                continue
+
+            # Проверяем прямое упоминание
+            if faction.lower() in message_lower:
+                mentioned_factions.append(faction)
+                continue
+
+            # Проверяем склонения
+            if faction.lower() in faction_declensions:
+                for declension in faction_declensions[faction.lower()]:
+                    if declension in message_lower:
+                        mentioned_factions.append(faction)
+                        break
+
+        return len(mentioned_factions) > 0
 
     def _handle_provocation(self, message, faction, relation_level):
-        """Обрабатывает подстрекательство"""
+        """Обрабатывает подстрекательство с учетом уровня отношений - УЛУЧШЕННАЯ ВЕРСИЯ"""
         try:
+            cursor = self.db_connection.cursor()
+
             # Извлекаем упомянутую фракцию
-            all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
-            mentioned_factions = [f for f in all_factions if f.lower() in message.lower() and f != self.faction]
+            all_factions = ["Эльфы", "Север", "Адепты", "Вампиры", "Элины"]
+            faction_declensions = {
+                "эльфы": ["эльф", "эльфа", "эльфу", "эльфов", "эльфам", "эльфами",
+                          "остроух", "остроухих", "лесн", "лесных"],
+                "север": ["север", "севера", "северу", "северян", "северянам",
+                          "северянин", "холодн", "морозн"],
+                "адепты": ["адепт", "адепта", "адепту", "адептов", "адептам",
+                           "сектант", "верующий"],
+                "вампиры": ["вампир", "вампира", "вампиру", "вампиров", "вампирам",
+                            "кровосос", "ночн", "нежить"],
+                "элины": ["элин", "элина", "элину", "элинов", "элинам",
+                          "песчан", "пустынн", "южан"]
+            }
 
-            if not mentioned_factions:
-                return "На кого именно ты предлагаешь напасть?"
+            target_faction = None
+            message_lower = message.lower()
 
-            target_faction = mentioned_factions[0]
+            for f in all_factions:
+                if f.lower() == self.faction.lower():
+                    continue
+
+                # Прямое упоминание
+                if f.lower() in message_lower:
+                    target_faction = f
+                    break
+
+                # По склонениям
+                if f.lower() in faction_declensions:
+                    for declension in faction_declensions[f.lower()]:
+                        if declension in message_lower:
+                            target_faction = f
+                            break
+                if target_faction:
+                    break
+
+            if not target_faction:
+                return "На кого именно ты предлагаешь напасть? Уточни фракцию."
+
+            # ========== УРОВЕНЬ 1: Отношения < 30 ==========
+            if relation_level < 30:
+                # Хамские ответы
+                rude_responses = [
+                    f"Ты что, совсем охренел?! Сам иди воюй с {target_faction} если хочешь!",
+                    f"На провокации не ведусь! Убирайся отсюда со своими глупыми идеями!",
+                    f"Я буду слушать твои дурацкие предложения? Да ты совсем рехнулся!",
+                    f"Ты думаешь, я такой же идиот как ты? Сам нападай на {target_faction} если охота!",
+                    f"Иди к чёрту со своими провокациями! Я с тобой даже разговаривать не хочу!",
+                    f"Ты мне не нравишься, а твои идеи ещё больше! Заткнись и убирайся!",
+                    f"С такими как ты я даже в сортире не сидел бы! Проваливай!",
+                    f"Твои провокации смешны! Я не буду рисковать ради такого как ты!"
+                ]
+                return random.choice(rude_responses)
 
             # Проверяем отношения с целевой фракцией
-            cursor = self.db_connection.cursor()
             cursor.execute("""
                 SELECT relationship FROM relations 
                 WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
             """, (faction, target_faction, target_faction, faction))
 
             result = cursor.fetchone()
-            target_relation = result[0] if result else 50
+            target_relation = int(result[0]) if result else 50
 
-            # Проверяем наши отношения с подстрекателем
-            if relation_level < 30:
-                return "Ты думаешь, я буду слушать твои провокации? У нас с тобой плохие отношения."
-
-            # Анализируем выгоду
-            if target_relation < 30:
-                # Если и так плохие отношения с целью
-                responses = [
-                    f"С {target_faction} у нас и так напряженные отношения. Но зачем мне нападать первым?",
-                    f"Ты хочешь, чтобы я начал войну с {target_faction}? Что ты предлагаешь взамен?",
-                    f"{target_faction} и так нам не друг. Но начинать войну без причины - глупо."
-                ]
-                return random.choice(responses)
-            elif 30 <= target_relation < 60:
-                # Нейтральные отношения
-                if relation_level > 70:
-                    responses = [
-                        f"С {target_faction} у нас нейтральные отношения. Зачем их портить?",
-                        f"Ты предлагаешь мне поссориться с {target_faction}? Это рискованно.",
-                        f"Напасть на {target_faction}? Мне нужно подумать о последствиях."
+            # ========== УРОВЕНЬ 2: Отношения 30-60 ==========
+            if 30 <= relation_level < 60:
+                # Вежливые, но осторожные ответы
+                if target_relation < 30:
+                    # Если и так плохие отношения с целью
+                    polite_responses = [
+                        f"С {target_faction} у нас и так напряжённые отношения, но начинать войну без серьёзной причины неразумно.",
+                        f"Я понимаю твоё предложение, но война с {target_faction} потребует больших ресурсов и подготовки.",
+                        f"Нападение на {target_faction} - серьёзный шаг. Нужно хорошо подготовиться.",
+                        f"Мы не в лучших отношениях с {target_faction}, но для войны нужен веский повод."
+                    ]
+                elif 30 <= target_relation < 60:
+                    # Нейтральные отношения
+                    neutral_responses = [
+                        f"С {target_faction} у нас нейтральные отношения. Зачем их портить без причины?",
+                        f"Ты предлагаешь мне поссориться с {target_faction}? Это рискованный шаг.",
+                        f"Напасть на {target_faction} без провокации с их стороны - не самый мудрый поступок.",
+                        f"У нас нет конфликта с {target_faction}. Зачем начинать войну?"
                     ]
                 else:
-                    responses = [
-                        f"Я не настолько тебе доверяю, чтобы идти на войну с {target_faction}.",
-                        f"Твои провокации против {target_faction} кажутся мне подозрительными.",
-                        f"Зачем тебе нужно, чтобы я воевал с {target_faction}? Что ты задумал?"
+                    # Хорошие отношения с целью
+                    good_responses = [
+                        f"С {target_faction} у нас хорошие отношения! Я не собираюсь их портить.",
+                        f"Ты предлагаешь мне предать {target_faction}? Это недостойно.",
+                        f"{target_faction} - наши друзья. Я не стану на них нападать.",
+                        f"Мы сотрудничаем с {target_faction}. Зачем разрушать это?"
                     ]
+
+                responses = polite_responses if target_relation < 30 else (
+                    good_responses if target_relation >= 60 else neutral_responses)
                 return random.choice(responses)
-            else:
-                # Хорошие отношения с целью
-                responses = [
-                    f"С {target_faction} у нас хорошие отношения! Я не собираюсь их портить.",
-                    f"Ты предлагаешь мне предать {target_faction}? Это недостойно.",
-                    f"{target_faction} - наш друг. Я не стану на них нападать."
+
+            # ========== УРОВЕНЬ 3: Отношения 60-80 ==========
+            if 60 <= relation_level < 80:
+                # Может согласиться за ресурсы
+                # Рассчитываем требуемое количество ресурсов
+                # Чем ближе к 60, тем больше, чем ближе к 80, тем меньше
+                progress = (relation_level - 60) / 20  # от 0 до 1
+                base_amount = 10000  # Базовая сумма
+                multiplier = 3 - (progress * 2)  # от 3x до 1x
+                required_amount = int(base_amount * multiplier)
+
+                # Проверяем текущие отношения с целью
+                if target_relation >= 60:
+                    # С друзьями не воюем
+                    responses = [
+                        f"{target_faction} - наши друзья. Я не стану на них нападать, какие бы ресурсы ты не предлагал.",
+                        f"За деньги предавать друзей? Я не такой как ты!",
+                        f"С {target_faction} у нас союзнические отношения. Это предложение оскорбительно.",
+                        f"Я не продажный! {target_faction} нам доверяет."
+                    ]
+                    return random.choice(responses)
+
+                # Предлагаем сделку
+                deal_responses = [
+                    f"Хм... Нападение на {target_faction} возможно, но мне нужно {required_amount:,} крон за этот риск.",
+                    f"Я могу рассмотреть твоё предложение, но за {required_amount:,} крон. Война - дорогое удовольствие.",
+                    f"Если ты дашь мне {required_amount:,} крон, я подумаю о нападении на {target_faction}.",
+                    f"Рисковать отношениями с {target_faction} стоит {required_amount:,} крон. Готов платить?"
                 ]
-                return random.choice(responses)
+
+                # Сохраняем предложение в контексте
+                self.negotiation_context[faction] = {
+                    "stage": "provocation_deal",
+                    "target_faction": target_faction,
+                    "required_amount": required_amount,
+                    "counter_offers": 0
+                }
+
+                return random.choice(deal_responses)
+
+            # ========== УРОВЕНЬ 4: Отношения 80-90 ==========
+            if 80 <= relation_level < 90:
+                # 75% вероятность согласиться бесплатно
+                if random.random() < 0.75:
+                    # Соглашаемся бесплатно
+                    if target_relation >= 60:
+                        # Но не на друзей
+                        responses = [
+                            f"Хотя я тебе доверяю, но нападать на {target_faction} не могу. Они наши друзья.",
+                            f"Друг, я бы помог, но {target_faction} нам не враги. Не могу предать.",
+                            f"С {target_faction} у нас хорошие отношения. Не хочу их портить даже ради тебя.",
+                            f"Я тебе доверяю, но это переходит границы. {target_faction} - наши союзники."
+                        ]
+                        return random.choice(responses)
+
+                    # Объявляем войну
+                    self._declare_war_on_faction(faction, target_faction)
+
+                    free_responses = [
+                        f"Для друга ничего не жалко! Объявляю войну {target_faction}!",
+                        f"Раз ты просишь - так тому и быть! Наши войска выдвигаются против {target_faction}!",
+                        f"Ты мой друг, поэтому я доверяю твоему суждению. Война {target_faction} объявлена!",
+                        f"Ради нашей дружбы! {target_faction} теперь наши враги!"
+                    ]
+                    return random.choice(free_responses)
+                else:
+                    # 25% вероятность потребовать плату
+                    required_amount = random.randint(5000, 15000)
+
+                    self.negotiation_context[faction] = {
+                        "stage": "provocation_deal",
+                        "target_faction": target_faction,
+                        "required_amount": required_amount,
+                        "counter_offers": 0
+                    }
+
+                    payment_responses = [
+                        f"Друг, я бы помог, но война с {target_faction} обойдётся в {required_amount:,} крон. Можешь оплатить?",
+                        f"Я подумал... Помогу, но за {required_amount:,} крон. Согласен?",
+                        f"Для такого серьёзного шага нужно {required_amount:,} крон. Готов спонсировать?",
+                        f"Объявить войну {target_faction} могу, но за {required_amount:,} крон."
+                    ]
+                    return random.choice(payment_responses)
+
+            # ========== УРОВЕНЬ 5: Отношения 90-100 ==========
+            if relation_level >= 90:
+                # Всегда соглашаемся
+                if target_relation >= 70:
+                    # Но не на очень близких друзей
+                    responses = [
+                        f"Брат, ты что? {target_faction} - наши кровные союзники! Я не могу на них напасть!",
+                        f"Даже для тебя я не предам {target_faction}! Мы связаны клятвой!",
+                        f"Нет, это слишком! {target_faction} нам как братья!",
+                        f"Я бы для тебя жизнь отдал, но не предам {target_faction}!"
+                    ]
+                    return random.choice(responses)
+
+                # Объявляем войну
+                self._declare_war_on_faction(faction, target_faction)
+
+                always_agree_responses = [
+                    f"Без вопросов! Для брата всё что угодно! Война {target_faction} объявлена!",
+                    f"Ты сказал - я сделал! {target_faction} теперь наши враги!",
+                    f"Наше братство важнее всего! Война против {target_faction} начинается!",
+                    f"Ты мой кровный брат! {target_faction} будет уничтожен по твоей просьбе!"
+                ]
+                return random.choice(always_agree_responses)
+
+            return "Я не могу принять решение по этому поводу."
 
         except Exception as e:
             print(f"Ошибка при обработке провокации: {e}")
-            return "Я не понимаю, о чем ты говоришь."
+            return "Что-то пошло не так при рассмотрении твоего предложения."
+
+    def _handle_provocation_deal(self, message, faction, context):
+        """Обрабатывает сделку по провокации"""
+        message_lower = message.lower()
+
+        # Проверяем согласие
+        if any(word in message_lower for word in ['да', 'согласен', 'ок', 'хорошо', 'ладно', 'принимаю', 'плачу']):
+            # Проверяем наличие ресурсов у игрока
+            required_amount = context.get("required_amount", 0)
+            target_faction = context.get("target_faction")
+
+            try:
+                cursor = self.db_connection.cursor()
+
+                # Проверяем ресурсы игрока
+                cursor.execute("SELECT amount FROM resources WHERE faction = ? AND resource_type = 'Кроны'",
+                               (self.faction,))
+                player_resources = cursor.fetchone()
+
+                if not player_resources or player_resources[0] < required_amount:
+                    context["stage"] = "idle"
+                    return f"У тебя недостаточно крон! Нужно {required_amount:,}, а у тебя {player_resources[0] if player_resources else 0:,}."
+
+                # Списываем ресурсы
+                cursor.execute("""
+                    UPDATE resources 
+                    SET amount = amount - ? 
+                    WHERE faction = ? AND resource_type = 'Кроны'
+                """, (required_amount, self.faction))
+
+                # Объявляем войну
+                self._declare_war_on_faction(faction, target_faction)
+
+                # Добавляем запись о сделке
+                cursor.execute("""
+                    INSERT INTO trade_agreements 
+                    (initiator, target_faction, initiator_type_resource, initiator_summ_resource,
+                     target_type_resource, target_summ_resource, agree, agreement_type, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (
+                    self.faction, faction, "Кроны", required_amount,
+                    "Подстрекательство", 1, 1, "provocation"
+                ))
+
+                self.db_connection.commit()
+
+                context["stage"] = "idle"
+
+                success_responses = [
+                    f"Принято! {required_amount:,} крон получены. Объявляю войну {target_faction}!",
+                    f"Сделка заключена! Война {target_faction} начинается.",
+                    f"Ресурсы получены. Как и договаривались, {target_faction} теперь наши враги!",
+                    f"Платеж принят. Наши войска выдвигаются против {target_faction}!"
+                ]
+                return random.choice(success_responses)
+
+            except Exception as e:
+                print(f"Ошибка при обработке сделки провокации: {e}")
+                context["stage"] = "idle"
+                return "Ошибка при обработке сделки. Попробуй позже."
+
+        # Проверяем отказ
+        elif any(word in message_lower for word in ['нет', 'не согласен', 'отказываюсь', 'не буду', 'дорого']):
+            context["stage"] = "idle"
+            refusal_responses = [
+                "Жаль. Тогда не будем ничего предпринимать.",
+                "Как скажешь. Остаёмся при своих интересах.",
+                "Хорошо, я понял. Предложение снято.",
+                "Принято к сведению."
+            ]
+            return random.choice(refusal_responses)
+
+        # Торг
+        else:
+            # Пробуем извлечь предложение суммы
+            amount = self._extract_number_from_text(message)
+            if amount:
+                required_amount = context.get("required_amount", 0)
+
+                if amount >= required_amount * 0.8:  # Принимаем от 80% от запрошенного
+                    # Принимаем предложение
+                    context["required_amount"] = amount
+                    return f"Хорошо, принимаю {amount:,} крон. Согласен?"
+                else:
+                    # Отказываем
+                    return f"{amount:,} крон недостаточно. Мне нужно минимум {int(required_amount * 0.8):,}."
+
+            return "Назови сумму которую готов заплатить или ответь 'да'/'нет'."
+
+    def _declare_war_on_faction(self, requesting_faction, target_faction):
+        """Вспомогательный метод для объявления войны фракции"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Объявляем войну
+            cursor.execute("""
+                UPDATE diplomacies 
+                SET relationship = 'война' 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (requesting_faction, target_faction, target_faction, requesting_faction))
+
+            cursor.execute("""
+                UPDATE relations 
+                SET relationship = 0 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (requesting_faction, target_faction, target_faction, requesting_faction))
+
+            self.db_connection.commit()
+
+            # Добавляем запись в историю
+            cursor.execute("""
+                INSERT INTO negotiation_history 
+                (faction1, faction2, message, is_player, timestamp)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            """, (requesting_faction, target_faction, f"Объявлена война по подстрекательству игрока", 0))
+
+            self.db_connection.commit()
+
+            return True
+
+        except Exception as e:
+            print(f"Ошибка при объявлении войны: {e}")
+            return False
 
     def _is_relationship_break(self, message):
         """Определяет, является ли сообщение разрывом отношений"""
@@ -3705,7 +3949,7 @@ class EnhancedDiplomacyChat():
                 (faction1, faction2, message, is_player, timestamp)
                 VALUES (?, ?, ?, ?, datetime('now'))
             """, (self.faction, target_faction,
-                  f"Улучшение отношений через {chosen_option['name']}. Улучшено на {chosen_option['improvement']} пунктов.",
+                  f"Улучшение отношений через {chosen_option['name']}. Улучшено на {chosen_option['improvement']} %.",
                   0))
 
             self.db_connection.commit()
@@ -3716,10 +3960,10 @@ class EnhancedDiplomacyChat():
             # Формируем ответ
             improvement = chosen_option['improvement']
             response_options = [
-                f"Отлично! Наши отношения улучшились на {improvement} пунктов! Теперь они на уровне {new_relationship}/100.",
+                f"Отлично! Наши отношения улучшились на {improvement}%! Теперь они на уровне {new_relationship}/100.",
                 f"Прекрасно! Благодаря {chosen_option['name']} наши отношения выросли до {new_relationship}/100 (+{improvement}).",
                 f"Принято! Отношения улучшены. Теперь они составляют {new_relationship}/100.",
-                f"Соглашение заключено! Наше взаимопонимание улучшилось на {improvement} пунктов."
+                f"Соглашение заключено! Наше взаимопонимание улучшилось на {improvement}%."
             ]
 
             # Добавляем фразы фракций
@@ -3768,3 +4012,406 @@ class EnhancedDiplomacyChat():
             return True
 
         return False
+
+    def _is_war_declaration(self, message):
+        """Определяет, является ли сообщение объявлением войны - УЛУЧШЕННАЯ ВЕРСИЯ"""
+        war_keywords = [
+            'война', 'объявляю войну', 'нападу', 'нападем', 'нападете', 'напасть',
+            'атаковать', 'атакую', 'атакуем', 'атакуете',
+            'вторгнуться', 'вторгнусь', 'вторгнемся', 'вторгнетесь',
+            'воевать', 'буду воевать', 'будем воевать', 'будете воевать',
+            'военные действия', 'начать войну', 'развязать войну',
+            'уничтожить', 'уничтожу', 'уничтожим', 'уничтожите',
+            'разгромить', 'разгромлю', 'разгромим', 'разгромите',
+            'сокрушить', 'сокрушу', 'сокрушим', 'сокрушите',
+            'убить', 'убью', 'убьем', 'убьете',
+            'ликвидировать', 'ликвидирую', 'ликвидируем', 'ликвидируете',
+            'стереть с лица земли', 'стереть с карты',
+            'конец', 'конец нашему миру', 'конец переговорам',
+            'умри', 'сдохни', 'погибни', 'пропади',
+            'ненавижу', 'ненавидим', 'ненавидите',
+            'уничтожу тебя', 'убью тебя', 'раздавлю тебя',
+            'в моих глазах ты уже мертв', 'ты труп',
+            'готовься к бою', 'готовься к войне', 'готовься умирать',
+            'между нами война', 'сейчас будет война',
+            'твоя смерть близка', 'ваша гибель неизбежна',
+            'кровопролитие', 'кровь прольется', 'будет кровь'
+        ]
+
+        message_lower = message.lower()
+
+        # Проверяем наличие явных слов войны
+        has_war_keywords = any(keyword in message_lower for keyword in war_keywords)
+
+        # Проверяем агрессивные конструкции
+        aggressive_patterns = [
+            r'я теб[ея] убью',
+            r'я теб[ея] уничтожу',
+            r'ты умр[её]шь',
+            r'ты сдохнешь',
+            r'мы тебя уничтожим',
+            r'мы вас уничтожим',
+            r'твой конец',
+            r'твоя смерть',
+            r'тебе конец',
+            r'ваш конец',
+            r'смерть тебе',
+            r'смерть вам',
+            r'на ножах',
+            r'к оружию'
+        ]
+
+        import re
+        has_aggressive_patterns = any(re.search(pattern, message_lower) for pattern in aggressive_patterns)
+
+        # Проверяем комбинацию угроз с упоминанием войны
+        threat_words = ['убью', 'уничтожу', 'раздавлю', 'сотру', 'стеру', 'сожгу', 'разорву']
+        war_words = ['война', 'сражение', 'битва', 'бой', 'конфликт', 'войну', 'воевать', 'драться', 'дратся', 'подеремся', 'подраться']
+
+        has_threat = any(threat in message_lower for threat in threat_words)
+        has_war_mention = any(war_word in message_lower for war_word in war_words)
+
+        return has_war_keywords or has_aggressive_patterns or (has_threat and has_war_mention)
+
+    def _handle_war_declaration(self, message, faction):
+        """Обрабатывает объявление войны с разнообразными репликами - УЛУЧШЕННАЯ ВЕРСИЯ"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем текущий ход
+            cursor.execute("SELECT turn_count FROM turn")
+            turn_result = cursor.fetchone()
+            if turn_result is None or turn_result[0] < 14:
+                early_turn_responses = [
+                    "Слишком рано для войны. Подожди 14-го хода.",
+                    "Ещё не время начинать войны. Давай подождём 14 ходов.",
+                    "Потерпи до 14-го хода. Тогда и поговорим о войне.",
+                    "Рано размахивать мечами. Сначала окрепнем."
+                ]
+                return random.choice(early_turn_responses)
+
+            # Проверяем текущие отношения
+            cursor.execute("""
+                SELECT relationship FROM diplomacies 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            result = cursor.fetchone()
+            if result and result[0] == "война":
+                already_war_responses = [
+                    "Мы с тобой уже воюем! Ты что, забыл?",
+                    "Война уже идёт! Ты опоздал с объявлением.",
+                    "Наши мечи уже скрестились! Не нужно повторных объявлений.",
+                    "Битва продолжается. Зачем объявлять войну дважды?",
+                    "Ты что, не видишь что мы уже воюем? Иди воевать, а не болтай!",
+                    "На поле боя уже льется кровь! Присоединяйся или заткнись!"
+                ]
+                return random.choice(already_war_responses)
+
+            # Объявляем войну
+            cursor.execute("""
+                UPDATE diplomacies 
+                SET relationship = 'война' 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            cursor.execute("""
+                UPDATE relations 
+                SET relationship = 0 
+                WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+            """, (self.faction, faction, faction, self.faction))
+
+            self.db_connection.commit()
+
+            # Получаем фразу для фракции
+            phrases = self.faction_phrases.get(faction, {})
+            war_phrase = phrases.get("war_declaration", f"Война объявлена против {faction}!")
+
+            # Дополнительные вариации в зависимости от агрессивности сообщения
+            message_lower = message.lower()
+
+            if any(word in message_lower for word in ['убью', 'уничтожу', 'сотру', 'стеру']):
+                # Очень агрессивное объявление
+                aggressive_responses = [
+                    "Так ты хочешь смерти? Получи её!",
+                    "Говорил, говорил... теперь получай!",
+                    "Угрожать мне? Тебе конец!",
+                    "Твои слова стали твоим смертным приговором!",
+                    "Я сделаю так, что ты пожалеешь о каждом сказанном слове!",
+                    "За каждое твоё оскорбление заплатишь кровью!"
+                ]
+                war_phrase += f" {random.choice(aggressive_responses)}"
+
+            elif any(word in message_lower for word in ['ненавижу', 'презираю', 'отвратительно']):
+                # Эмоциональное объявление
+                emotional_responses = [
+                    "Твоя ненависть встретит мое презрение на поле боя!",
+                    "Если ненавидишь - докажи это в бою!",
+                    "Ненависть - плохой советчик. Сейчас ты это поймёшь!",
+                    "Пусть твоя ненависть станет твоим надгробием!"
+                ]
+                war_phrase += f" {random.choice(emotional_responses)}"
+
+            # Добавляем фракционные реплики
+            faction_war_responses = {
+                "Эльфы": [
+                    "Ты осквернил наши леса в последний раз! Стрелы уже летят в твою сторону!",
+                    "Природа восстанет против тебя! Деревья станут твоими могилами!",
+                    "За каждое срубленное дерево - сто твоих солдат!",
+                    "Лес пропитается твоей кровью!"
+                ],
+                "Север": [
+                    "Холодная смерть найдёт тебя! Мороз скрепит твои кости!",
+                    "Ледяной ветер выдует твою жизнь! Зима пришла за тобой!",
+                    "В буране твои армии замёрзнут насмерть!",
+                    "Северный ветер принёс тебе смерть!"
+                ],
+                "Адепты": [
+                    "Ересь будет сожжена! Очистим мир огнём!",
+                    "Бог покарает тебя через нашу руку! Готовься к божьему суду!",
+                    "Священная война началась! Смерть неверным!",
+                    "Твоя душа будет гореть в аду!"
+                ],
+                "Элины": [
+                    "Песок поглотит твои кости! Пустыня высосет твою кровь!",
+                    "Зной пустыни иссушит твою армию! Солнце сожжёт тебя!",
+                    "В песках похороню твои надежды!",
+                    "Пустыня станет твоей могилой!"
+                ],
+                "Вампиры": [
+                    "Твоя кровь будет нашей! Ночь вечной тьмы настала!",
+                    "Мы будем пить твою кровь веками! Страшись ночи!",
+                    "Ты станешь нашей вечной игрушкой!",
+                    "Кровопийцы идут за тобой!"
+                ]
+            }
+
+            # Добавляем случайную реплику для фракции
+            faction_responses = faction_war_responses.get(faction, [])
+            if faction_responses:
+                additional_response = random.choice(faction_responses)
+                return f"{war_phrase} {additional_response}"
+
+            return war_phrase
+
+        except Exception as e:
+            print(f"Ошибка при объявлении войны: {e}")
+            error_responses = [
+                "Что-то пошло не так при объявлении войны.",
+                "Моя канцелярия не смогла обработать объявление.",
+                "Войну объявить не удалось. Попробуй позже.",
+                "Не могу начать войну сейчас. Что-то мешает."
+            ]
+            return random.choice(error_responses)
+
+    def _is_insult_or_threat(self, message):
+        """Определяет, является ли сообщение оскорблением или угрозой - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+        insult_keywords = [
+            'дурак', 'идиот', 'дебил', 'кретин', 'тупица', 'олух',
+            'мудак', 'козел', 'сволочь', 'подонок', 'ублюдок', 'сука',
+            'тварь', 'скотина', 'жмот', 'жадина', 'трус',
+            'ничтожество', 'отброс', 'мусор', 'гнида', 'паразит',
+            'уебок', 'пидор', 'педик', 'гомик', 'педераст',
+            'задницу', 'жопу', 'хую', 'хуюшки', 'петух',
+            'выебать тебя', 'выебали тебя', 'тебя выебал',
+            'тебя выебать',
+            'гандон', 'уебан', 'пидр', 'охуел', 'ебало',
+            'шлюха', 'блядь', 'проститутка', 'шалава',
+            'выродок', 'урод', 'калека', 'инвалид',
+            'сучонок', 'сучий потрох', 'пёс', 'собака',
+            'свинья', 'осёл', 'кобыла', 'жеребец',
+            'хуй', 'пизда', 'ебать', 'блять', 'еблище',
+            'пошёл нахуй', 'иди нахуй', 'пошёл ты', 'пошла ты',
+            'заткнись', 'заткни пасть', 'завались', 'отстань',
+            'отъебись', 'отвали', 'проваливай', 'съеби',
+            'сдохни', 'подыхай', 'сгинь', 'исчезни',
+            'чтоб ты сдох', 'чтоб ты подавился', 'чтоб ты сгнил',
+            'гнилой', 'прогнивший', 'вонючий', 'воняешь',
+            'тупой', 'безмозглый', 'бездарность', 'неудачник',
+            'жалкий', 'жалкое', 'ничтожный', 'мелкий',
+            'тряпка', 'сопляк', 'молокосос', 'щенок',
+            'предатель', 'изменник', 'иуда', 'Иуда',
+            'вор', 'жулик', 'мошенник', 'аферист',
+            'лжец', 'лгун', 'врун', 'обманщик',
+            'трус', 'боязливый', 'пугливый', 'трусливый',
+            'жадный', 'жадина', 'скряга', 'скупой'
+        ]
+
+        threat_keywords = [
+            'убью', 'убить', 'уничтожу', 'уничтожить',
+            'раздавлю', 'раздавить', 'сотру', 'стереть',
+            'сожгу', 'сжечь', 'разорву', 'разорвать',
+            'повешу', 'повесить', 'казню', 'казнить',
+            'запорю', 'запороть', 'зарежу', 'зарезать',
+            'застрелю', 'застрелить', 'задушу', 'задушить',
+            'покалечу', 'покалечить', 'изувечу', 'изувечить',
+            'изнасилую', 'изнасиловать', 'надругаюсь', 'надругаться',
+            'опущу', 'опустить', 'унижу', 'унизить',
+            'отомщу', 'отомстить', 'отплачу', 'отплатить',
+            'накажу', 'наказать', 'покараю', 'покарать',
+            'покончу', 'покончить', 'прикончу', 'прикончить',
+            'сотру с лица земли', 'стереть с карты',
+            'вырежу', 'вырезать', 'выжгу', 'выжечь',
+            'превращу в пепел', 'в пыль', 'в труху',
+            'не оставлю камня на камне', 'камня на камне не оставлю',
+            'сотру в порошок', 'в порошок сотру',
+            'сделаю из тебя фарш', 'фарш сделаю',
+            'костей не соберёшь', 'не соберёшь костей'
+        ]
+
+        message_lower = message.lower()
+
+        # Проверяем оскорбления - как отдельные слова или фразы
+        has_insult = False
+        words = message_lower.split()
+
+        # Проверяем каждое слово отдельно (чтобы "дать" не считалось оскорблением)
+        for word in words:
+            for insult in insult_keywords:
+                # Если оскорбление - одно слово, проверяем точное совпадение
+                if ' ' not in insult and word == insult:
+                    has_insult = True
+                    break
+                # Если оскорбление - фраза, проверяем вхождение
+                elif ' ' in insult and insult in message_lower:
+                    has_insult = True
+                    break
+
+        # Проверяем угрозы
+        has_threat = any(threat in message_lower for threat in threat_keywords)
+
+        # Проверяем агрессивные конструкции (более строгие паттерны)
+        aggressive_patterns = [
+            r'^я\s+теб[еяя]\s+[а-я]+у$',  # я тебя убью (отдельное предложение)
+            r'^ты\s+[а-я]+ешь$',  # ты сдохнешь (отдельное предложение)
+            r'^чтоб\s+ты\s+[а-я]+$',  # чтоб ты сдох (отдельное предложение)
+            r'пош[её]л\s+нахуй',  # пошёл нахуй
+            r'иди\s+нахуй',  # иди нахуй
+            r'заткни\s+пасть',  # заткни пасть
+            r'^заткнись$',  # заткнись (отдельное слово)
+            r'я\s+теб[ея]\s+(убью|уничтожу|раздавлю|сотру|сожгу)',  # я тебя [угроза]
+            r'ты\s+(сдохнешь|подыхаешь|сгниёшь|исчезнешь)',  # ты [угроза]
+            r'чтоб\s+ты\s+(сдох|подавился|сгнил|исчез)',  # чтоб ты [угроза]
+            r'\bубью\s+тебя\b',  # убью тебя
+            r'\bуничтожу\s+тебя\b',  # уничтожу тебя
+            r'\bраздавлю\s+тебя\b',  # раздавлю тебя
+            r'\bубью\s+вас\b',  # убью вас
+            r'\bуничтожу\s+вас\b',  # уничтожу вас
+        ]
+
+        import re
+        has_aggressive_pattern = False
+        for pattern in aggressive_patterns:
+            if re.search(pattern, message_lower):
+                has_aggressive_pattern = True
+                break
+
+        # Дополнительная проверка: не считать предложения типа "Ты можешь мне дать" за оскорбления
+        # Проверяем, есть ли в предложении нейтральные глаголы
+        neutral_verbs = ['дать', 'дать', 'могу', 'можешь', 'можно', 'хочу', 'нужно', 'нужен', 'нужно']
+        has_neutral_request = any(verb in message_lower for verb in neutral_verbs)
+
+        # Если есть нейтральный запрос и нет явных оскорблений/угроз, то это не оскорбление
+        if has_neutral_request and not (has_insult or has_threat):
+            # Проверяем, нет ли оскорблений рядом с глаголами
+            # Разбиваем предложение на слова и проверяем соседние слова
+            words_list = message_lower.split()
+            for i, word in enumerate(words_list):
+                if word in neutral_verbs:
+                    # Проверяем соседние слова на оскорбления
+                    nearby_insult = False
+                    start = max(0, i - 2)
+                    end = min(len(words_list), i + 3)
+
+                    for j in range(start, end):
+                        if j != i and words_list[j] in insult_keywords:
+                            nearby_insult = True
+                            break
+
+                    if not nearby_insult:
+                        return False
+
+        return has_insult or has_threat or has_aggressive_pattern
+
+    def _handle_insult_or_threat(self, message, faction, relation_level):
+        """Обрабатывает оскорбления и угрозы"""
+        try:
+            cursor = self.db_connection.cursor()
+
+            # Проверяем текущий ход
+            cursor.execute("SELECT turn_count FROM turn")
+            turn_result = cursor.fetchone()
+
+            message_lower = message.lower()
+
+            # Если отношения уже плохие или нейтральные
+            if relation_level < 50:
+                # Ухудшаем отношения
+                deterioration = random.randint(10, 25)
+                new_relation = max(0, relation_level - deterioration)
+
+                cursor.execute("""
+                    UPDATE relations 
+                    SET relationship = ? 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (new_relation, self.faction, faction, faction, self.faction))
+
+                self.db_connection.commit()
+
+                # Проверяем, можно ли объявить войну
+                if turn_result and turn_result[0] >= 14 and new_relation < 20:
+                    war_responses = [
+                        f"За такие слова я объявляю тебе войну! Отношения упали до {new_relation}/100.",
+                        f"Ты перешёл черту! Война! Отношения: {new_relation}/100.",
+                        f"Хватит! Между нами война! Твои оскорбления стоят тебе {deterioration}%.",
+                        f"На оскорбления отвечаю войной! Отныне мы враги!"
+                    ]
+
+                    # Объявляем войну
+                    cursor.execute("""
+                        UPDATE diplomacies 
+                        SET relationship = 'война' 
+                        WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                    """, (self.faction, faction, faction, self.faction))
+
+                    self.db_connection.commit()
+
+                    return random.choice(war_responses)
+                else:
+                    # Просто ухудшаем отношения
+                    insult_responses = [
+                        f"Считаешь это остроумным?! Отношения ухудшились на {deterioration}%",
+                        f"Что культурно нельзя?! Ты потерял {deterioration}% доверия",
+                        f"Твоё хамство дорого тебе обойдётся! -{deterioration} к отношениям.",
+                        f"Я этого не забуду! Отношения упали до {new_relation}/100."
+                    ]
+                    return random.choice(insult_responses)
+            else:
+                # Если отношения были хорошими
+                deterioration = random.randint(15, 30)
+                new_relation = max(0, relation_level - deterioration)
+
+                cursor.execute("""
+                    UPDATE relations 
+                    SET relationship = ? 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (new_relation, self.faction, faction, faction, self.faction))
+
+                self.db_connection.commit()
+
+                responses = [
+                    f"Я думал, мы друзья... За такие слова отношения падают на {deterioration} %.",
+                    f"Разочарован твоим поведением. -{deterioration} к нашим отношениям.",
+                    f"Твои оскорбления ранят. Отношения теперь {new_relation}/100.",
+                    f"Ответишь за слова? Наши отношения упали на {deterioration}%"
+                ]
+
+                # Если отношения упали сильно, угрожаем войной
+                if new_relation < 30 and turn_result and turn_result[0] >= 14:
+                    responses.append(f"Ещё одно такое слово - и будет война! Отношения: {new_relation}/100.")
+
+                return random.choice(responses)
+
+        except Exception as e:
+            print(f"Ошибка при обработке оскорбления: {e}")
+            return "Твои слова оскорбительны. Пожалуйста, веди себя прилично."

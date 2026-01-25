@@ -208,11 +208,11 @@ class RelationsManager:
             return 0.1
         if 25 <= rel < 35:
             return 0.4
-        if 35 <= rel < 50:
+        if 35 <= rel < 54:
             return 0.9
-        if 50 <= rel < 60:
+        if 54 <= rel < 65:
             return 1.5
-        if 60 <= rel < 75:
+        if 65 <= rel < 75:
             return 2
         if 75 <= rel < 90:
             return 3.1
@@ -421,11 +421,11 @@ class RelationsManager:
             return (1.0, 0.5, 0.0, 1)
         elif 25 < value <= 35:
             return (1.0, 0.8, 0.0, 1)
-        elif 35 < value <= 50:
+        elif 35 < value <= 54:
             return (0.2, 0.7, 0.3, 1)
-        elif 50 < value <= 60:
+        elif 54 < value <= 65:
             return (0.0, 0.8, 0.8, 1)
-        elif 60 < value <= 75:
+        elif 65 < value <= 75:
             return (0.0, 0.6, 1.0, 1)
         elif 75 < value <= 90:
             return (0.1, 0.3, 0.9, 1)

@@ -728,18 +728,28 @@ class MapWidget(Widget):
             # --- Сохраняем данные для кликов ---
             self.fortress_data_for_canvas.append((fortress_name, kingdom, fort_x, fort_y, drawn_x, drawn_y))
 
-            # --- Рисуем название города ---
+            # --- Создание надписи города с белой обводкой ---
             display_name = f"{fortress_name}({kingdom})"
-            label = CoreLabel(text=display_name, font_size=25, color=(0, 0, 0, 1))
-            label.refresh()
-            text_texture = label.texture
-            text_width, text_height = text_texture.size
-            text_x = drawn_x + (40 - text_width) / 2
-            text_y = drawn_y - text_height - 5
 
-            with self.canvas:
-                Color(1, 1, 1, 1)
-                Rectangle(texture=text_texture, pos=(text_x, text_y), size=(text_width, text_height))
+            # Используем виджет Label с обводкой вместо CoreLabel
+            label_widget = Label(
+                text=display_name,
+                font_size='22sp',
+                color=(0, 0, 0, 1),  # Черный текст
+                outline_color=(1, 1, 1, 1),  # Белая обводка
+                outline_width=1,  # Толщина обводки
+                bold=True,
+                size_hint=(None, None),
+                halign='center',
+                valign='middle'
+            )
+
+            # Позиционируем под иконкой
+            label_widget.pos = (drawn_x + 40 - label_widget.texture_size[0] / 2,
+                                drawn_y - label_widget.texture_size[1] - 5)
+            label_widget.size = label_widget.texture_size
+
+            self.add_widget(label_widget)
 
             # --- Обновляем icon_coordinates в БД ---
             try:
@@ -2031,14 +2041,6 @@ class GameButton(Button):
                 size=(width, height * 0.4),
                 radius=[25, 25, 0, 0]
             )
-
-            # Акцентная полоса
-            Color(*self.accent_color)
-            Rectangle(
-                pos=(x + width * 0.15, y + height * 0.8),
-                size=(width * 0.7, height * 0.1)
-            )
-
             # Фоновые частицы
             time = Clock.get_time()
             for particle in self.particles:
@@ -3068,4 +3070,3 @@ class Lerdon(MDApp):
 
 if __name__ == '__main__':
     Lerdon().run()
-
