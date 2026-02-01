@@ -91,11 +91,11 @@ class EnhancedDiplomacyChat():
         return self.create_chat_interface()
 
     def create_control_panel_android(self):
-        """Создает панель управления для Android"""
+        """Создает панель управления для Android (расположена внизу)"""
         panel = BoxLayout(
             orientation='vertical',
             size_hint=(1, None),
-            height=dp(100) if platform == 'android' else dp(120),
+            height=dp(120) if platform == 'android' else dp(140),
             spacing=dp(6),
             padding=[dp(10), dp(8)]
         )
@@ -103,7 +103,7 @@ class EnhancedDiplomacyChat():
         # Верхняя строка: выбор фракции
         faction_row = BoxLayout(
             orientation='horizontal',
-            size_hint=(1, 0.5),
+            size_hint=(1, 0.4),
             spacing=dp(8)
         )
 
@@ -136,51 +136,62 @@ class EnhancedDiplomacyChat():
         faction_row.add_widget(faction_label)
         faction_row.add_widget(self.faction_spinner)
 
-        # Нижняя строка: информация об отношениях
+        # Средняя строка: информация об отношениях
         info_row = BoxLayout(
-            orientation='vertical',
-            size_hint=(1, 0.5),
-            spacing=dp(2)
+            orientation='horizontal',
+            size_hint=(1, 0.3),
+            spacing=dp(8)
         )
 
         self.relation_info_label = Label(
-            text="Выберите фракцию",
-            font_size='12sp',
+            text="Выберите фракцию для отображения отношений",
+            font_size='13sp',
             color=(0.7, 0.7, 0.8, 1),
             halign='center',
             valign='middle'
         )
         self.relation_info_label.bind(size=self.relation_info_label.setter('text_size'))
 
-        # Кнопка подробной информации (только если достаточно места)
-        if Window.width > 350:
-            info_button = Button(
-                text="Подробнее об отношениях",
-                size_hint=(1, None),
-                height=dp(28),
-                background_normal='',
-                background_color=(0.3, 0.3, 0.5, 0.7),
-                font_size='11sp',
-                on_press=self.show_relation_info
-            )
-            info_row.add_widget(info_button)
-        else:
-            info_button = Button(
-                text="!",
-                size_hint=(None, None),
-                size=(dp(30), dp(30)),
-                pos_hint={'right': 1, 'center_y': 0.5},
-                background_normal='',
-                background_color=(0.3, 0.3, 0.5, 0.7),
-                font_size='14sp',
-                on_press=self.show_relation_info
-            )
-            info_row.add_widget(info_button)
+        # Добавляем индикатор отношений (цветной круг или полосу)
+        relation_indicator = BoxLayout(
+            orientation='horizontal',
+            size_hint=(0.2, 1),
+            padding=[dp(5), 0]
+        )
+
+        self.relation_indicator_widget = Label(
+            text="●",
+            font_size='20sp',
+            color=(0.5, 0.5, 0.5, 1),
+            halign='center',
+            valign='middle'
+        )
+        relation_indicator.add_widget(self.relation_indicator_widget)
 
         info_row.add_widget(self.relation_info_label)
+        info_row.add_widget(relation_indicator)
+
+        # Нижняя строка: кнопка подробной информации
+        button_row = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, 0.3),
+            spacing=dp(8)
+        )
+
+        # Кнопка подробной информации
+        info_button = Button(
+            text="Подробнее об отношениях",
+            size_hint=(1, 1),
+            background_normal='',
+            background_color=(0.3, 0.3, 0.5, 0.7),
+            font_size='12sp',
+            on_press=self.show_relation_info
+        )
+        button_row.add_widget(info_button)
 
         panel.add_widget(faction_row)
         panel.add_widget(info_row)
+        panel.add_widget(button_row)
 
         # Фон панели
         with panel.canvas.before:
@@ -343,7 +354,6 @@ class EnhancedDiplomacyChat():
             self.update_relation_info_android(text)
             self.load_chat_history()
 
-
     def update_relation_info_android(self, faction):
         """Обновляет информацию об отношениях для Android"""
         if not hasattr(self, 'relation_info_label'):
@@ -360,7 +370,7 @@ class EnhancedDiplomacyChat():
         coefficient = self.calculate_coefficient(relation_level)
         status = relation_data.get('status', 'нейтралитет')
 
-        # Форматируем текст компактно
+        # Форматируем текст
         if coefficient == 0:
             coefficient_text = " (сделки невозможны)"
         else:
@@ -382,7 +392,9 @@ class EnhancedDiplomacyChat():
 
         self.relation_info_label.color = color
 
-    # МЕТОДЫ ДОБАВЛЕНИЯ СООБЩЕНИЙ (АДАПТИРОВАННЫЕ)
+        # Обновляем цвет индикатора
+        if hasattr(self, 'relation_indicator_widget'):
+            self.relation_indicator_widget.color = color
 
     def add_chat_message(self, message, sender, timestamp, is_player=False):
         """Добавляет сообщение в чат (с автоматическим выбором версии)"""
@@ -4786,8 +4798,7 @@ class EnhancedDiplomacyChat():
         return has_insult or has_threat or has_aggressive_pattern
 
     def create_chat_interface(self):
-        """Создает интерфейс чата для вкладки"""
-        # Используем существующий метод создания окна, но адаптируем
+        """Создает интерфейс чата для вкладки (обновленный: чат сверху, управление снизу)"""
         chat_window = BoxLayout(
             orientation='vertical',
             size_hint=(1, 1),
@@ -4795,14 +4806,17 @@ class EnhancedDiplomacyChat():
             padding=0
         )
 
-        control_panel = self.create_control_panel_android()
-        chat_window.add_widget(control_panel)
-
+        # 1. ВЕРХ: Поле ввода текста (первым делом)
         input_panel = self.create_input_panel_android()
         chat_window.add_widget(input_panel)
 
+        # 2. СЕРЕДИНА: Область чата
         chat_area = self.create_chat_area_android()
         chat_window.add_widget(chat_area)
+
+        # 3. НИЗ: Панель управления с выбором фракции и информацией
+        control_panel = self.create_control_panel_android()
+        chat_window.add_widget(control_panel)
 
         return chat_window
 
@@ -4903,11 +4917,6 @@ class EnhancedDiplomacyChat():
         with diplomacy_window.canvas.before:
             Color(0.08, 0.08, 0.12, 0.98)
             Rectangle(pos=diplomacy_window.pos, size=diplomacy_window.size)
-
-        # 2. ПАНЕЛЬ ВЫБОРА ФРАКЦИИ И ОТНОШЕНИЙ
-        control_panel = self.create_control_panel_android()
-        diplomacy_window.add_widget(control_panel)
-
         # 3. ПОЛЕ ВВОДА (под панелью управления)
         input_panel = self.create_input_panel_android()
         diplomacy_window.add_widget(input_panel)
@@ -4915,5 +4924,10 @@ class EnhancedDiplomacyChat():
         # 4. ИСТОРИЯ ЧАТА (основная область)
         chat_area = self.create_chat_area_android()
         diplomacy_window.add_widget(chat_area)
+        
+        # 2. ПАНЕЛЬ ВЫБОРА ФРАКЦИИ И ОТНОШЕНИЙ
+        control_panel = self.create_control_panel_android()
+        diplomacy_window.add_widget(control_panel)
+
 
         return diplomacy_window
