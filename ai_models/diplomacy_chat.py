@@ -20,7 +20,7 @@ import platform
 from .android_keyboard import AndroidKeyboardHelper
 
 class EnhancedDiplomacyChat():
-    """Улучшенная версия дипломатического чата с обработкой запросов"""
+    """Улучшенная версия дипломатического чата с адаптацией для Android"""
 
     def __init__(self, advisor_view, db_connection):
         self.advisor = advisor_view
@@ -33,7 +33,7 @@ class EnhancedDiplomacyChat():
         # Контекст переговоров
         self.negotiation_context = {}
 
-        # Активные переговоры (resource_request, alliance_request, trade_request)
+        # Активные переговоры
         self.active_negotiations = {}
 
         # История предложений в текущей сессии
@@ -46,9 +46,12 @@ class EnhancedDiplomacyChat():
         self.chat_scroll = None
         self.chat_container = None
         self.message_input = None
-        self.chat_status = None
         self.faction_spinner = None
+        self.chat_title = None
+        self.relation_display = None
+        self.trade_history_label = None
 
+        # Фразы фракций (без изменений)
         self.faction_phrases = {
             "Эльфы": {
                 "war_declaration": "Еще один решил что может гадить в наших лесах!",
@@ -83,50 +86,647 @@ class EnhancedDiplomacyChat():
         }
 
     def open_diplomacy_window(self):
-        """Открывает окно дипломатических переговоров"""
-        diplomacy_window = BoxLayout(
-            orientation='horizontal',
-            size_hint=(1, 1),
-            spacing=dp(10),
-            padding=dp(10)
-        )
+        """Открывает окно дипломатических переговоров (адаптировано для Android)"""
+        # Теперь этот метод создает содержимое для таба
+        return self.create_chat_interface()
 
-        # Фон
-        with diplomacy_window.canvas.before:
-            Color(0.08, 0.08, 0.12, 0.95)
-            Rectangle(pos=diplomacy_window.pos, size=diplomacy_window.size)
-
-        # Левая часть - чат (75% ширины)
-        chat_section = BoxLayout(
+    def create_control_panel_android(self):
+        """Создает панель управления для Android"""
+        panel = BoxLayout(
             orientation='vertical',
-            size_hint=(0.75, 1),
-            spacing=dp(10)
+            size_hint=(1, None),
+            height=dp(100) if platform == 'android' else dp(120),
+            spacing=dp(6),
+            padding=[dp(10), dp(8)]
         )
 
-        # Шапка
-        header = self.create_chat_header()
-        chat_section.add_widget(header)
+        # Верхняя строка: выбор фракции
+        faction_row = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, 0.5),
+            spacing=dp(8)
+        )
 
-        # Основная область чата
-        main_area = self.create_chat_main_area()
-        chat_section.add_widget(main_area)
+        faction_label = Label(
+            text="Фракция:",
+            font_size='14sp',
+            color=(0.8, 0.8, 0.9, 1),
+            size_hint=(0.3, 1),
+            valign='middle'
+        )
 
-        # Панель статуса
-        status_panel = self.create_status_panel()
-        chat_section.add_widget(status_panel)
+        self.faction_spinner = Spinner(
+            text='Выберите фракцию',
+            values=[],
+            size_hint=(0.7, 1),
+            background_color=(0.2, 0.3, 0.5, 1),
+            font_size='14sp',
+            background_normal='',
+            background_down=''
+        )
 
-        # Правая часть - информация об отношениях (25% ширины)
-        info_section = self.create_relation_sidebar()
+        # Заполняем список фракций
+        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+        for faction in all_factions:
+            if faction != self.faction:
+                self.faction_spinner.values.append(faction)
 
-        # Добавляем обе секции
-        diplomacy_window.add_widget(chat_section)
-        diplomacy_window.add_widget(info_section)
+        self.faction_spinner.bind(text=self.on_faction_selected_android)
 
-        # Устанавливаем содержимое popup
-        self.advisor.popup.content = diplomacy_window
+        faction_row.add_widget(faction_label)
+        faction_row.add_widget(self.faction_spinner)
 
-        # Фокусируемся на поле ввода
-        Clock.schedule_once(lambda dt: setattr(self.message_input, 'focus', True), 0.3)
+        # Нижняя строка: информация об отношениях
+        info_row = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 0.5),
+            spacing=dp(2)
+        )
+
+        self.relation_info_label = Label(
+            text="Выберите фракцию",
+            font_size='12sp',
+            color=(0.7, 0.7, 0.8, 1),
+            halign='center',
+            valign='middle'
+        )
+        self.relation_info_label.bind(size=self.relation_info_label.setter('text_size'))
+
+        # Кнопка подробной информации (только если достаточно места)
+        if Window.width > 350:
+            info_button = Button(
+                text="Подробнее об отношениях",
+                size_hint=(1, None),
+                height=dp(28),
+                background_normal='',
+                background_color=(0.3, 0.3, 0.5, 0.7),
+                font_size='11sp',
+                on_press=self.show_relation_info
+            )
+            info_row.add_widget(info_button)
+        else:
+            info_button = Button(
+                text="!",
+                size_hint=(None, None),
+                size=(dp(30), dp(30)),
+                pos_hint={'right': 1, 'center_y': 0.5},
+                background_normal='',
+                background_color=(0.3, 0.3, 0.5, 0.7),
+                font_size='14sp',
+                on_press=self.show_relation_info
+            )
+            info_row.add_widget(info_button)
+
+        info_row.add_widget(self.relation_info_label)
+
+        panel.add_widget(faction_row)
+        panel.add_widget(info_row)
+
+        # Фон панели
+        with panel.canvas.before:
+            Color(0.12, 0.12, 0.18, 1)
+            bg = Rectangle(pos=panel.pos, size=panel.size)
+
+        panel.bind(
+            pos=lambda i, v: setattr(bg, 'pos', v),
+            size=lambda i, v: setattr(bg, 'size', v)
+        )
+
+        return panel
+
+    def create_input_panel_android(self):
+        """Создает панель ввода для Android"""
+        panel = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height=dp(56) if platform == 'android' else dp(50),
+            spacing=dp(8),
+            padding=[dp(8), dp(6)]
+        )
+
+        # Поле ввода
+        textinput_kwargs = {
+            'hint_text': "Введите сообщение...",
+            'multiline': False,
+            'background_normal': '',
+            'background_active': '',
+            'background_color': (0.18, 0.18, 0.25, 1),
+            'foreground_color': (1, 1, 1, 1),
+            'cursor_color': (0.5, 0.7, 1, 1),
+            'padding': [dp(12), dp(10)],
+            'font_size': '16sp',
+            'write_tab': False,
+        }
+
+        if platform == 'android':
+            textinput_kwargs['keyboard_mode'] = 'managed'
+
+        self.message_input = TextInput(**textinput_kwargs)
+
+        # Вместо RoundedRectangle используем Line для рамки
+        with self.message_input.canvas.after:
+            Color(0.3, 0.3, 0.4, 1)
+            # Создаем линию как рамку
+            border_line = Line(
+                rectangle=[self.message_input.x, self.message_input.y,
+                           self.message_input.width, self.message_input.height],
+                width=1
+            )
+
+        self.message_input.bind(
+            pos=lambda i, v: setattr(border_line, 'rectangle',
+                                     [i.x, i.y, i.width, i.height]),
+            size=lambda i, v: setattr(border_line, 'rectangle',
+                                      [i.x, i.y, i.width, i.height]),
+            focus=lambda i, v: setattr(border_line, 'width', 2 if v else 1)  # Теперь работает
+        )
+
+        # Кнопка отправки
+        send_btn = Button(
+            text=">",
+            size_hint=(None, 1),
+            width=dp(50),
+            background_normal='',
+            background_color=(0.25, 0.5, 0.9, 1),
+            font_size='20sp',
+            bold=True
+        )
+        send_btn.bind(on_press=self.send_diplomatic_message)
+
+        # Обработка фокуса для Android
+        if platform == 'android':
+            self.message_input.bind(focus=self._on_textinput_focus_android)
+
+        panel.add_widget(self.message_input)
+        panel.add_widget(send_btn)
+
+        # Фон панели
+        with panel.canvas.before:
+            Color(0.14, 0.14, 0.2, 1)
+            bg = Rectangle(pos=panel.pos, size=panel.size)
+
+        panel.bind(
+            pos=lambda i, v: setattr(bg, 'pos', v),
+            size=lambda i, v: setattr(bg, 'size', v)
+        )
+
+        return panel
+
+    def create_chat_area_android(self):
+        """Создает основную область чата для Android"""
+        chat_area = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 1),
+            spacing=dp(2)
+        )
+
+        # Контейнер для истории чата
+        chat_container = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 1)
+        )
+
+        # ScrollView для истории чата
+        self.chat_scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,
+            bar_width=dp(8),
+            scroll_type=['bars', 'content'],
+            effect_cls='ScrollEffect',
+            bar_color=(0.3, 0.3, 0.5, 0.7),
+            bar_inactive_color=(0.3, 0.3, 0.5, 0.3)
+        )
+
+        # Контейнер для сообщений
+        self.chat_container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing=dp(8),
+            padding=[dp(8), dp(8), dp(8), dp(8)]
+        )
+        self.chat_container.bind(minimum_height=self.chat_container.setter('height'))
+
+        self.chat_scroll.add_widget(self.chat_container)
+        chat_container.add_widget(self.chat_scroll)
+        chat_area.add_widget(chat_container)
+
+        return chat_area
+
+    def _on_textinput_focus_android(self, instance, value):
+        """Обработка фокуса для Android с адаптивной прокруткой"""
+        if platform != 'android':
+            return
+
+        if value:  # Если поле получило фокус
+            # Даем время клавиатуре появиться
+            Clock.schedule_once(lambda dt: self._adjust_for_keyboard_android(), 0.2)
+        else:
+            # При скрытии клавиатуры возвращаем нормальную прокрутку
+            Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0.1)
+
+    def _adjust_for_keyboard_android(self):
+        """Адаптирует интерфейс при появлении клавиатуры на Android"""
+        if not hasattr(self, 'chat_scroll'):
+            return
+
+        try:
+            # Прокручиваем немного вверх, чтобы поле ввода было видно
+            if hasattr(self.chat_scroll, 'scroll_y'):
+                Animation(scroll_y=0.1, duration=0.1).start(self.chat_scroll)
+        except:
+            pass
+
+    def on_faction_selected_android(self, spinner, text):
+        """Обработчик выбора фракции для Android"""
+        if text and text != 'Выберите фракцию':
+            self.selected_faction = text
+            self.update_relation_info_android(text)
+            self.load_chat_history()
+
+
+    def update_relation_info_android(self, faction):
+        """Обновляет информацию об отношениях для Android"""
+        if not hasattr(self, 'relation_info_label'):
+            return
+
+        relations = self.advisor.relations_manager.load_combined_relations()
+        relation_data = relations.get(faction, {"relation_level": 50, "status": "нейтралитет"})
+
+        try:
+            relation_level = int(relation_data["relation_level"])
+        except (ValueError, TypeError, KeyError):
+            relation_level = 50
+
+        coefficient = self.calculate_coefficient(relation_level)
+        status = relation_data.get('status', 'нейтралитет')
+
+        # Форматируем текст компактно
+        if coefficient == 0:
+            coefficient_text = " (сделки невозможны)"
+        else:
+            coefficient_text = f" ×{coefficient:.1f}"
+
+        self.relation_info_label.text = f"Отношения: {relation_level}/100{coefficient_text}"
+
+        # Цвет в зависимости от отношений
+        if coefficient == 0:
+            color = (0.8, 0.1, 0.1, 1)  # Красный
+        elif coefficient < 0.7:
+            color = (1.0, 0.5, 0.0, 1)  # Оранжевый
+        elif coefficient < 1.0:
+            color = (1.0, 0.8, 0.0, 1)  # Желтый
+        elif coefficient < 1.5:
+            color = (0.2, 0.7, 0.3, 1)  # Зеленый
+        else:
+            color = (0.1, 0.3, 0.9, 1)  # Синий
+
+        self.relation_info_label.color = color
+
+    # МЕТОДЫ ДОБАВЛЕНИЯ СООБЩЕНИЙ (АДАПТИРОВАННЫЕ)
+
+    def add_chat_message(self, message, sender, timestamp, is_player=False):
+        """Добавляет сообщение в чат (с автоматическим выбором версии)"""
+        if platform == 'android':
+            return self.add_chat_message_android(message, sender, timestamp, is_player)
+
+        # Десктопная версия
+        max_width = Window.width * 0.65
+
+        temp = Label(
+            text=message,
+            font_size='13sp',
+            text_size=(max_width - dp(24), None)
+        )
+        temp.texture_update()
+        text_height = temp.texture_size[1]
+
+        bubble = BoxLayout(
+            orientation='vertical',
+            size_hint=(None, None),
+            width=min(max_width, temp.texture_size[0] + dp(30)),
+            height=text_height + dp(36),
+            padding=[dp(12), dp(10)],
+            pos_hint={'right': 1} if is_player else {'x': 0}
+        )
+
+        bg_color = (0.22, 0.42, 0.8, 1) if is_player else (0.28, 0.28, 0.36, 1)
+
+        with bubble.canvas.before:
+            Color(*bg_color)
+            bg = RoundedRectangle(pos=bubble.pos, size=bubble.size, radius=[dp(10)])
+
+        bubble.bind(
+            pos=lambda i, v: setattr(bg, 'pos', v),
+            size=lambda i, v: setattr(bg, 'size', v)
+        )
+
+        text_label = Label(
+            text=message,
+            font_size='13sp',
+            color=(1, 1, 1, 1),
+            halign='left',
+            valign='top',
+            text_size=(bubble.width - dp(24), None)
+        )
+        text_label.bind(
+            size=lambda i, v: setattr(i, 'text_size', (v[0], None))
+        )
+
+        time_label = Label(
+            text=timestamp,
+            font_size='10sp',
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint=(1, None),
+            height=dp(14),
+            halign='right'
+        )
+
+        bubble.add_widget(text_label)
+        bubble.add_widget(time_label)
+
+        self.chat_container.add_widget(bubble)
+        Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0)
+
+    def add_chat_message_android(self, message, sender, timestamp, is_player=False):
+        """Добавляет сообщение в чат (специальная версия для Android)"""
+        max_width = Window.width * 0.85  # Шире для мобильных
+
+        # Вычисляем высоту текста
+        temp = Label(
+            text=message,
+            font_size='14sp',  # Чуть больше для мобильных
+            text_size=(max_width - dp(20), None)
+        )
+        temp.texture_update()
+        text_height = temp.texture_size[1]
+
+        # Минимальная высота для коротких сообщений
+        min_height = dp(50) if platform == 'android' else dp(40)
+        bubble_height = max(min_height, text_height + dp(28))
+
+        # Создаем контейнер для сообщения
+        bubble = BoxLayout(
+            orientation='vertical',
+            size_hint=(None, None),
+            width=min(max_width, temp.texture_size[0] + dp(24)),
+            height=bubble_height,
+            padding=[dp(10), dp(8)],
+            pos_hint={'right': 0.95} if is_player else {'x': 0.05}  # Отступы от краев
+        )
+
+        # Цвет фона в зависимости от отправителя
+        bg_color = (0.22, 0.42, 0.8, 1) if is_player else (0.28, 0.28, 0.36, 1)
+
+        with bubble.canvas.before:
+            Color(*bg_color)
+            bg = RoundedRectangle(pos=bubble.pos, size=bubble.size, radius=[dp(12)])
+
+        bubble.bind(
+            pos=lambda i, v: setattr(bg, 'pos', v),
+            size=lambda i, v: setattr(bg, 'size', v)
+        )
+
+        # Текст сообщения
+        text_label = Label(
+            text=message,
+            font_size='14sp',
+            color=(1, 1, 1, 1),
+            halign='left',
+            valign='top',
+            text_size=(bubble.width - dp(20), None),
+            size_hint=(1, 1)
+        )
+
+        # Время отправки (компактное)
+        time_label = Label(
+            text=timestamp,
+            font_size='10sp',
+            color=(0.7, 0.7, 0.7, 0.9),
+            size_hint=(1, None),
+            height=dp(14),
+            halign='right'
+        )
+
+        bubble.add_widget(text_label)
+        bubble.add_widget(time_label)
+
+        # Добавляем сообщение в контейнер
+        self.chat_container.add_widget(bubble)
+
+        # Прокручиваем вниз (задержка для Android)
+        Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom_android(), 0.05)
+
+    def scroll_chat_to_bottom_android(self):
+        """Прокручивает чат вниз (оптимизированная для Android версия)"""
+        if self.chat_scroll and hasattr(self.chat_scroll, 'scroll_y'):
+            try:
+                # Быстрая прокрутка без анимации для Android
+                self.chat_scroll.scroll_y = 0
+            except:
+                pass
+
+    # ОСТАЛЬНЫЕ МЕТОДЫ (БЕЗ ИЗМЕНЕНИЙ, КРОМЕ НЕБОЛЬШИХ АДАПТАЦИЙ)
+
+    def load_chat_history(self):
+        """Загружает историю переписки (адаптированная для Android)"""
+        if not hasattr(self, 'selected_faction') or not self.selected_faction:
+            return
+
+        # Очищаем текущие сообщения
+        self.chat_container.clear_widgets()
+
+        # Добавляем системное сообщение о начале переписки
+        self.add_chat_message_system(f"Начало переписки с {self.selected_faction}")
+
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute('''
+                SELECT message, is_player, timestamp 
+                FROM negotiation_history 
+                WHERE (faction1 = ? AND faction2 = ?) 
+                   OR (faction1 = ? AND faction2 = ?)
+                ORDER BY timestamp ASC
+                LIMIT 50
+            ''', (self.faction, self.selected_faction, self.selected_faction, self.faction))
+
+            history = cursor.fetchall()
+
+            if history:
+                for message, is_player, timestamp in history:
+                    # Форматируем дату для мобильных
+                    try:
+                        dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                        if platform == 'android':
+                            formatted_time = dt.strftime("%H:%M")  # Только время
+                        else:
+                            formatted_time = dt.strftime("%d.%m %H:%M")
+                    except:
+                        formatted_time = timestamp
+
+                    # Определяем отправителя
+                    if bool(is_player):
+                        sender = self.faction
+                        is_player_msg = True
+                    else:
+                        sender = self.selected_faction
+                        is_player_msg = False
+
+                    # Добавляем сообщение в чат
+                    self.add_chat_message(
+                        message=message,
+                        sender=sender,
+                        timestamp=formatted_time,
+                        is_player=is_player_msg
+                    )
+
+            else:
+                self.add_chat_message_system("История переписки пуста. Отправьте первое сообщение!")
+
+        except Exception as e:
+            print(f"Ошибка при загрузке истории чата: {e}")
+            self.add_chat_message_system("Ошибка загрузки истории")
+
+    def add_chat_message_system(self, message):
+        """Добавляет системное сообщение (адаптированное)"""
+        box = BoxLayout(
+            size_hint=(0.95, None),
+            padding=[dp(10), dp(6)],
+            pos_hint={'center_x': 0.5}
+        )
+
+        label = Label(
+            text=message,
+            font_size='12sp',
+            color=(1, 1, 0.8, 1),
+            halign='center',
+            valign='middle',
+            text_size=(Window.width * 0.9, None)
+        )
+        label.texture_update()
+        box.height = label.texture_size[1] + dp(16)
+
+        with box.canvas.before:
+            Color(0.18, 0.18, 0.28, 1)
+            bg = RoundedRectangle(pos=box.pos, size=box.size, radius=[dp(8)])
+
+        box.bind(
+            pos=lambda i, v: setattr(bg, 'pos', v),
+            size=lambda i, v: setattr(bg, 'size', v)
+        )
+
+        box.add_widget(label)
+        self.chat_container.add_widget(box)
+
+        # Прокручиваем вниз
+        if platform == 'android':
+            Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom_android(), 0.05)
+        else:
+            Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0)
+
+    def scroll_chat_to_bottom(self):
+        """Прокручивает чат вниз - с плавной анимацией (десктоп)"""
+        if self.chat_scroll and hasattr(self.chat_scroll, 'scroll_y'):
+            try:
+                Animation(scroll_y=0, duration=0.3).start(self.chat_scroll)
+            except:
+                self.chat_scroll.scroll_y = 0
+
+    def create_faction_panel_android(self):
+        """Создает панель выбора фракции для Android"""
+        panel = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height=dp(52),
+            spacing=dp(8),
+            padding=[dp(8), dp(6)]
+        )
+
+        with panel.canvas.before:
+            Color(0.12, 0.12, 0.18, 1)
+            bg = RoundedRectangle(
+                pos=panel.pos,
+                size=panel.size,
+                radius=[dp(8)]
+            )
+
+        panel.bind(
+            pos=lambda i, v: setattr(bg, 'pos', v),
+            size=lambda i, v: setattr(bg, 'size', v)
+        )
+
+        # Метка
+        label = Label(
+            text="Фракция:",
+            font_size='14sp',
+            color=(0.8, 0.8, 0.9, 1),
+            size_hint=(0.3, 1),
+            valign='middle'
+        )
+
+        # Выпадающий список
+        self.faction_spinner = Spinner(
+            text='Выберите фракцию',
+            values=[],
+            size_hint=(0.7, 1),
+            background_color=(0.2, 0.3, 0.5, 1),
+            font_size='14sp',
+            background_normal='',
+            background_down=''
+        )
+
+        # Заполняем список фракций
+        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+        for faction in all_factions:
+            if faction != self.faction:
+                self.faction_spinner.values.append(faction)
+
+        self.faction_spinner.bind(text=self.on_faction_selected)
+
+        panel.add_widget(label)
+        panel.add_widget(self.faction_spinner)
+
+        return panel
+
+    def create_chat_main_area_android(self):
+        """Создает основную область чата для Android"""
+        main_area = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 1),  # Занимает всё оставшееся пространство
+            spacing=dp(2)
+        )
+
+        # Контейнер для истории чата с ScrollView
+        chat_container = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 1)
+        )
+
+        # ScrollView для истории чата
+        self.chat_scroll = ScrollView(
+            size_hint=(1, 1),
+            do_scroll_x=False,
+            bar_width=dp(8),
+            scroll_type=['bars', 'content'],
+            effect_cls='ScrollEffect',
+            bar_color=(0.3, 0.3, 0.5, 0.7),
+            bar_inactive_color=(0.3, 0.3, 0.5, 0.3)
+        )
+
+        # Контейнер для сообщений
+        self.chat_container = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            spacing=dp(8),
+            padding=[dp(8), dp(8), dp(8), dp(8)]
+        )
+        self.chat_container.bind(minimum_height=self.chat_container.setter('height'))
+
+        self.chat_scroll.add_widget(self.chat_container)
+        chat_container.add_widget(self.chat_scroll)
+        main_area.add_widget(chat_container)
+
+        return main_area
+
 
     def create_chat_main_area(self):
         main_area = BoxLayout(
@@ -243,16 +843,6 @@ class EnhancedDiplomacyChat():
         panel.add_widget(self.message_input)
         panel.add_widget(send_btn)
         return panel
-
-    def _on_textinput_focus_android(self, instance, value):
-        """Обработка фокуса для Android (чтобы клавиатура не перекрывала поле ввода)"""
-        if platform != 'android':
-            return
-
-        if value:  # Если поле получило фокус
-            # Запланируем прокрутку через короткое время, чтобы клавиатура успела появиться
-            from kivy.clock import Clock
-            Clock.schedule_once(lambda dt: self._scroll_to_input_android(), 0.3)
 
     def _scroll_to_input_android(self):
         """Прокручивает чат так, чтобы поле ввода было видно над клавиатурой"""
@@ -431,172 +1021,6 @@ class EnhancedDiplomacyChat():
             ])
 
         return random.choice(reset_responses)
-
-    def load_chat_history(self):
-        """Загружает историю переписки"""
-        if not hasattr(self, 'selected_faction') or not self.selected_faction:
-            self.chat_status.text = "Выберите фракцию для загрузки переписки"
-            return
-
-        # Очищаем текущие сообщения
-        self.chat_container.clear_widgets()
-
-        # Добавляем системное сообщение
-        self.add_chat_message_system(f"Начало переписки с {self.selected_faction}. Загрузка истории...")
-
-        try:
-            cursor = self.db_connection.cursor()
-            cursor.execute('''
-                        SELECT message, is_player, timestamp 
-                        FROM negotiation_history 
-                        WHERE (faction1 = ? AND faction2 = ?) 
-                           OR (faction1 = ? AND faction2 = ?)
-                        ORDER BY timestamp ASC
-                        LIMIT 50
-                    ''', (self.faction, self.selected_faction, self.selected_faction, self.faction))
-
-            history = cursor.fetchall()
-
-            if history:
-                for message, is_player, timestamp in history:
-                    # Форматируем дату
-                    try:
-                        dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-                        formatted_time = dt.strftime("%d.%m %H:%M")
-                    except:
-                        formatted_time = timestamp
-
-                    # Определяем отправителя
-                    if bool(is_player):
-                        sender = self.faction
-                        is_player_msg = True
-                    else:
-                        sender = self.selected_faction
-                        is_player_msg = False
-
-                    # Добавляем сообщение в чат
-                    self.add_chat_message(
-                        message=message,
-                        sender=sender,
-                        timestamp=formatted_time,
-                        is_player=is_player_msg
-                    )
-
-                self.chat_status.text = f"Загружено {len(history)} сообщений"
-            else:
-                self.add_chat_message_system("История переписки пуста. Отправьте первое сообщение!")
-                self.chat_status.text = "Нет истории переписки"
-
-        except Exception as e:
-            print(f"Ошибка при загрузке истории чата: {e}")
-            self.add_chat_message_system(f"Ошибка загрузки истории: {str(e)}")
-            self.chat_status.text = "Ошибка загрузки"
-
-    def add_chat_message(self, message, sender, timestamp, is_player=False):
-        max_width = Window.width * 0.65
-
-        temp = Label(
-            text=message,
-            font_size='13sp',
-            text_size=(max_width - dp(24), None)
-        )
-        temp.texture_update()
-        text_height = temp.texture_size[1]
-
-        bubble = BoxLayout(
-            orientation='vertical',
-            size_hint=(None, None),
-            width=min(max_width, temp.texture_size[0] + dp(30)),
-            height=text_height + dp(36),
-            padding=[dp(12), dp(10)],
-            pos_hint={'right': 1} if is_player else {'x': 0}
-        )
-
-        bg_color = (0.22, 0.42, 0.8, 1) if is_player else (0.28, 0.28, 0.36, 1)
-
-        with bubble.canvas.before:
-            Color(*bg_color)
-            bg = RoundedRectangle(pos=bubble.pos, size=bubble.size, radius=[dp(10)])
-
-        bubble.bind(
-            pos=lambda i, v: setattr(bg, 'pos', v),
-            size=lambda i, v: setattr(bg, 'size', v)
-        )
-
-        text_label = Label(
-            text=message,
-            font_size='13sp',
-            color=(1, 1, 1, 1),
-            halign='left',
-            valign='top',
-            text_size=(bubble.width - dp(24), None)
-        )
-        text_label.bind(
-            size=lambda i, v: setattr(i, 'text_size', (v[0], None))
-        )
-
-        time_label = Label(
-            text=timestamp,
-            font_size='10sp',
-            color=(0.7, 0.7, 0.7, 1),
-            size_hint=(1, None),
-            height=dp(14),
-            halign='right'
-        )
-
-        bubble.add_widget(text_label)
-        bubble.add_widget(time_label)
-
-        self.chat_container.add_widget(bubble)
-        Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0)
-
-    def add_chat_message_system(self, message):
-        box = BoxLayout(
-            size_hint=(0.9, None),
-            padding=[dp(12), dp(8)],
-            pos_hint={'center_x': 0.5}
-        )
-
-        label = Label(
-            text=message,
-            font_size='12sp',
-            color=(1, 1, 0.8, 1),
-            halign='center',
-            valign='middle',
-            text_size=(Window.width * 0.8, None)
-        )
-        label.texture_update()
-        box.height = label.texture_size[1] + dp(20)
-
-        with box.canvas.before:
-            Color(0.18, 0.18, 0.28, 1)
-            bg = RoundedRectangle(pos=box.pos, size=box.size, radius=[dp(8)])
-
-        box.bind(
-            pos=lambda i, v: setattr(bg, 'pos', v),
-            size=lambda i, v: setattr(bg, 'size', v)
-        )
-
-        box.add_widget(label)
-        self.chat_container.add_widget(box)
-        Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0)
-
-    def scroll_chat_to_bottom(self):
-        """Прокручивает чат вниз - с плавной анимацией"""
-        if self.chat_scroll and hasattr(self.chat_scroll, 'scroll_y'):
-            try:
-                # Учитываем Android клавиатуру
-                if platform == 'android' and hasattr(self, 'keyboard_helper'):
-                    if self.keyboard_helper.is_keyboard_shown():
-                        # Для Android делаем более быструю прокрутку
-                        Animation(scroll_y=0, duration=0.15).start(self.chat_scroll)
-                        return
-
-                # Обычная прокрутка для других платформ
-                Animation(scroll_y=0, duration=0.3).start(self.chat_scroll)
-            except:
-                # Если анимация не работает, просто устанавливаем scroll_y
-                self.chat_scroll.scroll_y = 0
 
     def send_diplomatic_message(self, instance):
         """Отправляет дипломатическое сообщение"""
@@ -2068,7 +2492,6 @@ class EnhancedDiplomacyChat():
 
     def _extract_trade_offer(self, message):
         """Извлекает торговое предложение из сообщения - УЛУЧШЕННЫЙ ВАРИАНТ"""
-        import re
 
         message_lower = message.lower()
 
@@ -2286,7 +2709,6 @@ class EnhancedDiplomacyChat():
 
     def _extract_trade_offer_enhanced(self, message):
         """Улучшенное извлечение торгового предложения с поддержкой разных форматов чисел"""
-        import re
 
         message_lower = message.lower()
 
@@ -4363,6 +4785,27 @@ class EnhancedDiplomacyChat():
 
         return has_insult or has_threat or has_aggressive_pattern
 
+    def create_chat_interface(self):
+        """Создает интерфейс чата для вкладки"""
+        # Используем существующий метод создания окна, но адаптируем
+        chat_window = BoxLayout(
+            orientation='vertical',
+            size_hint=(1, 1),
+            spacing=0,
+            padding=0
+        )
+
+        control_panel = self.create_control_panel_android()
+        chat_window.add_widget(control_panel)
+
+        input_panel = self.create_input_panel_android()
+        chat_window.add_widget(input_panel)
+
+        chat_area = self.create_chat_area_android()
+        chat_window.add_widget(chat_area)
+
+        return chat_window
+
     def _handle_insult_or_threat(self, message, faction, relation_level):
         """Обрабатывает оскорбления и угрозы"""
         try:
@@ -4445,3 +4888,32 @@ class EnhancedDiplomacyChat():
         except Exception as e:
             print(f"Ошибка при обработке оскорбления: {e}")
             return "Твои слова оскорбительны. Пожалуйста, веди себя прилично."
+
+    def create_diplomacy_interface(self):
+        """Создает интерфейс дипломатического чата"""
+        # Создаем основной контейнер
+        diplomacy_window = BoxLayout(
+            orientation='vertical',  # Вертикальная ориентация
+            size_hint=(1, 1),
+            spacing=dp(4),
+            padding=[dp(8), dp(4), dp(8), dp(8)]
+        )
+
+        # Фон
+        with diplomacy_window.canvas.before:
+            Color(0.08, 0.08, 0.12, 0.98)
+            Rectangle(pos=diplomacy_window.pos, size=diplomacy_window.size)
+
+        # 2. ПАНЕЛЬ ВЫБОРА ФРАКЦИИ И ОТНОШЕНИЙ
+        control_panel = self.create_control_panel_android()
+        diplomacy_window.add_widget(control_panel)
+
+        # 3. ПОЛЕ ВВОДА (под панелью управления)
+        input_panel = self.create_input_panel_android()
+        diplomacy_window.add_widget(input_panel)
+
+        # 4. ИСТОРИЯ ЧАТА (основная область)
+        chat_area = self.create_chat_area_android()
+        diplomacy_window.add_widget(chat_area)
+
+        return diplomacy_window
