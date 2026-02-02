@@ -7,14 +7,9 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.image import Image
 from kivy.uix.popup import Popup
-from kivy.uix.textinput import TextInput
-from kivy.uix.spinner import Spinner
-from kivy.graphics import Color, Rectangle, Line, RoundedRectangle, Ellipse
 from kivy.core.window import Window
 from kivy.metrics import dp
-from kivy.clock import Clock
 from kivy.uix.behaviors import ButtonBehavior
-from datetime import datetime
 import os
 import random
 import sqlite3
