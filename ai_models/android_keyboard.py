@@ -27,8 +27,9 @@ class AndroidKeyboardHelper:
             Window.bind(on_keyboard=self._on_keyboard)
             Window.bind(on_keyboard_height=self._on_keyboard_height)
 
-    def _on_keyboard(self, window, keyboard_height, keyboard_width):
+    def _on_keyboard(self, window, keyboard_height, keyboard_width, *args, **kwargs):
         """Обработчик появления/скрытия клавиатуры"""
+        # Используем только первые 3 аргумента, остальные игнорируем
         if keyboard_height > 0:
             self.keyboard_shown = True
             self.keyboard_height = keyboard_height
@@ -37,8 +38,9 @@ class AndroidKeyboardHelper:
             self.keyboard_shown = False
             self.adjust_for_keyboard(False, 0)
 
-    def _on_keyboard_height(self, window, height):
+    def _on_keyboard_height(self, window, height, *args, **kwargs):
         """Обработчик изменения высоты клавиатуры"""
+        # Используем только первые 2 аргумента
         if height > 0:
             self.keyboard_height = height
             self.adjust_for_keyboard(True, height)
