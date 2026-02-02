@@ -6,6 +6,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
+from kivy.utils import platform as kivy_platform
 
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
@@ -95,7 +96,7 @@ class EnhancedDiplomacyChat():
         panel = BoxLayout(
             orientation='vertical',
             size_hint=(1, None),
-            height=dp(120) if platform == 'android' else dp(140),
+            height=dp(120) if kivy_platform == 'android' else dp(140),
             spacing=dp(6),
             padding=[dp(10), dp(8)]
         )
@@ -210,7 +211,7 @@ class EnhancedDiplomacyChat():
         panel = BoxLayout(
             orientation='horizontal',
             size_hint=(1, None),
-            height=dp(56) if platform == 'android' else dp(50),
+            height=dp(56) if kivy_platform == 'android' else dp(50),
             spacing=dp(8),
             padding=[dp(8), dp(6)]
         )
@@ -229,7 +230,7 @@ class EnhancedDiplomacyChat():
             'write_tab': False,
         }
 
-        if platform == 'android':
+        if kivy_platform == 'android':
             textinput_kwargs['keyboard_mode'] = 'managed'
 
         self.message_input = TextInput(**textinput_kwargs)
@@ -265,7 +266,7 @@ class EnhancedDiplomacyChat():
         send_btn.bind(on_press=self.send_diplomatic_message)
 
         # Обработка фокуса для Android
-        if platform == 'android':
+        if kivy_platform == 'android':
             self.message_input.bind(focus=self._on_textinput_focus_android)
 
         panel.add_widget(self.message_input)
@@ -325,7 +326,7 @@ class EnhancedDiplomacyChat():
 
     def _on_textinput_focus_android(self, instance, value):
         """Обработка фокуса для Android с адаптивной прокруткой"""
-        if platform != 'android':
+        if kivy_platform != 'android':
             return
 
         if value:  # Если поле получило фокус
@@ -398,7 +399,7 @@ class EnhancedDiplomacyChat():
 
     def add_chat_message(self, message, sender, timestamp, is_player=False):
         """Добавляет сообщение в чат (с автоматическим выбором версии)"""
-        if platform == 'android':
+        if kivy_platform == 'android':
             return self.add_chat_message_android(message, sender, timestamp, is_player)
 
         # Десктопная версия
@@ -473,7 +474,7 @@ class EnhancedDiplomacyChat():
         text_height = temp.texture_size[1]
 
         # Минимальная высота для коротких сообщений
-        min_height = dp(50) if platform == 'android' else dp(40)
+        min_height = dp(50) if kivy_platform == 'android' else dp(40)
         bubble_height = max(min_height, text_height + dp(28))
 
         # Создаем контейнер для сообщения
@@ -568,7 +569,7 @@ class EnhancedDiplomacyChat():
                     # Форматируем дату для мобильных
                     try:
                         dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-                        if platform == 'android':
+                        if kivy_platform == 'android':
                             formatted_time = dt.strftime("%H:%M")  # Только время
                         else:
                             formatted_time = dt.strftime("%d.%m %H:%M")
@@ -630,7 +631,7 @@ class EnhancedDiplomacyChat():
         self.chat_container.add_widget(box)
 
         # Прокручиваем вниз
-        if platform == 'android':
+        if kivy_platform == 'android':
             Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom_android(), 0.05)
         else:
             Clock.schedule_once(lambda dt: self.scroll_chat_to_bottom(), 0)
