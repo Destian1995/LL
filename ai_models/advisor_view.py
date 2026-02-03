@@ -15,7 +15,6 @@ import random
 import sqlite3
 
 from .diplomacy_chat import EnhancedDiplomacyChat
-from .political_systems import PoliticalSystemsManager
 from .relations_manager import RelationsManager
 
 def calculate_font_size():
@@ -67,7 +66,6 @@ class AdvisorView(FloatLayout):
         self.game_screen = game_screen_instance
 
         # Инициализация менеджеров
-        self.political_manager = PoliticalSystemsManager(self)
         self.relations_manager = RelationsManager(self)
         self.diplomacy_chat = EnhancedDiplomacyChat(self, self.db_connection)
 
@@ -80,8 +78,6 @@ class AdvisorView(FloatLayout):
             'card': (1, 1, 1, 1)
         }
 
-        # Инициализация таблицы политических систем
-        self.political_manager.initialize_political_systems()
 
         # Главное окно интерфейса - сразу открываем чат
         self.open_ai_chat_directly()

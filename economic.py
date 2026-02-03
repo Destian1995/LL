@@ -581,7 +581,7 @@ class Faction:
 
     def update_trade_resources_from_db(self):
         try:
-            # Проверяем все неподтвержденные сделки (agree = 2)
+            # 1. Обработка и УДАЛЕНИЕ отклонённых сделок (agree = 2)
             self.cursor.execute('''
                 SELECT id, initiator, target_faction 
                 FROM trade_agreements 
@@ -589,17 +589,22 @@ class Faction:
             ''', (self.faction, self.faction))
 
             rejected_rows = self.cursor.fetchall()
+            rejected_ids = []
 
-            # Выводим сообщение о том, что сделка была отклонена
             for row in rejected_rows:
                 trade_id, initiator, target_faction = row
+                rejected_ids.append(trade_id)
 
                 if initiator == self.faction:
                     show_message("Отказ", f"{target_faction} свернули сделку...\n(возможно у них кончились ресурсы)")
                 elif target_faction == self.faction:
                     show_message("Отказ", f"{initiator} свернули сделку...\n(возможно у них кончились ресурсы)")
 
-            # Извлекаем все подтвержденные сделки
+            # Удаляем отклонённые сделки СРАЗУ
+            for trade_id in rejected_ids:
+                self.cursor.execute('DELETE FROM trade_agreements WHERE id = ?', (trade_id,))
+
+            # 2. Обработка подтверждённых сделок (agree = 1)
             self.cursor.execute('''
                 SELECT id, initiator, target_faction, initiator_type_resource, 
                        initiator_summ_resource, target_type_resource, target_summ_resource
@@ -608,58 +613,56 @@ class Faction:
             ''', (self.faction, self.faction))
 
             rows = self.cursor.fetchall()
-            completed_trades = []  # Список завершенных сделок
+            completed_trades = []
+            failed_trades = []  # Для отслеживания "зависших" сделок
 
             for row in rows:
                 trade_id, initiator, target_faction, initiator_type_resource, \
                     initiator_summ_resource, target_type_resource, target_summ_resource = row
 
-                # Проверяем, была ли сделка одобрена
-                show_message(f"{initiator_type_resource}", f" {target_faction} прислали ресурсы!")
+                try:
+                    # Проверка ресурсов ДО показа сообщений
+                    if initiator == self.faction:
+                        if initiator_summ_resource and initiator_type_resource:
+                            if not self.check_resource_availability(initiator_type_resource, initiator_summ_resource):
+                                print(f"Недостаточно ресурсов для сделки {trade_id}. Сделка отложена.")
+                                failed_trades.append(trade_id)
+                                continue
 
-                if initiator == self.faction:
-                    # Проверяем наличие ресурсов только если они должны быть отданы
-                    if initiator_summ_resource and initiator_type_resource:
-                        if not self.check_resource_availability(initiator_type_resource, initiator_summ_resource):
-                            print(f"Недостаточно ресурсов для выполнения сделки с фракцией {initiator}.")
-                            continue
+                            self.update_resource_deals(initiator_type_resource, -initiator_summ_resource)
 
-                        # Отнимаем ресурс, который отдает инициатор
-                        self.update_resource_deals(initiator_type_resource, -initiator_summ_resource)
+                        if target_summ_resource and target_type_resource:
+                            self.update_resource_deals(target_type_resource, target_summ_resource)
+                            show_message(initiator_type_resource, f"{target_faction} прислали ресурсы!")
 
-                    # Добавляем ресурс, который получает инициатор (если есть что получать)
-                    if target_summ_resource and target_type_resource:
-                        self.update_resource_deals(target_type_resource, target_summ_resource)
+                    elif target_faction == self.faction:
+                        if target_summ_resource and target_type_resource:
+                            if not self.check_resource_availability(target_type_resource, target_summ_resource):
+                                print(f"Недостаточно ресурсов для сделки {trade_id}. Сделка отложена.")
+                                failed_trades.append(trade_id)
+                                continue
 
-                elif target_faction == self.faction:
-                    # Проверяем наличие ресурсов только если они должны быть отданы
-                    if target_summ_resource and target_type_resource:
-                        if not self.check_resource_availability(target_type_resource, target_summ_resource):
-                            print(f"Недостаточно ресурсов для выполнения сделки с фракцией {initiator}.")
-                            continue
+                            self.update_resource_deals(target_type_resource, -target_summ_resource)
 
-                        # Отнимаем ресурс, который отдает целевая фракция
-                        self.update_resource_deals(target_type_resource, -target_summ_resource)
+                        if initiator_summ_resource and initiator_type_resource:
+                            self.update_resource_deals(initiator_type_resource, initiator_summ_resource)
+                            show_message(target_type_resource, f"{initiator} прислали ресурсы!")
 
-                    # Добавляем ресурс, который получает целевая фракция (если есть что получать)
-                    if initiator_summ_resource and initiator_type_resource:
-                        self.update_resource_deals(initiator_type_resource, initiator_summ_resource)
-                        print(f"Сделка успешно выполнена: {trade_id}")
+                    completed_trades.append(trade_id)
+                    print(f"Сделка успешно выполнена: {trade_id}")
 
-                # Добавляем сделку в список завершенных
-                completed_trades.append(trade_id)
+                except Exception as e:
+                    print(f"Ошибка при обработке сделки {trade_id}: {e}")
+                    failed_trades.append(trade_id)
 
-            # Удаляем завершенные сделки
+            # Удаляем успешно выполненные сделки
             for trade_id in completed_trades:
-                self.cursor.execute('''
-                    DELETE FROM trade_agreements 
-                    WHERE id = ?
-                ''', (trade_id,))
+                self.cursor.execute('DELETE FROM trade_agreements WHERE id = ?', (trade_id,))
 
             self.save_resources_to_db()
 
         except sqlite3.Error as e:
-            print(f"Ошибка при обновлении ресурсов на основе торговых соглашений: {e}")
+            print(f"Ошибка при обновлении ресурсов: {e}")
 
     def load_resources_from_db(self):
         """

@@ -161,7 +161,7 @@ class EnhancedDiplomacyChat():
         )
 
         self.relation_indicator_widget = Label(
-            text="●",
+            text="<>",
             font_size='20sp',
             color=(0.5, 0.5, 0.5, 1),
             halign='center',
@@ -850,7 +850,7 @@ class EnhancedDiplomacyChat():
 
                 if player_crowns is None or player_crowns[0] < alliance_cost:
                     self.add_chat_message_system(
-                        f"⚠️ У вас недостаточно крон для предложения союза! "
+                        f" У вас недостаточно крон для предложения союза! "
                         f"Нужно {alliance_cost:,}, а у вас {player_crowns[0] if player_crowns else 0:,}."
                     )
                     self.message_input.text = ""

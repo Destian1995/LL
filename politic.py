@@ -1,6 +1,19 @@
-
 from db_lerdon_connect import *
-
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.graphics import Color, Line, RoundedRectangle
+from kivy.metrics import dp, sp
+from kivy.clock import Clock
+from kivy.uix.popup import Popup
+from kivy.uix.spinner import Spinner
+from kivy.uix.behaviors import ButtonBehavior
+from kivy.core.window import Window
+import sqlite3
+import random
+import threading
 
 from economic import format_number
 # Глобальная блокировка для работы с БД
@@ -108,10 +121,296 @@ def calculate_coefficient(rel):
     return 0
 
 
+# Класс для управления дипломатическими отношениями
+class DiplomacyManager:
+    def __init__(self, faction, db_connection, cursor):
+        self.faction = faction
+        self.db_connection = db_connection
+        self.cursor = cursor
 
+    def get_diplomatic_relations(self):
+        """Получает дипломатические отношения текущей фракции с другими"""
+        try:
+            # Получаем все активные фракции кроме текущей и Мятежников
+            query = """
+                SELECT DISTINCT faction 
+                FROM (
+                    SELECT faction1 AS faction FROM diplomacies
+                    UNION
+                    SELECT faction2 AS faction FROM diplomacies
+                ) AS all_factions
+                WHERE faction != ? AND faction != 'Мятежники' AND faction IN (
+                    SELECT faction1 FROM diplomacies WHERE relationship != 'уничтожена'
+                    UNION
+                    SELECT faction2 FROM diplomacies WHERE relationship != 'уничтожена'
+                )
+            """
+            self.cursor.execute(query, (self.faction,))
+            all_factions = [row[0] for row in self.cursor.fetchall()]
 
+            relations = {}
 
+            for other_faction in all_factions:
+                # Получаем дипломатический статус из таблицы diplomacies
+                self.cursor.execute("""
+                    SELECT relationship FROM diplomacies 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (self.faction, other_faction, other_faction, self.faction))
 
+                status_row = self.cursor.fetchone()
+                diplomatic_status = status_row[0] if status_row else "нейтралитет"
+
+                # Получаем уровень отношений из таблицы relations
+                self.cursor.execute("""
+                    SELECT relationship FROM relations 
+                    WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                """, (self.faction, other_faction, other_faction, self.faction))
+
+                relation_row = self.cursor.fetchone()
+                relation_level = int(relation_row[0]) if relation_row else 0
+
+                relations[other_faction] = {
+                    "status": diplomatic_status,
+                    "level": relation_level,
+                    "description": self.get_relation_description(relation_level),
+                    "color": self.get_status_color(diplomatic_status)
+                }
+
+            return relations
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении дипломатических отношений: {e}")
+            return {}
+
+    def get_relation_description(self, level):
+        """Возвращает текстовое описание уровня отношений"""
+        if level <= 10:
+            return "Ненависть"
+        elif level <= 25:
+            return "Вражда"
+        elif level <= 40:
+            return "Неприязнь"
+        elif level <= 55:
+            return "Нейтралитет"
+        elif level <= 70:
+            return "Дружелюбие"
+        elif level <= 85:
+            return "Уважение"
+        else:
+            return "Союзничество"
+
+    def get_status_color(self, status):
+        """Возвращает цвет для статуса отношений"""
+        colors = {
+            "война": (1.0, 0.2, 0.2, 1),      # Красный
+            "нейтралитет": (1.0, 1.0, 0.5, 1), # Желтый
+            "союз": (0.2, 0.8, 0.2, 1),        # Зеленый
+            "уничтожена": (0.5, 0.5, 0.5, 1)   # Серый
+        }
+        return colors.get(status, (1.0, 1.0, 1.0, 1))  # Белый по умолчанию
+
+    def show_diplomatic_relations(self):
+        """Показывает окно с дипломатическими отношениями"""
+        relations = self.get_diplomatic_relations()
+
+        if not relations:
+            print(f"Нет данных о дипломатических отношениях для фракции {self.faction}.")
+            return
+
+        # Создаем контент для popup
+        content = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
+
+        # Заголовок
+        title_label = Label(
+            text=f"Дипломатические отношения: {self.faction}",
+            font_size='20sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            halign='center',
+            size_hint_y=None,
+            height=dp(50)
+        )
+        content.add_widget(title_label)
+
+        # Создаем таблицу
+        table = GridLayout(
+            cols=4,
+            size_hint_y=None,
+            spacing=dp(4),
+            row_default_height=dp(45)
+        )
+        table.bind(minimum_height=table.setter('height'))
+
+        # Заголовки таблицы
+        headers = ["Фракция", "Статус", "Уровень", "Отношения"]
+        for title in headers:
+            table.add_widget(self.create_header(title))
+
+        # Заполняем таблицу данными
+        for other_faction, data in sorted(relations.items()):
+            status = data["status"]
+            level = data["level"]
+            description = data["description"]
+            status_color = data["color"]
+
+            highlight = False  # Можно добавить подсветку для особых случаев
+
+            # Создаем ячейки
+            faction_label = self._create_cell(other_faction, highlight=highlight)
+
+            # Статус с цветом
+            status_label = Label(
+                text=status,
+                font_size='14sp',
+                bold=True,
+                color=status_color,
+                halign='center',
+                valign='middle',
+                size_hint_y=None,
+                height=dp(45),
+                outline_color=(0, 0, 0, 1),
+                outline_width=2
+            )
+
+            # Уровень отношений
+            level_label = self._create_cell(str(level), highlight=highlight)
+
+            # Описание отношений
+            desc_label = Label(
+                text=description,
+                font_size='14sp',
+                bold=False,
+                color=(1, 1, 1, 1),
+                halign='center',
+                valign='middle',
+                size_hint_y=None,
+                height=dp(45)
+            )
+
+            table.add_widget(faction_label)
+            table.add_widget(status_label)
+            table.add_widget(level_label)
+            table.add_widget(desc_label)
+
+        # Добавляем таблицу в ScrollView
+        scroll = ScrollView(
+            size_hint=(1, 0.8),
+            bar_width=dp(6),
+            bar_color=(0.5, 0.5, 0.5, 0.6),
+            scroll_type=['bars', 'content']
+        )
+        scroll.add_widget(table)
+        content.add_widget(scroll)
+
+        # Легенда статусов
+        legend_layout = BoxLayout(
+            orientation='horizontal',
+            size_hint=(1, None),
+            height=dp(40),
+            spacing=dp(10)
+        )
+
+        # Кнопка закрытия
+        close_button = Button(
+            text="Закрыть",
+            size_hint=(1, None),
+            height=dp(50),
+            font_size='18sp',
+            background_color=(0.8, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1)
+        )
+
+        def close_popup(instance):
+            if hasattr(self, 'popup'):
+                self.popup.dismiss()
+
+        close_button.bind(on_release=close_popup)
+        content.add_widget(close_button)
+
+        # Создаем и показываем popup
+        self.popup = Popup(
+            title="",
+            content=content,
+            size_hint=(0.85, 0.9),
+            auto_dismiss=False,
+            background_color=(0.1, 0.1, 0.2, 0.95)
+        )
+        self.popup.open()
+
+    def create_header(self, text):
+        """Создает заголовок таблицы с фоном через canvas"""
+        label = Label(
+            text=f"[b]{text}[/b]",
+            markup=True,
+            font_size='16sp',
+            bold=True,
+            color=(1, 1, 1, 1),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(50),
+            text_size=(None, None),
+            outline_color=(0, 0, 0, 1),
+            outline_width=2
+        )
+
+        # Добавляем фон через canvas
+        with label.canvas.before:
+            Color(0.2, 0.4, 0.6, 1)  # Темно-синий цвет фона
+            label.bg = RoundedRectangle(
+                pos=label.pos,
+                size=label.size,
+                radius=[dp(4)]
+            )
+
+        # Обновляем фон при изменении размера
+        def update_bg(instance, value):
+            instance.bg.pos = instance.pos
+            instance.bg.size = instance.size
+
+        label.bind(pos=update_bg, size=update_bg)
+        label.bind(size=label.setter('text_size'))
+        return label
+
+    def _create_cell(self, text, highlight=False):
+        """Создает ячейку таблицы"""
+        if highlight:
+            bg_color = (0.3, 0.5, 0.7, 0.3)  # Светло-синий фон для подсветки
+            text_color = (1, 1, 0.5, 1)  # Желтый текст для подсветки
+        else:
+            bg_color = (0.1, 0.1, 0.1, 0.2)  # Темный фон для остальных
+            text_color = (1, 1, 1, 1)  # Белый текст
+
+        label = Label(
+            text=text,
+            font_size='14sp',
+            bold=True if highlight else False,
+            color=text_color,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(45),
+            text_size=(None, None)
+        )
+
+        # Добавляем фон
+        with label.canvas.before:
+            Color(*bg_color)
+            label.background = RoundedRectangle(
+                pos=label.pos,
+                size=label.size,
+                radius=[dp(4)]
+            )
+
+        # Обновляем фон при изменении размера
+        def update_background(instance, value):
+            instance.background.pos = instance.pos
+            instance.background.size = instance.size
+
+        label.bind(pos=update_background, size=update_background)
+        label.bind(size=label.setter('text_size'))
+
+        return label
 
 
 # Кастомная кнопка с анимациями и эффектами
@@ -128,7 +427,7 @@ class StyledButton(ButtonBehavior, BoxLayout):
         self.current_color = self.normal_color
 
         with self.canvas.before:
-            self.color = Color(*self.current_color)
+            Color(*self.current_color)
             self.rect = RoundedRectangle(size=self.size, pos=self.pos, radius=[font_size // 2])
 
         self.bind(pos=self.update_rect, size=self.update_rect)
@@ -175,7 +474,7 @@ class StyledButton(ButtonBehavior, BoxLayout):
         if not self.collide_point(*touch.pos):
             anim = Animation(current_color=self.normal_color, duration=0.1)
             anim.start(self)
-            self.update_color()
+        self.update_color()
 
     def update_color(self):
         """Обновляет цвет фона"""
@@ -242,256 +541,6 @@ def calculate_peace_army_points(conn, faction):
     except Exception as e:
         print(f"Ошибка при вычислении очков армии: {e}")
         return 0
-
-
-
-# =================================
-def show_peace_form(player_faction, conn):
-    """Окно формы для предложения о заключении мира (с использованием StyledButton)."""
-    # Рассчитываем базовый размер шрифта
-    font_size = calculate_font_size()
-    button_height = font_size * 3   # Высота кнопок внутри StyledButton
-    input_height = font_size * 2.5
-    padding = font_size // 2
-    spacing = font_size // 4
-    cursor = conn.cursor()
-
-    try:
-        # Получаем текущие "военные" отношения
-        cursor.execute(
-            "SELECT faction2, relationship FROM diplomacies WHERE faction1 = ?",
-            (player_faction,)
-        )
-        relations = {f: status for f, status in cursor.fetchall()}
-
-        # Берем все активные фракции и фильтруем только те, с кем в "войне"
-        cursor2 = conn.cursor()
-        active_factions = all_factions(cursor2)
-        available_factions = [f for f in active_factions if relations.get(f) == "война"]
-
-        # Если нет фракций для мира
-        if not available_factions:
-            popup_content = BoxLayout(
-                orientation='vertical',
-                padding=padding,
-                spacing=spacing
-            )
-            message_label = Label(
-                text="Мы сейчас ни с кем не воюем",
-                size_hint=(1, None),
-                height=font_size * 2,
-                font_size=font_size,
-                color=(0, 1, 0, 1),  # Зеленый
-                halign='center'
-            )
-            popup_content.add_widget(message_label)
-
-            close_button = StyledButton(
-                text="Закрыть",
-                font_size=font_size * 1.2,
-                button_color=[0.80, 0.20, 0.20, 1],  # Красный
-                text_color=[1, 1, 1, 1]
-            )
-            close_button.bind(on_release=lambda _: popup.dismiss())
-            popup_content.add_widget(close_button)
-
-            popup = Popup(
-                title="Заключение мира",
-                content=popup_content,
-                size_hint=(0.7, 0.3),
-                auto_dismiss=False
-            )
-            popup.open()
-            return
-
-        # --- Основная форма ---
-        content = BoxLayout(
-            orientation='vertical',
-            padding=padding,
-            spacing=spacing
-        )
-
-        # Заголовок
-        title = Label(
-            text="Предложение о заключении мира",
-            size_hint=(1, None),
-            height=button_height,
-            font_size=font_size * 1.5,
-            color=(1, 1, 1, 1),
-            bold=True,
-            halign='center'
-        )
-        title.bind(size=lambda lbl, sz: lbl.setter('text_size')(lbl, (sz[0], None)))
-        content.add_widget(title)
-
-        # Спиннер для выбора фракции
-        factions_spinner = Spinner(
-            text="С какой фракцией?",
-            values=available_factions,
-            size_hint=(1, None),
-            height=input_height,
-            font_size=font_size,
-            background_color=(0.2, 0.6, 1, 1),
-            color=(1, 1, 1, 1),
-            background_normal='',
-            background_down=''
-        )
-        content.add_widget(factions_spinner)
-
-        # Сообщения пользователю
-        message_label = Label(
-            text="",
-            size_hint=(1, None),
-            height=font_size * 2,
-            font_size=font_size,
-            color=(0, 1, 0, 1),
-            halign='center'
-        )
-        content.add_widget(message_label)
-
-        # Функция для вывода предупреждений
-        def show_warning(text, color=(1, 0, 0, 1)):
-            message_label.text = text
-            message_label.color = color
-
-        # Функция для отправки предложения
-        def send_proposal(instance):
-            target_faction = factions_spinner.text
-            if target_faction == "С какой фракцией?":
-                show_warning("Пожалуйста, выберите фракцию!", color=(1, 0, 0, 1))
-                return
-
-            # Вычисляем очки армий
-            player_points = calculate_peace_army_points(conn, player_faction)
-            enemy_points = calculate_peace_army_points(conn, target_faction)
-
-            if player_points == 0 and enemy_points > 0:
-                show_warning("Обойдешься. Сейчас я отыграюсь по полной.", color=(1, 0, 0, 1))
-                return
-
-            # Если у противника нет армии
-            if enemy_points == 0 and player_points >= enemy_points:
-                response = "Мы согласны на мир! Нам пока и воевать то нечем..."
-                cursor.execute(
-                    "UPDATE diplomacies SET relationship = ? WHERE faction1 = ? AND faction2 = ?",
-                    ("нейтралитет", player_faction, target_faction)
-                )
-                cursor.execute(
-                    "UPDATE diplomacies SET relationship = ? WHERE faction1 = ? AND faction2 = ?",
-                    ("нейтралитет", target_faction, player_faction)
-                )
-                conn.commit()
-                show_warning(response, color=(0, 1, 0, 1))
-                return
-
-            # Если превосходство игрока
-            if player_points > enemy_points:
-                superiority_percentage = ((player_points - enemy_points) / max(enemy_points, 1)) * 100
-                if superiority_percentage >= 70:
-                    response = "Ваша милость наконец соизволила нас пощадить.."
-                elif 50 <= superiority_percentage < 70:
-                    response = "Мы уже сдаемся, что Вам еще надо?..."
-                elif 20 <= superiority_percentage < 50:
-                    response = "У нас не осталось тех кто готов сопротивляться..."
-                elif 5 <= superiority_percentage < 20:
-                    response = "Это геноцид...мы врят ли когда-то сможем воевать..."
-                else:
-                    response = "В следующий раз мы будем лучше готовы"
-
-                cursor.execute(
-                    "UPDATE diplomacies SET relationship = ? WHERE faction1 = ? AND faction2 = ?",
-                    ("нейтралитет", player_faction, target_faction)
-                )
-                cursor.execute(
-                    "UPDATE diplomacies SET relationship = ? WHERE faction1 = ? AND faction2 = ?",
-                    ("нейтралитет", target_faction, player_faction)
-                )
-                conn.commit()
-                show_warning(response, color=(0, 1, 0, 1))
-
-            # Если превосходство врага
-            elif player_points < enemy_points:
-                inferiority_percentage = ((enemy_points - player_points) / max(player_points, 1)) * 100
-                if inferiority_percentage <= 15:
-                    response = "Может Вы и правы, но мы еще готовы продолжать сопротивление..."
-                    show_warning(response, color=(1, 1, 0, 1))
-                else:
-                    response = "Уже сдаетесь?! Мы еще не закончили Вас бить!"
-                    show_warning(response, color=(1, 0, 0, 1))
-            else:
-                response = "Сейчас передохнем и в рыло дадим"
-                show_warning(response, color=(1, 0, 0, 1))
-
-        # --- Кнопочная панель ---
-        button_layout = BoxLayout(
-            orientation='horizontal',
-            size_hint=(1, None),
-            height=button_height,
-            spacing=font_size // 2
-        )
-
-        send_button = StyledButton(
-            text="Отправить предложение",
-            font_size=font_size * 1.2,
-            button_color=[0.20, 0.60, 0.86, 1],  # Синий
-            text_color=[1, 1, 1, 1]
-        )
-        send_button.bind(on_release=send_proposal)
-
-        back_button = StyledButton(
-            text="Назад",
-            font_size=font_size * 1.2,
-            button_color=[0.90, 0.49, 0.13, 1],  # Оранжево-красный
-            text_color=[1, 1, 1, 1]
-        )
-        back_button.bind(on_release=lambda _: popup.dismiss())
-
-        button_layout.add_widget(send_button)
-        button_layout.add_widget(back_button)
-
-        content.add_widget(button_layout)
-
-        # --- Собираем и показываем Popup ---
-        popup = Popup(
-            title="Заключение мира",
-            content=content,
-            size_hint=(0.7, 0.5),
-            auto_dismiss=False
-        )
-        popup.open()
-
-    except Exception as e:
-        print(f"Ошибка при работе с дипломатией: {e}")
-
-
-# Словарь фраз для каждой фракции
-alliance_phrases = {
-    "Эльфы": "Природа восторжествует!",
-    "Север": "Светлого неба!",
-    "Адепты": "Да хранит нас Бог!",
-    "Элины": "Огонь пустыни защитит Вас!",
-    "Вампиры": "Теплокровных оставьте нам..."
-}
-
-
-
-def show_popup_message(title, message):
-    """
-    Показывает всплывающее окно с заданным заголовком и сообщением.
-
-    :param title: Заголовок окна.
-    :param message: Текст сообщения.
-    """
-    popup_content = BoxLayout(orientation='vertical', padding=10, spacing=10)
-    popup_content.add_widget(Label(text=message, color=(1, 1, 1, 1), halign='center'))
-    close_button = Button(text="Закрыть", size_hint=(1, 0.3))
-    popup = Popup(title=title, content=popup_content, size_hint=(0.6, 0.4), auto_dismiss=False)
-    close_button.bind(on_release=popup.dismiss)
-    popup_content.add_widget(close_button)
-    popup.open()
-
-
-
 
 #-------------------------------------
 
@@ -656,6 +705,14 @@ def show_ratings_popup(conn):
     popup.open()
 
 
+# Функция для показа окна дипломатических отношений
+def show_diplomacy_window(faction, conn):
+    """Показывает окно с дипломатическими отношениями"""
+    cursor = conn.cursor()
+    manager = DiplomacyManager(faction, conn, cursor)
+    manager.show_diplomatic_relations()
+
+
 #------------------------------------------------------------------
 def start_politic_mode(faction, game_area, class_faction, conn):
     """Инициализация политического режима для выбранной фракции"""
@@ -702,11 +759,14 @@ def start_politic_mode(faction, game_area, class_faction, conn):
         btn.bind(on_release=callback)
         return btn
 
+    # Добавляем кнопки в нужном порядке
     btn_army = styled_btn("Сила армий", lambda btn: show_ratings_popup(conn))
+    btn_diplomacy = styled_btn("Отношения", lambda btn: show_diplomacy_window(faction, conn))
     btn_nobles = styled_btn("Совет", lambda btn: show_nobles_window(conn, faction, class_faction))
     btn_diversion = styled_btn("Диверсия", lambda btn: show_diversion_window(conn, faction, class_faction))
 
     politics_layout.add_widget(btn_army)
+    politics_layout.add_widget(btn_diplomacy)
     politics_layout.add_widget(btn_nobles)
     politics_layout.add_widget(btn_diversion)
 
