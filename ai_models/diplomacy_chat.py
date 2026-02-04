@@ -160,17 +160,7 @@ class EnhancedDiplomacyChat():
             padding=[dp(5), 0]
         )
 
-        self.relation_indicator_widget = Label(
-            text="<>",
-            font_size='20sp',
-            color=(0.5, 0.5, 0.5, 1),
-            halign='center',
-            valign='middle'
-        )
-        relation_indicator.add_widget(self.relation_indicator_widget)
-
         info_row.add_widget(self.relation_info_label)
-        info_row.add_widget(relation_indicator)
 
         # Нижняя строка: кнопка подробной информации
         button_row = BoxLayout(
@@ -375,7 +365,7 @@ class EnhancedDiplomacyChat():
         if coefficient == 0:
             coefficient_text = " (сделки невозможны)"
         else:
-            coefficient_text = f" ×{coefficient:.1f}"
+            coefficient_text = f" (сделки 1×{coefficient:.1f})"
 
         self.relation_info_label.text = f"Отношения: {relation_level}/100{coefficient_text}"
 
@@ -393,9 +383,6 @@ class EnhancedDiplomacyChat():
 
         self.relation_info_label.color = color
 
-        # Обновляем цвет индикатора
-        if hasattr(self, 'relation_indicator_widget'):
-            self.relation_indicator_widget.color = color
 
     def add_chat_message(self, message, sender, timestamp, is_player=False):
         """Добавляет сообщение в чат (с автоматическим выбором версии)"""
@@ -753,7 +740,7 @@ class EnhancedDiplomacyChat():
         coefficient = self.calculate_coefficient(relation_level)
 
         # Добавляем информацию о коэффициенте в статус
-        coefficient_text = f" (×{coefficient:.1f})" if coefficient > 0 else " (сделки невозможны)"
+        coefficient_text = f" (сделки (×{coefficient:.1f}))" if coefficient > 0 else " (сделки невозможны)"
 
         self.relation_status.text = (
             f"Отношения: {relation_level}/100 "
@@ -1655,21 +1642,21 @@ class EnhancedDiplomacyChat():
 
         if relation_level < 25:
             improvement_tips = [
-                "✓ Заключите перемирие через посла",
-                "✓ Предложите взаимовыгодную сделку",
-                "✓ Избегайте конфликтных действий"
+                "* Заключите договор улучшения отношений через диалог",
+                "* Предложите взаимовыгодную сделку",
+                "* Избегайте конфликтных действий"
             ]
         elif relation_level < 50:
             improvement_tips = [
-                "✓ Регулярно торгуйте с нами",
-                "✓ Помогите в совместных задачах",
-                "✓ Проявляйте дипломатичность"
+                "* Регулярно торгуйте с нами",
+                "* Улучшайте отношения через беседу",
+                "* Проявляйте дипломатичность"
             ]
         else:
             improvement_tips = [
-                "✓ Заключайте долгосрочные соглашения",
-                "✓ Оказывайте военную поддержку",
-                "✓ Участвуйте в совместных проектах"
+                "* Заключайте союз",
+                "* Поддерживайте отношения",
+                "* Торгуйте с нами"
             ]
 
         for tip in improvement_tips:
@@ -4840,16 +4827,7 @@ class EnhancedDiplomacyChat():
             size_hint=(0.8, 1)
         )
 
-        # Простой индикатор
-        self.relation_indicator_widget = Label(
-            text="●",
-            font_size='16sp',
-            color=(0.5, 0.5, 0.5, 1),
-            size_hint=(0.2, 1)
-        )
-
         info_row.add_widget(self.relation_info_label)
-        info_row.add_widget(self.relation_indicator_widget)
 
         # Нижняя строка: кнопка
         button_row = BoxLayout(
