@@ -1018,11 +1018,11 @@ class Faction:
 
         # Коэффициенты для каждой фракции
         faction_coefficients = {
-            'Север': {'money_loss': 14, 'food_loss': 0.48},
-            'Эльфы': {'money_loss': 18, 'food_loss': 0.19},
-            'Вампиры': {'money_loss': 20, 'food_loss': 0.09},
-            'Адепты': {'money_loss': 23, 'food_loss': 0.05},
-            'Элины': {'money_loss': 28, 'food_loss': 0.02},
+            'Север': {'money_loss': 14, 'food_loss': 0.5},
+            'Эльфы': {'money_loss': 17, 'food_loss': 0.18},
+            'Вампиры': {'money_loss': 20, 'food_loss': 0.1},
+            'Адепты': {'money_loss': 22, 'food_loss': 0.05},
+            'Элины': {'money_loss': 24, 'food_loss': 0.02},
         }
 
         # Получение коэффициентов для текущей фракции
