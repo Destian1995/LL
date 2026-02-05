@@ -441,19 +441,19 @@ class Faction:
         elif 65 <= tax_rate < 80:
             return -37  # Умеренная убыль населения (-37%)
         elif 45 <= tax_rate < 65:
-            return -21  # Умеренная убыль населения (-21%)
+            return -15  # Умеренная убыль населения (-15%)
         elif 35 <= tax_rate < 45:
-            return -8  # Небольшая убыль населения (-8%)
+            return -4  # Небольшая убыль населения (-4%)
         elif 25 <= tax_rate < 35:
             return 0  # Нейтральный эффект (0%)
         elif 16 <= tax_rate < 25:
             return 11  # Небольшой рост (5%)
         elif 10 <= tax_rate < 16:
-            return 20  # Небольшой рост населения (+11%)
+            return 20  # Небольшой рост населения (+20%)
         elif 1 <= tax_rate < 10:
-            return 32  # Небольшой рост населения (+18%)
+            return 32  # Небольшой рост населения (+32%)
         else:
-            return 54  # Существенный рост населения (+34%)
+            return 57  # Существенный рост населения (+57%)
 
     def apply_tax_effect(self, tax_rate):
         """
@@ -775,12 +775,12 @@ class Faction:
         try:
             system = self.load_political_system()
             if system == "Смирение":
-                crowns_bonus = int(self.money_up * 7.75)
+                crowns_bonus = int(self.money_up * 7.00)
                 if crowns_bonus > 0:
                     self.money += crowns_bonus
                     bonuses["Кроны"] = crowns_bonus
             elif system == "Борьба":
-                raw_material_bonus = int(self.food_info * 5.10)
+                raw_material_bonus = int(self.food_info * 6.00)
                 if raw_material_bonus > 0:
                     self.raw_material += raw_material_bonus
                     bonuses["Кристаллы"] = raw_material_bonus
