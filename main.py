@@ -2397,7 +2397,6 @@ class MenuWidget(FloatLayout):
         app.stop()
 
 
-
 class CustomTab(TabbedPanelItem):
     def __init__(self, **kwargs):
         super(CustomTab, self).__init__(**kwargs)
@@ -2413,10 +2412,6 @@ class CustomTab(TabbedPanelItem):
             self.background_color = self.inactive_color
 
 
-# =========================
-# UI SCALE HELPERS
-# =========================
-
 def ui_scale():
     base_width = 400
     scale = Window.width / base_width
@@ -2430,10 +2425,6 @@ def sdp(x):
 def ssp(x):
     return sp(x * ui_scale())
 
-
-# =========================
-# DOSSIER SCREEN
-# =========================
 
 class DossierScreen(Screen):
 
@@ -2452,9 +2443,10 @@ class DossierScreen(Screen):
 
         root.add_widget(self._create_title_bar())
 
+        # Уменьшена высота табов (кнопок выбора фракции)
         self.tabs = TabbedPanel(
             do_default_tab=False,
-            tab_height=sdp(48),
+            tab_height=sdp(36),  # Было sdp(48) - уменьшили на 25%
             tab_width=sdp(140)
         )
         self.load_dossier_data()
@@ -2482,14 +2474,16 @@ class DossierScreen(Screen):
             font_size=ssp(20),
             color=get_color_from_hex('#FFD700'),
             halign='left',
-            valign='middle'
+            valign='middle',
+            size_hint_x=None,
+            width=Window.width
         )
 
         bar.add_widget(title)
         return bar
 
     # -------------------------
-    # BOTTOM PANEL
+    # BOTTOM PANEL - УМЕНЬШЕНЫЕ КНОПКИ
     # -------------------------
 
     def _create_bottom_panel(self):
@@ -2498,25 +2492,27 @@ class DossierScreen(Screen):
         panel = BoxLayout(
             orientation='vertical' if is_small else 'horizontal',
             size_hint_y=None,
-            height=sdp(120 if is_small else 72),
-            spacing=sdp(8),
-            padding=sdp(8)
+            height=sdp(80 if is_small else 50),
+            spacing=sdp(6),
+            padding=sdp(6)
         )
 
         back_btn = Button(
             text="Назад",
-            font_size=ssp(16),
+            font_size=ssp(14),
             size_hint_y=None,
-            height=sdp(48),
+            height=sdp(30),
+            size_hint_x=0.5 if not is_small else 1,
             background_color=(0.2, 0.4, 0.8, 1)
         )
         back_btn.bind(on_release=self.go_back)
 
         clear_btn = Button(
             text="Очистить все",
-            font_size=ssp(16),
+            font_size=ssp(14),
             size_hint_y=None,
-            height=sdp(48),
+            height=sdp(30),
+            size_hint_x=0.5 if not is_small else 1,
             background_color=(0.6, 0.15, 0.15, 1)
         )
         clear_btn.bind(on_release=self.clear_dossier)
@@ -2567,14 +2563,14 @@ class DossierScreen(Screen):
     # -------------------------
 
     def _create_character_card(self, data):
-
         is_small = Window.width < 360
 
         card = BoxLayout(
             orientation='vertical',
             spacing=sdp(8),
             padding=sdp(12),
-            size_hint_y=None
+            size_hint_y=None,
+            size_hint_x=1
         )
         card.bind(minimum_height=card.setter('height'))
 
@@ -2589,85 +2585,137 @@ class DossierScreen(Screen):
         top_row = BoxLayout(
             orientation='horizontal' if not is_small else 'vertical',
             spacing=sdp(10),
-            size_hint_y=None
+            size_hint_y=None,
+            size_hint_x=1
         )
         top_row.bind(minimum_height=top_row.setter('height'))
 
         # --------
         # ЛЕВАЯ ПАНЕЛЬ
         # --------
-        left_panel = AnchorLayout(size_hint_x=0.4 if not is_small else 1)
+        left_panel = BoxLayout(
+            orientation='vertical',
+            size_hint_x=0.4 if not is_small else 1,
+            spacing=sdp(6),
+            padding=[0, sdp(4)]
+        )
 
-        left_box = BoxLayout(orientation='vertical', spacing=sdp(6))
-        left_box.add_widget(Label(
+        left_panel.add_widget(Label(
             text="[b]Боевой рейтинг:[/b]",
-            markup=True, font_size=ssp(14), halign='center'
+            markup=True,
+            font_size=ssp(13),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(20)
         ))
-        left_box.add_widget(Label(
+        left_panel.add_widget(Label(
             text=str(data.get('avg_military_rating', 0)),
-            font_size=ssp(16), halign='center'
+            font_size=ssp(15),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(22)
         ))
-        left_box.add_widget(Label(
+        left_panel.add_widget(Label(
             text="[b]Голод:[/b]",
-            markup=True, font_size=ssp(14), halign='center'
+            markup=True,
+            font_size=ssp(13),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(20)
         ))
-        left_box.add_widget(Label(
+        left_panel.add_widget(Label(
             text=str(data.get('avg_soldiers_starving', 0)),
-            font_size=ssp(16), halign='center'
+            font_size=ssp(15),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(22)
         ))
-        left_panel.add_widget(left_box)
 
         # --------
         # ЦЕНТР
         # --------
-        center_panel = AnchorLayout(size_hint_x=0.2 if not is_small else 1)
+        center_panel = BoxLayout(
+            orientation='vertical',
+            size_hint_x=0.2 if not is_small else 1,
+            spacing=sdp(4),
+            padding=[0, sdp(8)]
+        )
 
-        center_box = BoxLayout(orientation='vertical', spacing=sdp(4))
-        center_box.add_widget(Label(
+        center_panel.add_widget(Widget(size_hint_y=0.2))
+
+        roman_label = Label(
             text=f"[b][color={rank_color}]{roman}[/color][/b]",
             markup=True,
-            font_size=ssp(42),
+            font_size=ssp(38) if not is_small else ssp(32),
             halign='center',
-            valign='middle'
-        ))
-        center_box.add_widget(Label(
+            valign='middle',
+            size_hint_y=None,
+            height=ssp(45) if not is_small else ssp(38)
+        )
+        center_panel.add_widget(roman_label)
+
+        center_panel.add_widget(Label(
             text=raw_rank,
-            font_size=ssp(14),
-            halign='center'
-        ))
-        center_box.add_widget(Label(
-            text=f"Уровень: {rank_num}/19",
             font_size=ssp(12),
-            color=get_color_from_hex(rank_color),
-            halign='center'
+            halign='center',
+            size_hint_y=None,
+            height=ssp(18)
         ))
-        center_panel.add_widget(center_box)
+        center_panel.add_widget(Label(
+            text=f"Уровень: {rank_num}/19",
+            font_size=ssp(11),
+            color=get_color_from_hex(rank_color),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(16)
+        ))
+
+        center_panel.add_widget(Widget(size_hint_y=0.2))
 
         # --------
         # ПРАВАЯ ПАНЕЛЬ
         # --------
-        right_panel = AnchorLayout(size_hint_x=0.4 if not is_small else 1)
+        right_panel = BoxLayout(
+            orientation='vertical',
+            size_hint_x=0.4 if not is_small else 1,
+            spacing=sdp(6),
+            padding=[0, sdp(4)]
+        )
 
-        right_box = BoxLayout(orientation='vertical', spacing=sdp(6))
-        right_box.add_widget(Label(
+        right_panel.add_widget(Label(
             text="[b]Сражения (В/П):[/b]",
-            markup=True, font_size=ssp(14), halign='center'
+            markup=True,
+            font_size=ssp(13),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(20)
         ))
-        right_box.add_widget(Label(
+        right_panel.add_widget(Label(
             text=f"[color=#00FF00]{data.get('victories', 0)}[/color]/"
                  f"[color=#FF4444]{data.get('defeats', 0)}[/color]",
-            markup=True, font_size=ssp(16), halign='center'
+            markup=True,
+            font_size=ssp(15),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(22)
         ))
-        right_box.add_widget(Label(
+        right_panel.add_widget(Label(
             text="[b]Матчи (В/П):[/b]",
-            markup=True, font_size=ssp(14), halign='center'
+            markup=True,
+            font_size=ssp(13),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(20)
         ))
-        right_box.add_widget(Label(
+        right_panel.add_widget(Label(
             text=f"[color=#00FF00]{data.get('matches_won', 0)}[/color]/"
                  f"[color=#FF4444]{data.get('matches_lost', 0)}[/color]",
-            markup=True, font_size=ssp(16), halign='center'
+            markup=True,
+            font_size=ssp(15),
+            halign='center',
+            size_hint_y=None,
+            height=ssp(22)
         ))
-        right_panel.add_widget(right_box)
 
         # Сборка верхней строки
         top_row.add_widget(left_panel)
@@ -2686,7 +2734,6 @@ class DossierScreen(Screen):
         self._load_dossier_data_to_tabs(self.tabs)
 
     def _load_dossier_data_to_tabs(self, tabs_widget):
-
         for tab in list(tabs_widget.get_tab_list()):
             tabs_widget.remove_widget(tab)
 
@@ -2699,7 +2746,13 @@ class DossierScreen(Screen):
 
         if not rows:
             tab = TabbedPanelItem(text="Инфо")
-            tab.add_widget(Label(text="Вы еще не воевали...", font_size=ssp(16)))
+            label = Label(
+                text="Вы еще не воевали...",
+                font_size=ssp(16),
+                halign='center',
+                valign='middle'
+            )
+            tab.add_widget(label)
             tabs_widget.add_widget(tab)
             return
 
@@ -2726,7 +2779,8 @@ class DossierScreen(Screen):
                 cols=1,
                 spacing=sdp(10),
                 padding=sdp(10),
-                size_hint_y=None
+                size_hint_y=None,
+                size_hint_x=1
             )
             grid.bind(minimum_height=grid.setter('height'))
 
@@ -2738,7 +2792,8 @@ class DossierScreen(Screen):
             sorted_items.sort(key=lambda x: x[0])
 
             for _, data in sorted_items:
-                grid.add_widget(self._create_character_card(data))
+                card = self._create_character_card(data)
+                grid.add_widget(card)
 
             scroll.add_widget(grid)
             tab.add_widget(scroll)
