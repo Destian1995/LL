@@ -2,6 +2,21 @@ from game_process import GameScreen
 from ui import *
 from db_lerdon_connect import *
 from generate_map import generate_map_and_cities
+from kivy.uix.screenmanager import Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
+from kivy.uix.anchorlayout import AnchorLayout
+from kivy.core.window import Window
+from kivy.metrics import dp, sp
+from kivy.utils import get_color_from_hex
+from kivy.app import App
+
+import sqlite3
+import re
 
 RANK_TO_FILENAME = {
     # Группа 1: Военные
@@ -1040,9 +1055,17 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Инициализируем выборы игрока
         self.selected_ideology = 'random'
         self.selected_allies = 'random'
-        # Определяем базовый размер шрифта в зависимости от высоты экрана
+
+        # Определяем базовые размеры в зависимости от платформы
         screen_height = Window.height
-        self.base_font_size = max(dp(14), min(dp(24), screen_height * 0.03))
+        if is_android:
+            self.base_font_size = max(dp(12), min(dp(18), screen_height * 0.022))
+            self.panel_height_ratio = 0.75  # Увеличиваем высоту панелей
+            self.panel_y_offset = 0.05  # Смещаем панели выше
+        else:
+            self.base_font_size = max(dp(14), min(dp(24), screen_height * 0.03))
+            self.panel_height_ratio = 0.6
+            self.panel_y_offset = 0.0
 
         # ======== ФОН ВИДЕО ========
         self.bg_video = Video(
@@ -1062,7 +1085,13 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.add_widget(self.main_container)
 
         # ======== ЗАГОЛОВОК «Выберите сторону» ========
-        label_size = self.base_font_size * 1.5  # Увеличиваем размер для заголовка
+        if is_android:
+            title_size = self.base_font_size * 1.8
+            title_height = dp(45)
+        else:
+            title_size = self.base_font_size * 1.5
+            title_height = dp(60)
+
         self.select_side_label = MDLabel(
             text="Выберите сторону",
             font_style="H5",
@@ -1073,17 +1102,21 @@ class KingdomSelectionWidget(MDFloatLayout):
             halign='center',
             valign='middle',
             size_hint=(0.8, None),
-            height=dp(60),
-            # Позиционируем над левой панелью
-            pos_hint={'center_x': 0.27, 'top': 0.97}  # Смещено влево, чтобы не перекрывать правую панель
+            height=title_height,
+            font_size=title_size,
+            pos_hint={'center_x': 0.27, 'top': 0.98 if is_android else 0.97}
         )
-        self.add_widget(self.select_side_label)  # Добавляем поверх всех элементов
+        self.add_widget(self.select_side_label)
 
         # ======== ПАНЕЛЬ КНОПОК ФРАКЦИЙ (левая часть) ========
+        panel_height = self.panel_height_ratio
+        panel_y_center = 0.5 + self.panel_y_offset
+
         self.faction_panel_container = MDFloatLayout(
-            size_hint=(0.4, 0.6),
-            pos_hint={'x': 0.05, 'center_y': 0.5}
+            size_hint=(0.4, panel_height),
+            pos_hint={'x': 0.05, 'center_y': panel_y_center}
         )
+
         # Фон для панели фракций
         with self.faction_panel_container.canvas.before:
             Color(0.1, 0.1, 0.15, 0.8)
@@ -1103,17 +1136,27 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.faction_data = self.load_factions_from_db()
 
         # ======== КНОПКИ ФРАКЦИЙ ========
-        button_height = dp(45)  # Увеличенная высота кнопок
-        spacing_val = dp(5)  # Уменьшенный отступ между кнопками
+        if is_android:
+            button_height = dp(35)
+            spacing_val = dp(3)
+            button_font_size = self.base_font_size * 0.9
+        else:
+            button_height = dp(45)
+            spacing_val = dp(5)
+            button_font_size = self.base_font_size
+
         # Рассчитываем общую высоту для панели
-        total_height = button_height * len(self.faction_data) + spacing_val * (len(self.faction_data) - 1) + dp(30)
+        num_factions = len(self.faction_data)
+        total_height = button_height * num_factions + spacing_val * (num_factions - 1) + dp(20)
+
         self.kingdom_buttons = MDBoxLayout(
             orientation='vertical',
             spacing=spacing_val,
-            size_hint=(0.85, None),  # Увеличили ширину кнопок
+            size_hint=(0.85, None),
             height=total_height,
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
+
         # Сохраняем кнопки в словаре для быстрого доступа
         self.kingdom_button_widgets = {}
         try:
@@ -1122,8 +1165,8 @@ class KingdomSelectionWidget(MDFloatLayout):
                 btn = ModernButton(
                     text=kingdom,
                     size_hint_y=None,
-                    height=dp(45),  # Увеличенная высота
-                    font_size=self.base_font_size,
+                    height=button_height,
+                    font_size=button_font_size,
                     background_color=(0.2, 0.3, 0.4, 1),
                     background_normal='',
                     color=(1, 1, 1, 1),
@@ -1134,14 +1177,16 @@ class KingdomSelectionWidget(MDFloatLayout):
                 self.kingdom_button_widgets[kingdom] = btn
         except Exception as e:
             print(f"Ошибка при создании кнопок фракций: {e}")
+
         self.faction_panel_container.add_widget(self.kingdom_buttons)
         self.main_container.add_widget(self.faction_panel_container)
 
         # ======== ПАНЕЛЬ НАСТРОЕК (правая часть) ========
         self.settings_panel_container = MDFloatLayout(
-            size_hint=(0.4, 0.6),
-            pos_hint={'right': 0.95, 'center_y': 0.5}
+            size_hint=(0.4, panel_height),
+            pos_hint={'right': 0.95, 'center_y': panel_y_center}
         )
+
         # Фон для панели настроек
         with self.settings_panel_container.canvas.before:
             Color(0.1, 0.1, 0.15, 0.8)
@@ -1158,23 +1203,30 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.settings_panel_container.bind(pos=update_settings_bg, size=update_settings_bg)
 
         # Рассчитываем высоту для каждого контейнера в настройках
-        ideology_container_height = dp(120)  # Увеличили для добавления бонусов
-        allies_container_height = dp(120)  # Увеличили для добавления бонусов
-        faction_info_container_height = dp(100)
-        # Общая высота панели настроек
-        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(
-            60)
-        # Устанавливаем высоту панели настроек
-        self.settings_panel_container.size_hint_y = None
-        self.settings_panel_container.height = total_settings_height
-        # Центрируем по Y
-        self.settings_panel_container.pos_hint = {'right': 0.95, 'center_y': 0.5}
+        if is_android:
+            ideology_container_height = dp(100)
+            allies_container_height = dp(100)
+            faction_info_container_height = dp(85)
+            spinner_height = dp(35)
+            bonus_height = dp(30)
+            label_height = dp(20)
+            stat_row_height = dp(18)
+        else:
+            ideology_container_height = dp(120)
+            allies_container_height = dp(120)
+            faction_info_container_height = dp(100)
+            spinner_height = dp(40)
+            bonus_height = dp(40)
+            label_height = dp(25)
+            stat_row_height = dp(20)
+
+        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(30)
 
         # Основной контейнер для вертикального расположения всех блоков
         self.settings_content_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(15),  # Отступ между блоками
-            size_hint=(0.85, 0.9),  # Оставляем отступы по краям
+            spacing=dp(10) if is_android else dp(15),
+            size_hint=(0.85, 0.9),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
         self.settings_panel_container.add_widget(self.settings_content_container)
@@ -1182,10 +1234,11 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ВЫБОР ИДЕОЛОГИИ ========
         ideology_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(8),
+            spacing=dp(5) if is_android else dp(8),
             size_hint=(1, None),
             height=ideology_container_height,
         )
+
         # Заголовок идеологии
         ideology_label = MDLabel(
             text="Идеология:",
@@ -1193,35 +1246,39 @@ class KingdomSelectionWidget(MDFloatLayout):
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             size_hint_y=None,
-            height=dp(25),
-            halign='left'
+            height=label_height,
+            halign='left',
+            font_size=self.base_font_size * 0.9
         )
         ideology_label.bind(size=ideology_label.setter('text_size'))
         ideology_container.add_widget(ideology_label)
+
         # Выпадающий список идеологии
         self.ideology_spinner = ModernSpinner(
             text='Случайная',
             values=('Случайная', 'Смирение', 'Борьба'),
             size_hint=(1, None),
-            height=dp(40),
+            height=spinner_height,
             background_color=(0.2, 0.3, 0.4, 1),
             color=(1, 1, 1, 1),
             font_size=self.base_font_size * 0.8
         )
         self.ideology_spinner.bind(text=self.on_ideology_selected)
         ideology_container.add_widget(self.ideology_spinner)
+
         # КОНТЕЙНЕР ДЛЯ БОНУСОВ ИДЕОЛОГИИ
         self.ideology_bonus_container = MDFloatLayout(
             size_hint=(1, None),
-            height=dp(40),
+            height=bonus_height,
         )
+
         # Фон для бонуса
         with self.ideology_bonus_container.canvas.before:
             Color(0.15, 0.2, 0.25, 0.7)
             self.ideology_bonus_bg = RoundedRectangle(
                 pos=self.ideology_bonus_container.pos,
                 size=self.ideology_bonus_container.size,
-                radius=[8]
+                radius=[6]
             )
 
         def update_ideology_bonus_bg(instance, value):
@@ -1229,31 +1286,35 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.ideology_bonus_bg.size = instance.size
 
         self.ideology_bonus_container.bind(pos=update_ideology_bonus_bg, size=update_ideology_bonus_bg)
+
         # Иконка и текст бонуса
         ideology_bonus_layout = MDBoxLayout(
             orientation='horizontal',
-            spacing=dp(10),
+            spacing=dp(8),
             size_hint=(0.95, 0.8),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
+
         # Создаем Image-виджет для иконки бонуса
         self.ideology_bonus_icon = Image(
-            source='files/pict/menu/bonus_icon.png',  # Иконка по умолчанию
+            source='files/pict/menu/bonus_icon.png',
             size_hint=(None, None),
-            size=(dp(25), dp(25)),
-            allow_stretch=True,  # Разрешаем растягивание, если нужно
-            keep_ratio=True  # Сохраняем пропорции изображения
+            size=(dp(20) if is_android else dp(25), dp(20) if is_android else dp(25)),
+            allow_stretch=True,
+            keep_ratio=True
         )
-        # --- ИСПРАВЛЕНИЕ: Присваиваем как атрибут класса ---
+
         self.ideology_bonus_label = MDLabel(
             text="Бонус не выбран",
             font_style="Caption",
             theme_text_color="Custom",
             text_color=(0.8, 0.9, 1.0, 1),
             halign='left',
-            valign='middle'
+            valign='middle',
+            font_size=self.base_font_size * 0.7
         )
         self.ideology_bonus_label.bind(size=self.ideology_bonus_label.setter('text_size'))
+
         ideology_bonus_layout.add_widget(self.ideology_bonus_icon)
         ideology_bonus_layout.add_widget(self.ideology_bonus_label)
         self.ideology_bonus_container.add_widget(ideology_bonus_layout)
@@ -1263,10 +1324,11 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ========
         allies_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(8),
+            spacing=dp(5) if is_android else dp(8),
             size_hint=(1, None),
             height=allies_container_height,
         )
+
         # Заголовок союзников
         allies_label = MDLabel(
             text="Единомышленники:",
@@ -1274,35 +1336,39 @@ class KingdomSelectionWidget(MDFloatLayout):
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             size_hint_y=None,
-            height=dp(25),
-            halign='left'
+            height=label_height,
+            halign='left',
+            font_size=self.base_font_size * 0.9
         )
         allies_label.bind(size=allies_label.setter('text_size'))
         allies_container.add_widget(allies_label)
+
         # Выпадающий список союзников
         self.allies_spinner = ModernSpinner(
             text='Случайное количество',
             values=('Случайное количество', '1', '2'),
             size_hint=(1, None),
-            height=dp(40),
+            height=spinner_height,
             background_color=(0.2, 0.3, 0.4, 1),
             color=(1, 1, 1, 1),
             font_size=self.base_font_size * 0.8
         )
         self.allies_spinner.bind(text=self.on_allies_selected)
         allies_container.add_widget(self.allies_spinner)
+
         # КОНТЕЙНЕР ДЛЯ ИНФОРМАЦИИ О СОЮЗНИКАХ
         self.allies_info_container = MDFloatLayout(
             size_hint=(1, None),
-            height=dp(40),
+            height=bonus_height,
         )
+
         # Фон для информации о союзниках
         with self.allies_info_container.canvas.before:
             Color(0.15, 0.2, 0.25, 0.7)
             self.allies_info_bg = RoundedRectangle(
                 pos=self.allies_info_container.pos,
                 size=self.allies_info_container.size,
-                radius=[8]
+                radius=[6]
             )
 
         def update_allies_info_bg(instance, value):
@@ -1310,6 +1376,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.allies_info_bg.size = instance.size
 
         self.allies_info_container.bind(pos=update_allies_info_bg, size=update_allies_info_bg)
+
         # Иконки и текст союзников
         allies_info_layout = MDBoxLayout(
             orientation='horizontal',
@@ -1317,15 +1384,18 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint=(0.95, 0.8),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
+
         self.allies_count_label = MDLabel(
             text="Случайно 1 или 2 союзника",
             font_style="Caption",
             theme_text_color="Custom",
             text_color=(0.8, 0.9, 1.0, 1),
             halign='left',
-            valign='middle'
+            valign='middle',
+            font_size=self.base_font_size * 0.7
         )
         self.allies_count_label.bind(size=self.allies_count_label.setter('text_size'))
+
         allies_info_layout.add_widget(self.allies_count_label)
         self.allies_info_container.add_widget(allies_info_layout)
         allies_container.add_widget(self.allies_info_container)
@@ -1334,96 +1404,104 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ИНФОРМАЦИЯ О ФРАКЦИИ ========
         self.faction_info_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(5),
+            spacing=dp(3) if is_android else dp(5),
             size_hint=(1, None),
             height=faction_info_container_height,
         )
+
         info_title = MDLabel(
             text="Характеристики фракции:",
             font_style="Body1",
             theme_text_color="Custom",
             text_color=(1, 1, 1, 1),
             size_hint_y=None,
-            height=dp(25),
-            halign='left'
+            height=label_height,
+            halign='left',
+            font_size=self.base_font_size * 0.9
         )
         info_title.bind(size=info_title.setter('text_size'))
         self.faction_info_container.add_widget(info_title)
+
         self.stats_labels = {}
         stats_names = ["Доход Крон:", "Доход Кристаллов:", "Армия:"]
+
         for stat_name in stats_names:
             stat_row = MDBoxLayout(
                 orientation='horizontal',
                 size_hint_y=None,
-                height=dp(20),
-                spacing=dp(5)
+                height=stat_row_height,
+                spacing=dp(3)
             )
+
             label = MDLabel(
                 text=stat_name,
                 font_style="Caption",
                 theme_text_color="Custom",
                 text_color=(0.9, 0.9, 0.9, 1),
                 size_hint_x=0.6,
-                halign='left'
+                halign='left',
+                font_size=self.base_font_size * 0.7
             )
             label.bind(size=label.setter('text_size'))
+
             icons_box = MDBoxLayout(
                 orientation='horizontal',
                 size_hint_x=0.4,
-                spacing=dp(3)
+                spacing=dp(2)
             )
+
             # Заполняем серыми иконками по умолчанию
+            icon_size = dp(12) if is_android else dp(14)
             for i in range(3):
                 img = Image(
                     source='files/pict/menu/grey.png',
                     size_hint=(None, None),
-                    size=(dp(14), dp(14))
+                    size=(icon_size, icon_size)
                 )
                 icons_box.add_widget(img)
+
             stat_row.add_widget(label)
             stat_row.add_widget(icons_box)
             self.faction_info_container.add_widget(stat_row)
             self.stats_labels[stat_name] = icons_box
+
         self.settings_content_container.add_widget(self.faction_info_container)
         self.main_container.add_widget(self.settings_panel_container)
 
-        # ======== КНОПКА «Начать игру» и «Назад» (слева внизу) ========
-        # Создаем контейнер для кнопок с фиксированной шириной, не превышающей ширину панели фракций
-        buttons_container_width = 0.4  # Такая же ширина как у панели фракций
+        # ======== КНОПКИ ВНИЗУ ========
+        # Определяем размеры кнопок в зависимости от платформы
+        if is_android:
+            button_container_width = 0.4
+            back_btn_width = dp(90)
+            start_btn_width = dp(170)
+            button_height = dp(40)
+            button_font_size = self.base_font_size * 0.9
+            buttons_y_pos = 0.03  # Немного выше для Android
+        else:
+            button_container_width = 0.4
+            back_btn_width = dp(100)
+            start_btn_width = dp(190)
+            button_height = dp(45)
+            button_font_size = self.base_font_size * 0.9
+            buttons_y_pos = 0.02
 
         # Контейнер для кнопок
         self.bottom_buttons_container = MDBoxLayout(
             orientation='horizontal',
             size_hint=(None, None),
-            size=(Window.width * buttons_container_width, dp(50)),  # Фиксируем ширину
-            spacing=dp(10),
-            padding=[dp(5), 0, dp(5), 0]
+            size=(Window.width * button_container_width, button_height + dp(5)),
+            spacing=dp(8) if is_android else dp(10),
+            padding=[dp(5), 0, dp(5), 0],
+            pos_hint={'x': 0.05, 'y': buttons_y_pos}
         )
-
-        # ======== КНОПКА «Начать игру» и «Назад» (слева внизу) ========
-        # Создаем контейнер для кнопок с фиксированной шириной, не превышающей ширину панели фракций
-        buttons_container_width = 0.4  # Такая же ширина как у панели фракций
-
-        # Контейнер для кнопок
-        self.bottom_buttons_container = MDBoxLayout(
-            orientation='horizontal',
-            size_hint=(None, None),
-            size=(Window.width * buttons_container_width, dp(50)),  # Фиксируем ширину
-            spacing=dp(10),
-            padding=[dp(5), 0, dp(5), 0]
-        )
-
-        # Позиционируем контейнер с кнопками под панелью фракций и по левому краю
-        # Используем ту же позицию по X, что и у панели фракций (0.05 от ширины окна)
-        self.bottom_buttons_container.pos_hint = {'x': 0.05, 'y': 0.02}
 
         # КНОПКА «Вернуться в главное меню»
         self.back_btn = ModernButton(
             text="В меню",
             size_hint=(None, None),
-            size=(dp(100), dp(45)),  # Фиксированный размер
+            size=(back_btn_width, button_height),
             color=(1, 1, 1, 1),
-            font_size=self.base_font_size * 0.9,
+            font_size=button_font_size,
             background_color=(0.6, 0.2, 0.2, 1)
         )
         self.back_btn.bind(on_release=self.back_to_menu)
@@ -1432,8 +1510,8 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.start_game_button = ModernButton(
             text="Начать игру",
             size_hint=(None, None),
-            size=(dp(190), dp(45)),  # Фиксированный размер
-            font_size=self.base_font_size * 1.2,
+            size=(start_btn_width, button_height),
+            font_size=button_font_size * 1.1,
             bold=True,
             color=(1, 1, 1, 1),
             background_color=(0.2, 0.6, 0.2, 1),
@@ -1441,7 +1519,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         )
         self.start_game_button.bind(on_release=self.start_game)
 
-        # Добавляем кнопки в контейнер (сначала "Назад", потом "Начать игру")
+        # Добавляем кнопки в контейнер
         self.bottom_buttons_container.add_widget(self.back_btn)
         self.bottom_buttons_container.add_widget(self.start_game_button)
 
@@ -2196,42 +2274,24 @@ class MenuWidget(FloatLayout):
     def __init__(self, conn, selected_map=None, **kwargs):
         super(MenuWidget, self).__init__(**kwargs)
         self.conn = conn
-        self.buttons_locked = True
 
-        # Хранение идентификаторов запланированных задач
-        self.background_anim_event = None
-        self.float_anim_event = None
-        self._anim_scheduled = False
-
-        # ======== Фоновые изображения ========
-        self.bg_image_1 = Image(
+        # ======== Фоновое изображение ========
+        self.bg_image = Image(
             source='files/menu/vampire.jpg',
             allow_stretch=True,
             keep_ratio=False,
             size_hint=(1, 1),
             pos_hint={'x': 0, 'y': 0}
         )
-        self.bg_image_2 = Image(
-            source='files/menu/people.jpg',
-            allow_stretch=True,
-            keep_ratio=False,
-            opacity=0,
-            size_hint=(1, 1),
-            pos_hint={'x': 0, 'y': 0}
-        )
-        self.add_widget(self.bg_image_1)
-        self.add_widget(self.bg_image_2)
+        self.add_widget(self.bg_image)
 
-        self.current_image = self.bg_image_1
-        self.next_image = self.bg_image_2
-
-        # ======== Логотип с ЧЕРНОЙ ОБВОДКОЙ ========
-        self.title_label = AnimatedLabel(
+        # ======== Логотип с черной обводкой ========
+        self.title_label = Label(
             text="Легенды Лэрдона",
             font_size='48sp',
             bold=True,
             color=(1, 1, 1, 1),  # Белый текст
-            outline_color=(0, 0, 0, 1),  # ЧЕРНАЯ обводка
+            outline_color=(0, 0, 0, 1),  # Черная обводка
             outline_width=3,
             halign='center',
             valign='middle',
@@ -2245,7 +2305,7 @@ class MenuWidget(FloatLayout):
         self.button_container = FloatLayout(size_hint=(1, 0.7), pos_hint={'center_x': 0.5, 'y': 0.15})
         self.add_widget(self.button_container)
 
-        # ======== Создаём кнопки С ЧЕРНОЙ ОБВОДКОЙ ТЕКСТА ========
+        # ======== Создаём кнопки ========
         button_configs = [
             {"text": "В Лэрдон", "y_pos": 0.75, "type": "start", "action": self.start_game},
             {"text": "Рейтинг", "y_pos": 0.58, "type": "rating", "action": self.open_dossier},
@@ -2253,230 +2313,138 @@ class MenuWidget(FloatLayout):
             {"text": "Автор", "y_pos": 0.24, "type": "author", "action": self.open_author},
             {"text": "Выход", "y_pos": 0.07, "type": "exit", "action": self.exit_game}
         ]
+
         self.buttons = []
+        self.selected_button = None
+
         for config in button_configs:
-            btn = GameButton(
-                button_type=config["type"],
+            btn = Button(
                 text=config["text"],
                 size_hint=(0.5, 0.12),
                 pos_hint={'center_x': 0.5, 'y': config["y_pos"]},
+                background_color=(0.2, 0.2, 0.2, 0.8),  # Темный фон
                 color=(1, 1, 1, 1),  # Белый текст
-                font_size='22sp',  # Чуть больше для мобильных
+                font_size='22sp',
                 bold=True,
-                opacity=0
+                background_normal='',  # Убираем стандартный фон
+                background_down='',  # Убираем стандартный фон при нажатии
+                border=(2, 2, 2, 2)
             )
 
-            # Дополнительно настраиваем обводку текста
-            # В Kivy Label (от которого наследуется Button) есть свойства:
-            # outline_color и outline_width для обводки текста
-            btn.outline_color = (0, 0, 0, 1)  # Черная обводка
-            btn.outline_width = 1.5  # Толщина обводки
+            # Назначаем обработчики событий
+            btn.bind(
+                on_press=lambda instance, b=btn: self.on_button_press(b),
+                on_release=config["action"]
+            )
 
-            btn.bind(on_release=config["action"])
             self.buttons.append(btn)
             self.button_container.add_widget(btn)
 
-        # ======== Декоративные элементы ========
-        self.particles = []
-        self.add_decoration()
+        # Выбираем первую кнопку по умолчанию
+        if self.buttons:
+            self.select_button(self.buttons[0])
 
-        # ======== Анимации ========
-        Clock.schedule_once(self.animate_title, 0.2)
-        Clock.schedule_once(self.animate_buttons_in, 0.4)
+        # Инициализируем переменную клавиатуры
+        self._keyboard = None
+        # Запрашиваем клавиатуру с небольшой задержкой, чтобы избежать конфликтов
+        Clock.schedule_once(self._setup_keyboard, 0.1)
 
-        if not self._anim_scheduled:
-            self.background_anim_event = Clock.schedule_interval(self.animate_background, 5)
-            self._anim_scheduled = True
+    def _setup_keyboard(self, dt):
+        """Настройка клавиатуры с задержкой"""
+        try:
+            self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+            if self._keyboard:
+                self._keyboard.bind(on_key_down=self._on_keyboard_down)
+        except Exception as e:
+            print(f"Ошибка при настройке клавиатуры: {e}")
 
-        self.float_anim_event = Clock.schedule_interval(self.float_animation, 0.05)
+    def _keyboard_closed(self):
+        """Закрытие клавиатуры"""
+        if self._keyboard:
+            try:
+                self._keyboard.unbind(on_key_down=self._on_keyboard_down)
+            except:
+                pass
+            self._keyboard = None
 
-    def on_parent(self, widget, parent):
-        """Отмена задач Clock при удалении виджета"""
-        if parent is None:
-            if self.background_anim_event:
-                Clock.unschedule(self.background_anim_event)
-            if self.float_anim_event:
-                Clock.unschedule(self.float_anim_event)
-            self._anim_scheduled = False
+    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
+        """Обработка нажатий клавиш"""
+        if not self.buttons or not self.selected_button:
+            return False
 
-    def add_decoration(self):
-        """Декоративные элементы с черной обводкой"""
-        for i in range(6):
-            particle = Label(
-                text="✦",
-                font_size='20sp',
-                color=(1, 1, 1, 1),  # Белый
-                outline_color=(0, 0, 0, 0.8),  # Полупрозрачная черная обводка
-                outline_width=1,
-                opacity=0
-            )
-            self.particles.append(particle)
-            self.add_widget(particle)
+        current_index = self.buttons.index(self.selected_button)
 
-    def animate_title(self, dt):
-        """Анимация заголовка"""
-        self.title_label.start_glow_animation()
+        if keycode[1] == 'down':
+            next_index = (current_index + 1) % len(self.buttons)
+            self.select_button(self.buttons[next_index])
+            return True
+        elif keycode[1] == 'up':
+            next_index = (current_index - 1) % len(self.buttons)
+            self.select_button(self.buttons[next_index])
+            return True
+        elif keycode[1] == 'enter' or keycode[1] == 'spacebar':
+            # Активируем выбранную кнопку
+            self.activate_selected_button()
+            return True
 
-    def animate_particles(self):
-        """Анимация декоративных частиц"""
-        positions = [
-            {'x': 0.1, 'y': 0.85}, {'x': 0.9, 'y': 0.8},
-            {'x': 0.15, 'y': 0.65}, {'x': 0.85, 'y': 0.6},
-            {'x': 0.2, 'y': 0.45}, {'x': 0.8, 'y': 0.4}
-        ]
-        for i, particle in enumerate(self.particles):
-            if i < len(positions):
-                particle.pos_hint = positions[i]
-                # Анимация с черной обводкой
-                anim = (
-                        Animation(opacity=0.8, outline_color=(0, 0, 0, 1), duration=1.5) +
-                        Animation(opacity=0.3, outline_color=(0, 0, 0, 0.5), duration=1.5)
-                )
-                anim.repeat = True
-                Clock.schedule_once(lambda dt, p=particle, a=anim: a.start(p), i * 0.3)
+        return False
 
-    def animate_buttons_in(self, dt):
-        """Анимированное появление кнопок"""
-        self.animate_particles()
+    def select_button(self, button):
+        """Выделяет выбранную кнопку"""
+        # Снимаем выделение с предыдущей кнопки
+        if self.selected_button:
+            self.selected_button.background_color = (0.2, 0.2, 0.2, 0.8)  # Темный фон
+            self.selected_button.color = (1, 1, 1, 1)  # Белый текст
 
-        for i, btn in enumerate(self.buttons):
-            original_y = btn.pos_hint['y']
-            btn.pos_hint = {'center_x': 0.5, 'y': -0.2}
-            btn.opacity = 0
+        # Выделяем новую кнопку
+        button.background_color = (0.4, 0.2, 0.1, 0.9)  # Оранжево-коричневый фон
+        button.color = (1, 1, 1, 1)  # Белый текст
+        self.selected_button = button
 
-            # Также делаем обводку текста невидимой в начале
-            btn.outline_color = (0, 0, 0, 0)
+    def on_button_press(self, button):
+        """Обработка нажатия на кнопку мышью"""
+        self.select_button(button)
 
-            delay = i * 0.15
+    def activate_selected_button(self):
+        """Активирует выбранную кнопку"""
+        if self.selected_button:
+            # Находим действие для этой кнопки
+            for btn in self.buttons:
+                if btn == self.selected_button:
+                    # Запускаем действие кнопки
+                    self.selected_button.dispatch('on_release')
+                    break
 
-            # Анимация появления кнопки и обводки текста
-            anim = (
-                    Animation(
-                        pos_hint={'center_x': 0.5, 'y': original_y},
-                        opacity=1,
-                        duration=0.6,
-                        t='out_back'
-                    ) & Animation(
-                outline_color=(0, 0, 0, 1),  # Появление черной обводки
-                duration=0.4
-            )
-            )
-
-            Clock.schedule_once(lambda dt, b=btn, a=anim: a.start(b), delay)
-
-        total_delay = len(self.buttons) * 0.15 + 0.7
-        Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), total_delay)
-
-    def float_animation(self, dt):
-        """Плавное плавающее движение кнопок"""
-        if hasattr(self, 'buttons_locked') and self.buttons_locked:
-            return
-        current_time = Clock.get_time()
-        for i, btn in enumerate(self.buttons):
-            if not hasattr(btn, 'original_y'):
-                btn.original_y = btn.pos_hint['y']
-
-            float_offset = math.sin(current_time * 1.5 + i * 0.7) * 0.0015
-            new_y = btn.original_y + float_offset
-            btn.pos_hint = {'center_x': 0.5, 'y': new_y}
-
-    def create_button_animation(self, instance):
-        """Анимация при нажатии на кнопку"""
-        if getattr(self, 'buttons_locked', True):
-            return
-
-        # Анимация с эффектом черной обводки
-        anim = (
-                Animation(
-                    size_hint=(0.48, 0.115),
-                    outline_color=(0, 0, 0, 0.7),  # Обводка темнеет при нажатии
-                    duration=0.08
-                ) + Animation(
-            size_hint=(0.5, 0.12),
-            outline_color=(0, 0, 0, 1),  # Возврат к черной обводке
-            duration=0.08
-        )
-        )
-        anim.start(instance)
-
-    def animate_background(self, dt):
-        """Смена фона"""
-        new_source = random.choice([
-            'files/menu/people.jpg',
-            'files/menu/elfs.jpg',
-            'files/menu/vampire.jpg',
-            'files/menu/poly.jpg',
-            'files/menu/adept.jpg'
-        ])
-
-        while new_source == self.next_image.source:
-            new_source = random.choice([
-                'files/menu/people.jpg',
-                'files/menu/elfs.jpg',
-                'files/menu/vampire.jpg',
-                'files/menu/poly.jpg',
-                'files/menu/adept.jpg'
-            ])
-
-        self.next_image.source = new_source
-        fade_out = Animation(opacity=0, duration=2.0)
-        fade_in = Animation(opacity=1, duration=2.0)
-        fade_out.start(self.current_image)
-        fade_in.start(self.next_image)
-        self.current_image, self.next_image = self.next_image, self.current_image
-
-    # === Остальные методы остаются без изменений ===
-    def button_action_wrapper(self, action_func, instance):
-        self.create_button_animation(instance)
-        Clock.schedule_once(lambda dt: action_func(instance), 0.16)
-
+    # === Методы действий кнопок ===
     def open_dossier(self, instance):
-        self.button_action_wrapper(self._open_dossier, instance)
-
-    def open_how_to_play(self, instance):
-        self.button_action_wrapper(self._open_how_to_play, instance)
-
-    def open_author(self, instance):
-        self.button_action_wrapper(self._open_author, instance)
-
-    def start_game(self, instance):
-        self.button_action_wrapper(self._start_game, instance)
-
-    def exit_game(self, instance):
-        self.button_action_wrapper(self._exit_game, instance)
-
-    def _open_dossier(self, instance):
-        if getattr(self, 'buttons_locked', True):
-            return
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(DossierScreen(self.conn))
 
-    def _open_how_to_play(self, instance):
-        if getattr(self, 'buttons_locked', True):
-            return
+    def open_how_to_play(self, instance):
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(HowToPlayScreen(self.conn))
 
-    def _open_author(self, instance):
-        if getattr(self, 'buttons_locked', True):
-            return
+    def open_author(self, instance):
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(AuthorScreen(self.conn))
 
-    def _start_game(self, instance):
-        if getattr(self, 'buttons_locked', True):
-            return
+    def start_game(self, instance):
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(KingdomSelectionWidget(self.conn))
 
-    def _exit_game(self, instance):
+    def exit_game(self, instance):
         app = App.get_running_app()
         app.on_stop()
         app.stop()
+
+    def on_parent(self, widget, parent):
+        """Очистка при удалении виджета"""
+        if parent is None:
+            self._keyboard_closed()
 
 
 class CustomTab(TabbedPanelItem):
@@ -2492,23 +2460,6 @@ class CustomTab(TabbedPanelItem):
             self.background_color = self.active_color
         else:
             self.background_color = self.inactive_color
-
-
-from kivy.uix.screenmanager import Screen
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.tabbedpanel import TabbedPanel, TabbedPanelItem
-from kivy.uix.anchorlayout import AnchorLayout
-from kivy.core.window import Window
-from kivy.metrics import dp, sp
-from kivy.utils import get_color_from_hex
-from kivy.app import App
-
-import sqlite3
-import re
 
 
 # =========================
