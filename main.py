@@ -2625,12 +2625,45 @@ class DossierScreen(Screen):
 
         return bottom
 
+    def _military_rank_to_roman(self, rank_text):
+        """
+        Преобразует воинское звание в римскую цифру.
+        Предполагается, что в базе данных есть числовой рейтинг или порядковый номер.
+        Если нет - парсим из текста.
+        """
+        # Если rank_text уже число или можно преобразовать в число
+        try:
+            rank_num = int(rank_text)
+        except (ValueError, TypeError):
+            # Пытаемся извлечь числовой ранг из текста
+            # Предположим, что формат: "Ранг X" или что-то подобное
+            # Если не получается - возвращаем для самого младшего (19)
+            rank_num = 19  # По умолчанию самый младший
 
+            # Пример парсинга: если в тексте есть числа
+            import re
+            numbers = re.findall(r'\d+', str(rank_text))
+            if numbers:
+                rank_num = int(numbers[0])
+
+        # Ограничиваем диапазон от 1 до 19
+        rank_num = max(1, min(19, rank_num))
+
+        # Преобразуем в римские цифры от I (1) до XIX (19)
+        roman_numerals = {
+            1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
+            6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X',
+            11: 'XI', 12: 'XII', 13: 'XIII', 14: 'XIV', 15: 'XV',
+            16: 'XVI', 17: 'XVII', 18: 'XVIII', 19: 'XIX'
+        }
+
+        return roman_numerals.get(rank_num, 'XIX'), rank_num
 
     def _create_character_card(self, data: dict) -> BoxLayout:
         """
         Создаёт одну карточку «персонажа».
         Теперь адаптирована под мобильные устройства.
+        Использует римские цифры вместо картинок для рангов.
         """
         card = BoxLayout(
             orientation='vertical',
@@ -2658,44 +2691,45 @@ class DossierScreen(Screen):
 
         # --- Обработка звания ---
         raw_rank = data.get('military_rank') or "Еще не признан своим..."
-        rank = raw_rank.strip()
-        rank = unicodedata.normalize("NFC", rank)
-        rank = (
-            rank
-            .replace("\u2010", "-")
-            .replace("\u2011", "-")
-            .replace("\u2012", "-")
-            .replace("\u2013", "-")
-            .replace("\u2014", "-")
-            .replace("\u2015", "-")
-        )
-        filename = RANK_TO_FILENAME.get(rank, "0.png")
-        asset_path = f"files/menu/dossier/{filename}"
-        real_path = resource_find(asset_path)
 
-        # --- Иконка ---
-        image_container = BoxLayout(size_hint_y=None, height=dp(100), padding=dp(5))
-        if real_path:
-            rank_img = Image(
-                source=real_path,
-                size_hint=(None, None),
-                size=(dp(80), dp(80)),
-                allow_stretch=True,
-                keep_ratio=True
-            )
+        # Получаем римскую цифру и числовой ранг
+        roman_rank, rank_num = self._military_rank_to_roman(raw_rank)
+
+        # Цвет ранга в зависимости от уровня (от красного к зелёному)
+        # 1 (самый старший) - золотой, 19 (самый младший) - серый
+        if rank_num == 1:
+            rank_color = '#FFD700'  # Золотой
+        elif rank_num <= 5:
+            rank_color = '#FF4500'  # Оранжево-красный
+        elif rank_num <= 10:
+            rank_color = '#32CD32'  # Зеленый
+        elif rank_num <= 15:
+            rank_color = '#1E90FF'  # Синий
         else:
-            rank_img = Label(text="?", font_size=sp(40), color=(1, 1, 1, 0.5))
+            rank_color = '#A9A9A9'  # Серый
+
+        # --- Иконка ранга (римская цифра) ---
+        image_container = BoxLayout(size_hint_y=None, height=dp(100), padding=dp(5))
+
+        # Создаем виджет для отображения римской цифры
+        rank_widget = Label(
+            text=f"[size=50][color={rank_color}]{roman_rank}[/color][/size]",
+            markup=True,
+            font_size=sp(50),
+            halign='center',
+            valign='middle'
+        )
 
         img_anchor = AnchorLayout(anchor_x='center', anchor_y='center')
-        img_anchor.add_widget(rank_img)
+        img_anchor.add_widget(rank_widget)
         image_container.add_widget(img_anchor)
         card.add_widget(image_container)
 
-        # --- Текст звания ---
+        # --- Текст звания (оригинальный) ---
         rank_label = Label(
             text=f"[b]{raw_rank}[/b]",
             markup=True,
-            font_size=sp(20),
+            font_size=sp(18),
             color=(1, 1, 1, 1),
             halign='center',
             valign='middle',
@@ -2703,6 +2737,18 @@ class DossierScreen(Screen):
             height=dp(30)
         )
         card.add_widget(rank_label)
+
+        # --- Индикатор уровня (дополнительная информация) ---
+        level_indicator = Label(
+            text=f"Уровень: {rank_num}/19",
+            font_size=sp(12),
+            color=rank_color,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(20)
+        )
+        card.add_widget(level_indicator)
 
         # --- Статистика в Grid ---
         stats_grid = GridLayout(cols=2, spacing=dp(5), size_hint_y=None, height=dp(120))
@@ -2756,7 +2802,7 @@ class DossierScreen(Screen):
         )
         card.add_widget(date_label)
 
-        card.height = dp(270) # Примерная высота, можно рассчитать динамически
+        card.height = dp(320)  # Увеличиваем высоту из-за добавленного уровня
         return card
 
     def clear_dossier(self, instance):
@@ -2777,10 +2823,6 @@ class DossierScreen(Screen):
         """Пересоздаёт TabbedPanel и заменяет старый."""
         # Удаляем старый TabbedPanel из макета
         root_layout = self.children[0]  # BoxLayout(orientation='vertical')
-        # Найдём старый TabbedPanel по индексу (предполагаем, что он второй с конца, после bottom_panel и перед title)
-        # Лучше получить его индекс надёжно.
-        # self.children - это [BoxLayout], root_layout.children = [bottom_panel, old_tabs, title_widget]
-        # Индекс старого tabs: 1
         old_tabs_index = 1
         old_tabs = root_layout.children[old_tabs_index]
         root_layout.remove_widget(old_tabs)
@@ -2799,6 +2841,7 @@ class DossierScreen(Screen):
     def _load_dossier_data_to_tabs(self, tabs_widget):
         """
         Читает данные из SQLite и наполняет переданный TabbedPanel.
+        Сортировка по рангу (1 - старший вверху, 19 - младший внизу).
         """
         # Убедимся, что старые вкладки удалены
         if tabs_widget.get_tab_list():
@@ -2843,7 +2886,7 @@ class DossierScreen(Screen):
             factions.setdefault(faction, []).append(data)
 
         for faction, data_list in factions.items():
-            tab = CustomTab(text=faction)
+            tab = TabbedPanelItem(text=faction)  # Используем обычный TabbedPanelItem
             scroll = ScrollView()
             grid = GridLayout(
                 cols=1,
@@ -2853,7 +2896,17 @@ class DossierScreen(Screen):
             )
             grid.bind(minimum_height=grid.setter('height'))
 
+            # Сортируем карточки по рангу (от 1 до 19)
+            # Добавляем вычисленный числовой ранг для сортировки
+            sorted_data = []
             for data in data_list:
+                _, rank_num = self._military_rank_to_roman(data.get('military_rank', '19'))
+                sorted_data.append((rank_num, data))
+
+            # Сортируем по возрастанию ранга (1 - старший, 19 - младший)
+            sorted_data.sort(key=lambda x: x[0])
+
+            for rank_num, data in sorted_data:
                 card = self._create_character_card(data)
                 grid.add_widget(card)
 
@@ -2861,7 +2914,6 @@ class DossierScreen(Screen):
             tab.add_widget(scroll)
             tabs_widget.add_widget(tab)
 
-    # Модифицируем load_dossier_data, чтобы он использовал текущий self.tabs
     def load_dossier_data(self):
         """
         Читает данные из SQLite и наполняет текущий TabbedPanel (self.tabs).
@@ -2873,7 +2925,7 @@ class DossierScreen(Screen):
         app = App.get_running_app()
         root = app.root
         root.clear_widgets()
-        root.add_widget(MenuWidget(self.conn)) # MenuWidget находится в этом же файле не надо ничего импортировать
+        root.add_widget(MenuWidget(self.conn))
 
     def _recreate_dossier_tab(self):
         """Пересоздание вкладки."""

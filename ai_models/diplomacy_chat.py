@@ -126,11 +126,22 @@ class EnhancedDiplomacyChat():
             background_down=''
         )
 
-        # Заполняем список фракций
-        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
-        for faction in all_factions:
-            if faction != self.faction:
-                self.faction_spinner.values.append(faction)
+        # Заполняем список фракций из базы данных
+        factions = self.load_factions_from_db()
+        if factions:
+            for faction in factions:
+                if faction != self.faction:
+                    self.faction_spinner.values.append(faction)
+
+            if not self.faction_spinner.values:
+                self.faction_spinner.text = "Нет доступных фракций"
+                self.faction_spinner.disabled = True
+        else:
+            # Фолбэк на статический список
+            fallback_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+            for faction in fallback_factions:
+                if faction != self.faction:
+                    self.faction_spinner.values.append(faction)
 
         self.faction_spinner.bind(text=self.on_faction_selected_android)
 
@@ -152,13 +163,6 @@ class EnhancedDiplomacyChat():
             valign='middle'
         )
         self.relation_info_label.bind(size=self.relation_info_label.setter('text_size'))
-
-        # Добавляем индикатор отношений (цветной круг или полосу)
-        relation_indicator = BoxLayout(
-            orientation='horizontal',
-            size_hint=(0.2, 1),
-            padding=[dp(5), 0]
-        )
 
         info_row.add_widget(self.relation_info_label)
 
@@ -1329,7 +1333,7 @@ class EnhancedDiplomacyChat():
             return self._generate_status_response(target_faction)
 
     def _extract_number_from_text(self, text):
-        """Извлекает число из текста с поддержкой 'тыс', 'миллионов' и т.д. - УЛУЧШЕННАЯ ВЕРСИЯ"""
+        """Извлекает число из текста с поддержкой 'тыс', 'миллионов', 'кк' и т.д. - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
         import re
 
         text = text.lower().strip()
@@ -1338,57 +1342,100 @@ class EnhancedDiplomacyChat():
         if not text:
             return None
 
-        # 1. Обработка "70 тыс", "10 тысяч" и т.д.
-        # Улучшенный паттерн для распознавания чисел с множителями
-        thousand_patterns = [
-            r'(\d+(?:\.\d+)?)\s*(?:тыс|тысяч|тысячи|т\s*ыс|т\.)',
-            r'(\d+(?:\.\d+)?)\s*(?:k|к)',
-        ]
+        # Удаляем пробелы между цифрами и запятыми/точками для удобства парсинга
+        text = re.sub(r'(\d)\s*([.,])\s*(\d)', r'\1\2\3', text)
 
-        million_patterns = [
-            r'(\d+(?:\.\d+)?)\s*(?:миллион|миллионов|милл|млн|м\.)',
-            r'(\d+(?:\.\d+)?)\s*(?:m|м)',
-        ]
+        # 0. ОБРАБОТКА "КК" (ТЫСЯЧА ТЫСЯЧ = МИЛЛИОН) - ДОБАВЛЯЕМ ЭТОТ КЕЙС ПЕРВЫМ
+        kk_pattern = r'(\d+(?:[.,]\d+)?)\s*(?:кк|kk)'
+        match = re.search(kk_pattern, text)
+        if match:
+            try:
+                # Заменяем запятую на точку для float
+                number_str = match.group(1).replace(',', '.')
+                number = float(number_str)
+                return int(number * 1000000)  # кк = тысяча тысяч = миллион
+            except Exception as e:
+                print(f"DEBUG: Ошибка парсинга кк: {e}")
+                pass
 
-        # Проверяем тысячи
-        for pattern in thousand_patterns:
-            match = re.search(pattern, text)
-            if match:
-                try:
-                    number = float(match.group(1).replace('.', ''))
-                    return int(number * 1000)
-                except:
-                    pass
+        # 1. Обработка десятичных чисел с множителями "1.2 млн", "1,2 тысячи"
+        decimal_thousand_pattern = r'(\d+(?:[.,]\d+)?)\s*(?:тыс|тысяч|тысячи|т\s*ыс|т\.|k|к)'
+        decimal_million_pattern = r'(\d+(?:[.,]\d+)?)\s*(?:миллион|миллионов|милл|млн|м\.|m)'
 
-        # Проверяем миллионы
-        for pattern in million_patterns:
-            match = re.search(pattern, text)
-            if match:
-                try:
-                    number = float(match.group(1).replace('.', ''))
-                    return int(number * 1000000)
-                except:
-                    pass
+        # Проверяем тысячи с десятичными
+        match = re.search(decimal_thousand_pattern, text)
+        if match:
+            try:
+                number_str = match.group(1).replace(',', '.')
+                number = float(number_str)
+                return int(number * 1000)
+            except Exception as e:
+                print(f"DEBUG: Ошибка парсинга тысяч с десятичными: {e}")
+                pass
 
-        # 2. Проверяем запись типа "70тыс" (без пробела)
-        compact_pattern = r'(\d+)(тыс|к|k|миллион|млн|м)'
+        # Проверяем миллионы с десятичными
+        match = re.search(decimal_million_pattern, text)
+        if match:
+            try:
+                number_str = match.group(1).replace(',', '.')
+                number = float(number_str)
+                return int(number * 1000000)
+            except Exception as e:
+                print(f"DEBUG: Ошибка парсинга миллионов с десятичными: {e}")
+                pass
+
+        # 2. Проверяем запись типа "1.2тыс", "1,2к", "1.5кк" (без пробела)
+        compact_pattern = r'(\d+(?:[.,]\d+)?)(тыс|к|k|миллион|млн|м|кк|kk)'
         match = re.search(compact_pattern, text)
         if match:
-            number = int(match.group(1))
-            multiplier = match.group(2)
+            try:
+                number_str = match.group(1).replace(',', '.')
+                number = float(number_str)
+                multiplier = match.group(2)
 
-            if multiplier in ['тыс', 'к', 'k']:
-                return number * 1000
-            elif multiplier in ['миллион', 'млн', 'м']:
-                return number * 1000000
+                multiplier_map = {
+                    'тыс': 1000, 'к': 1000, 'k': 1000,
+                    'миллион': 1000000, 'млн': 1000000, 'м': 1000000,
+                    'кк': 1000000, 'kk': 1000000  # Добавляем кк
+                }
 
-        # 3. Пробуем просто число
-        numbers = re.findall(r'\d+', text)
-        if numbers:
-            return int(numbers[0])
+                if multiplier in multiplier_map:
+                    return int(number * multiplier_map[multiplier])
+            except Exception as e:
+                print(f"DEBUG: Ошибка парсинга компактной записи: {e}")
+                pass
 
-        # 4. Словарные числительные (используем общий словарь)
-        return self._extract_number(text)  # Используем основной метод
+        # 3. Проверяем также русское "тыщ" (разговорное)
+        tysh_pattern = r'(\d+(?:[.,]\d+)?)\s*(?:тыщ|тщ|тищ)'
+        match = re.search(tysh_pattern, text)
+        if match:
+            try:
+                number_str = match.group(1).replace(',', '.')
+                number = float(number_str)
+                return int(number * 1000)
+            except Exception as e:
+                print(f"DEBUG: Ошибка парсинга 'тыщ': {e}")
+                pass
+
+        # 4. Пробуем просто число (включая десятичные)
+        decimal_match = re.search(r'(\d+(?:[.,]\d+)?)', text)
+        if decimal_match:
+            try:
+                number_str = decimal_match.group(1).replace(',', '.')
+                if '.' in number_str:
+                    number = float(number_str)
+                    if number < 1000:
+                        return number
+                    else:
+                        return int(round(number))
+                else:
+                    return int(number_str)
+            except Exception as e:
+                print(f"DEBUG: Ошибка парсинга десятичного числа: {e}")
+                pass
+
+        # 5. Словарные числительные (используем общий словарь)
+        return self._extract_number(text)
 
     def show_relation_tooltip(self, faction, pos=None):
         """Показывает всплывающую подсказку о влиянии отношений на сделки"""
@@ -1788,11 +1835,22 @@ class EnhancedDiplomacyChat():
             background_down=''
         )
 
-        # Заполняем список фракций
-        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
-        for faction in all_factions:
-            if faction != self.faction:
-                self.faction_spinner.values.append(faction)
+        # Заполняем список фракций из базы данных
+        factions = self.load_factions_from_db()
+        if factions:
+            for faction in factions:
+                if faction != self.faction:
+                    self.faction_spinner.values.append(faction)
+
+            if not self.faction_spinner.values:
+                self.faction_spinner.text = "Нет доступных фракций"
+                self.faction_spinner.disabled = True
+        else:
+            # Фолбэк на статический список
+            fallback_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+            for faction in fallback_factions:
+                if faction != self.faction:
+                    self.faction_spinner.values.append(faction)
 
         self.faction_spinner.bind(text=self.on_faction_selected)
 
@@ -2094,45 +2152,94 @@ class EnhancedDiplomacyChat():
         return None
 
     def _extract_number(self, message):
-        """Извлекает число из сообщения - улучшенная версия с поддержкой тысяч, миллионов"""
+        """Извлекает число из сообщения - улучшенная версия с поддержкой десятичных и 'кк'"""
         import re
 
         message_lower = message.lower()
 
-        # 1. Сначала пробуем распознать комбинации типа "70 тыс", "10 тысяч"
-        # Паттерн для "число + множитель"
-        pattern = r'(\d+)\s*(тыс|тысяч|тысячи|т\s*ыс|миллион|миллионов|милл|млн|м)'
-        match = re.search(pattern, message_lower)
+        # 0. Нормализуем сообщение: удаляем лишние пробелы
+        message_lower = re.sub(r'\s+', ' ', message_lower).strip()
+
+        # 1. Сначала пробуем распознать "кк" отдельно (с поддержкой десятичных)
+        kk_patterns = [
+            (r'(\d+(?:[.,]\d+)?)\s*(?:кк|kk)', 1000000),  # "1кк" = 1,000,000
+        ]
+
+        for pattern, multiplier in kk_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                try:
+                    number_str = match.group(1).replace(',', '.')
+                    number = float(number_str)
+                    # Для миллиона округляем до целого
+                    return int(number * multiplier)
+                except:
+                    continue  # Пробуем следующий паттерн
+
+        # 2. Пробуем распознать комбинации типа "70 тыс", "10 тысяч", "1.5 млн" (с десятичными)
+        # Обновленный паттерн для десятичных чисел
+        decimal_pattern = r'(\d+(?:[.,]\d+)?)\s*(тыс|тысяч|тысячи|т\s*ыс|миллион|миллионов|милл|млн|м)'
+        match = re.search(decimal_pattern, message_lower)
         if match:
-            number = int(match.group(1))
-            multiplier = match.group(2)
+            try:
+                number_str = match.group(1).replace(',', '.')
+                number = float(number_str)
+                multiplier = match.group(2)
 
-            if any(word in multiplier for word in ['тыс', 'тысяч', 'тысячи', 'тс']):
-                return number * 1000
-            elif any(word in multiplier for word in ['миллион', 'миллионов', 'милл', 'млн']):
-                return number * 1000000
-            elif multiplier == 'м':
-                # Определяем по контексту - обычно "м" это тысячи
-                return number * 1000
+                if any(word in multiplier for word in ['тыс', 'тысяч', 'тысячи', 'тс']):
+                    result = number * 1000
+                    return int(result) if result.is_integer() else result
+                elif any(word in multiplier for word in ['миллион', 'миллионов', 'милл', 'млн']):
+                    result = number * 1000000
+                    return int(result) if result.is_integer() else result
+                elif multiplier == 'м':
+                    # Определяем по контексту - обычно "м" это миллионы, но проверим
+                    # Смотрим на размер числа
+                    if number < 10:  # Маловероятно что говорят "1.5м" имея в виду 1500
+                        result = number * 1000000
+                    else:
+                        result = number * 1000
+                    return int(result) if result.is_integer() else result
+            except:
+                pass  # Если не получилось с десятичными, пробуем дальше
 
-        # 2. Пробуем словарные числа с множителями
+        # 3. Пробуем словарные числа с множителями (с десятичными)
         word_patterns = [
-            (r'(\d+)\s*к', 1000),  # "10к" = 10000
-            (r'(\d+)\s*k', 1000),  # "10k" = 10000
-            (r'(\d+)\s*т', 1000),  # "10т" = 10000
+            (r'(\d+(?:[.,]\d+)?)\s*к', 1000),  # "10.5к" = 10500
+            (r'(\d+(?:[.,]\d+)?)\s*k', 1000),  # "10.5k" = 10500
+            (r'(\d+(?:[.,]\d+)?)\s*т', 1000),  # "10.5т" = 10500
         ]
 
         for pattern, multiplier in word_patterns:
             match = re.search(pattern, message_lower)
             if match:
-                return int(match.group(1)) * multiplier
+                try:
+                    number_str = match.group(1).replace(',', '.')
+                    number = float(number_str)
+                    result = number * multiplier
+                    return int(result) if result.is_integer() else result
+                except:
+                    continue
 
-        # 3. Пробуем просто число
-        numbers = re.findall(r'\d+', message_lower)
-        if numbers:
-            return int(numbers[0])
+        # 4. Пробуем просто число (включая десятичные)
+        # Ищем первое число в тексте
+        decimal_match = re.search(r'(\d+(?:[.,]\d+)?)', message_lower)
+        if decimal_match:
+            try:
+                number_str = decimal_match.group(1).replace(',', '.')
+                if '.' in number_str:
+                    number = float(number_str)
+                    # Для небольших чисел возвращаем как float, для больших округляем
+                    if number < 1000:
+                        return number
+                    else:
+                        return int(round(number))
+                else:
+                    return int(number_str)
+            except:
+                pass
 
-        # 4. Словарные числительные
+        # 5. Словарные числительные (без изменений)
         numeral_map = {
             # Единицы
             'один': 1, 'одну': 1, 'одного': 1, 'одной': 1,
@@ -2191,7 +2298,6 @@ class EnhancedDiplomacyChat():
                         before_word = before_thousand.group(1)
                         if before_word in ['двадцать', 'тридцать', 'сорок', 'пятьдесят',
                                            'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто']:
-                            # Для "двадцать тысяч" и т.д.
                             tens_map = {
                                 'двадцать': 20, 'тридцать': 30, 'сорок': 40,
                                 'пятьдесят': 50, 'шестьдесят': 60,
@@ -2325,9 +2431,9 @@ class EnhancedDiplomacyChat():
                 "Я могу предоставить: Кроны для казны, Кристаллы для магии и строительства, Рабочих для работы."
             ],
             "ask_resource_amount": [
-                "Назови количество цифрами или словами (например: 1000, пятьсот, 2 тысячи).",
-                "Сколько именно? Укажи число.",
-                "Какое количество тебе нужно?"
+                "Назови количество цифрами или словами (например: 1000, 1.5 тысячи, 2.2 млн, пятьсот).",
+                "Сколько именно? Укажи число. Можно так: 1.5к, 2.3 млн и т.д.",
+                "Какое количество тебе нужно? Можешь указать не целые числа, если нужно."
             ]
         }
 
@@ -2341,7 +2447,6 @@ class EnhancedDiplomacyChat():
         if context.get("stage") == "ask_resource_type":
             resource = self._extract_resource_type(message)
             if not resource:
-                # Если ресурс не распознан, предлагаем варианты
                 responses = [
                     "Пожалуйста, укажи какой ресурс: Кроны (деньги), Кристаллы (минералы) или Рабочие (люди)?",
                     "Какой ресурс тебе нужен? Выбери: Кроны, Кристаллы или Рабочие.",
@@ -2359,11 +2464,16 @@ class EnhancedDiplomacyChat():
             amount = self._extract_number_from_text(message)
             if not amount or amount <= 0:
                 responses = [
-                    "Пожалуйста, назови конкретное количество. Примеры: 100, 1.000, 10 тыс, пятьсот, тысяча.",
-                    "Сколько именно? Можешь указать: 500, 2 тысячи, 1 млн, 70к и т.д.",
+                    "Пожалуйста, назови конкретное количество. Примеры: 100, 1.000, 10 тыс, 1.5 млн, пятьсот, тысяча.",
+                    "Сколько именно? Можешь указать: 500, 2 тысячи, 1.2 млн, 70.5к и т.д.",
                     "Какое количество тебе нужно? Назови число цифрами или словами."
                 ]
                 return random.choice(responses)
+
+            # Проверяем дробные числа
+            fractional_msg = self._handle_fractional_amounts(amount, context)
+            if fractional_msg:
+                return fractional_msg
 
             # Проверяем, не слишком ли большое количество
             max_reasonable = 5000000  # Максимальное разумное количество
@@ -2495,7 +2605,7 @@ class EnhancedDiplomacyChat():
         return random.choice(responses)
 
     def _extract_trade_offer_enhanced(self, message):
-        """Улучшенное извлечение торгового предложения с поддержкой разных форматов чисел"""
+        """Улучшенное извлечение торгового предложения с поддержкой десятичных чисел"""
 
         message_lower = message.lower()
 
@@ -2519,6 +2629,10 @@ class EnhancedDiplomacyChat():
         # Используем улучшенный метод для парсинга чисел
         amount = self._extract_number_from_text(message_lower)
 
+        if amount is None:
+            # Пробуем старый метод как запасной вариант
+            amount = self._extract_number(message_lower)
+
         if amount is None or amount <= 0:
             return None
 
@@ -2527,6 +2641,27 @@ class EnhancedDiplomacyChat():
             "amount": amount
         }
 
+    def _handle_fractional_amounts(self, amount, context):
+        """Обрабатывает дробные количества в сделках"""
+        # Если количество дробное
+        if isinstance(amount, float):
+            # Округляем до целого для некоторых ресурсов
+            resource = context.get("resource", "")
+
+            if resource == "Рабочие":
+                # Рабочие должны быть целыми
+                rounded_amount = int(round(amount))
+                return f"Рабочих не может быть дробным. Округляю до {rounded_amount:,}."
+            elif resource in ["Кроны", "Кристаллы"]:
+                # Для денег и кристаллов можем оставить дробным
+                return None  # Нет сообщения, принимаем как есть
+            else:
+                # По умолчанию округляем
+                rounded_amount = int(round(amount))
+                return f"Округляю до {rounded_amount:,}."
+
+        return None
+
     def _check_ai_stock_and_respond(self, faction, context):
         """Проверяет наличие ресурсов у ИИ и генерирует ответ"""
         ai_resources = self._get_ai_resources(faction)
@@ -2534,17 +2669,29 @@ class EnhancedDiplomacyChat():
         need = context["amount"]
 
         # Форматируем количество для читаемости
-        formatted_amount = f"{need:,}"
-        if need >= 1000:
-            # Добавляем удобное представление
-            if need < 1000000:
-                formatted_amount = f"{formatted_amount} ({need // 1000} тыс)"
+        if isinstance(need, float):
+            # Для дробных чисел
+            if need < 1000:
+                formatted_amount = f"{need:.1f}"
+            elif need < 1000000:
+                formatted_amount = f"{need:,.1f} ({need / 1000:.1f} тыс)"
             else:
-                formatted_amount = f"{formatted_amount} ({need // 1000000} млн)"
+                formatted_amount = f"{need:,.1f} ({need / 1000000:.1f} млн)"
+        else:
+            # Для целых чисел
+            formatted_amount = f"{need:,}"
+            if need >= 1000:
+                if need < 1000000:
+                    formatted_amount = f"{formatted_amount} ({need // 1000} тыс)"
+                else:
+                    formatted_amount = f"{formatted_amount} ({need // 1000000} млн)"
 
         if have < need:
             context["stage"] = "idle"
-            formatted_have = f"{have:,}"
+            if isinstance(have, float):
+                formatted_have = f"{have:.1f}"
+            else:
+                formatted_have = f"{have:,}"
             return f"У меня нет столько {context['resource']}. У меня всего {formatted_have}, а ты просишь {formatted_amount}. Сделка невозможна."
 
         context["stage"] = "ask_player_offer"
@@ -4768,6 +4915,26 @@ class EnhancedDiplomacyChat():
 
         return main_container
 
+    def load_factions_from_db(self):
+        """Загружает список доступных фракций из базы данных"""
+        try:
+            cursor = self.db_connection.cursor()
+            query = """
+                SELECT DISTINCT faction 
+                FROM (
+                    SELECT faction1 AS faction, relationship FROM diplomacies
+                    UNION
+                    SELECT faction2 AS faction, relationship FROM diplomacies
+                ) AS all_factions
+                WHERE relationship != 'уничтожена' AND faction != 'Мятежники'
+            """
+            cursor.execute(query)
+            factions = [row[0] for row in cursor.fetchall()]
+            return factions
+        except Exception as e:
+            print(f"Ошибка при загрузке списка фракций из БД: {e}")
+            return None
+
     def create_control_panel_safe(self):
         """Создает безопасную панель управления для Android"""
         panel = BoxLayout(
@@ -4801,11 +4968,22 @@ class EnhancedDiplomacyChat():
             font_size='12sp'
         )
 
-        # Заполняем список фракций
-        all_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
-        for faction in all_factions:
-            if faction != self.faction:
-                self.faction_spinner.values.append(faction)
+        # Заполняем список фракций из базы данных
+        factions = self.load_factions_from_db()
+        if factions:
+            for faction in factions:
+                if faction != self.faction:
+                    self.faction_spinner.values.append(faction)
+
+            if not self.faction_spinner.values:
+                self.faction_spinner.text = "Нет доступных фракций"
+                self.faction_spinner.disabled = True
+        else:
+            # Фолбэк на статический список
+            fallback_factions = ["Север", "Эльфы", "Адепты", "Вампиры", "Элины"]
+            for faction in fallback_factions:
+                if faction != self.faction:
+                    self.faction_spinner.values.append(faction)
 
         self.faction_spinner.bind(text=self.on_faction_selected_android)
 
