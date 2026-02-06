@@ -2591,130 +2591,136 @@ class DossierScreen(Screen):
         top_row.bind(minimum_height=top_row.setter('height'))
 
         # --------
-        # ЛЕВАЯ ПАНЕЛЬ
+        # ЛЕВАЯ ПАНЕЛЬ (УЖЕ)
         # --------
         left_panel = BoxLayout(
             orientation='vertical',
-            size_hint_x=0.4 if not is_small else 1,
-            spacing=sdp(6),
-            padding=[0, sdp(4)]
+            size_hint_x=0.3 if not is_small else 1,
+            spacing=sdp(4),  # Минимальный spacing
+            padding=[0, sdp(2)]  # Минимальный padding
         )
 
         left_panel.add_widget(Label(
             text="[b]Боевой рейтинг:[/b]",
             markup=True,
-            font_size=ssp(13),
+            font_size=ssp(12),
             halign='center',
+            valign='bottom',  # Выравнивание вниз
             size_hint_y=None,
-            height=ssp(20)
+            height=ssp(15)
         ))
         left_panel.add_widget(Label(
             text=str(data.get('avg_military_rating', 0)),
-            font_size=ssp(15),
+            font_size=ssp(14),
             halign='center',
+            valign='top',
             size_hint_y=None,
-            height=ssp(22)
+            height=ssp(18)
         ))
         left_panel.add_widget(Label(
             text="[b]Голод:[/b]",
             markup=True,
-            font_size=ssp(13),
+            font_size=ssp(12),
             halign='center',
+            valign='bottom',
             size_hint_y=None,
-            height=ssp(20)
+            height=ssp(15)
         ))
         left_panel.add_widget(Label(
             text=str(data.get('avg_soldiers_starving', 0)),
-            font_size=ssp(15),
+            font_size=ssp(14),
             halign='center',
+            valign='top',
             size_hint_y=None,
-            height=ssp(22)
+            height=ssp(18)
         ))
 
         # --------
-        # ЦЕНТР
+        # ЦЕНТР (ШИРЕ)
         # --------
         center_panel = BoxLayout(
             orientation='vertical',
-            size_hint_x=0.2 if not is_small else 1,
-            spacing=sdp(4),
-            padding=[0, sdp(8)]
+            size_hint_x=0.4 if not is_small else 1,
+            spacing=sdp(1),  # Минимальный spacing
+            padding=[0, sdp(1)]  # Минимальный padding
         )
-
-        center_panel.add_widget(Widget(size_hint_y=0.2))
 
         roman_label = Label(
             text=f"[b][color={rank_color}]{roman}[/color][/b]",
             markup=True,
-            font_size=ssp(38) if not is_small else ssp(32),
+            font_size=ssp(36) if not is_small else ssp(30),
             halign='center',
-            valign='middle',
+            valign='bottom',  # Цифра прижимается вниз
             size_hint_y=None,
-            height=ssp(45) if not is_small else ssp(38)
+            height=ssp(40) if not is_small else ssp(34)
         )
         center_panel.add_widget(roman_label)
 
         center_panel.add_widget(Label(
             text=raw_rank,
-            font_size=ssp(12),
+            font_size=ssp(10),
             halign='center',
+            valign='top',
             size_hint_y=None,
-            height=ssp(18)
+            height=ssp(14)
         ))
         center_panel.add_widget(Label(
             text=f"Уровень: {rank_num}/19",
-            font_size=ssp(11),
+            font_size=ssp(9),
             color=get_color_from_hex(rank_color),
             halign='center',
+            valign='top',
             size_hint_y=None,
-            height=ssp(16)
+            height=ssp(12)
         ))
 
-        center_panel.add_widget(Widget(size_hint_y=0.2))
-
         # --------
-        # ПРАВАЯ ПАНЕЛЬ
+        # ПРАВАЯ ПАНЕЛЬ (УЖЕ)
         # --------
         right_panel = BoxLayout(
             orientation='vertical',
-            size_hint_x=0.4 if not is_small else 1,
-            spacing=sdp(6),
-            padding=[0, sdp(4)]
+            size_hint_x=0.3 if not is_small else 1,
+            spacing=sdp(4),
+            padding=[0, sdp(2)]
         )
 
         right_panel.add_widget(Label(
             text="[b]Сражения (В/П):[/b]",
             markup=True,
-            font_size=ssp(13),
+            font_size=ssp(12),
             halign='center',
+            valign='bottom',
             size_hint_y=None,
-            height=ssp(20)
+            height=ssp(15)
         ))
         right_panel.add_widget(Label(
             text=f"[color=#00FF00]{data.get('victories', 0)}[/color]/"
                  f"[color=#FF4444]{data.get('defeats', 0)}[/color]",
             markup=True,
-            font_size=ssp(15),
+            font_size=ssp(14),
             halign='center',
+            valign='top',
             size_hint_y=None,
-            height=ssp(22)
+            height=ssp(18)
         ))
         right_panel.add_widget(Label(
             text="[b]Матчи (В/П):[/b]",
             markup=True,
-            font_size=ssp(13),
+            font_size=ssp(12),
             halign='center',
+            valign='bottom',
             size_hint_y=None,
-            height=ssp(20)
+            height=ssp(15)
         ))
         right_panel.add_widget(Label(
             text=f"[color=#00FF00]{data.get('matches_won', 0)}[/color]/"
                  f"[color=#FF4444]{data.get('matches_lost', 0)}[/color]",
             markup=True,
-            font_size=ssp(15),
+            font_size=ssp(14),
             halign='center',
+            valign='top',
             size_hint_y=None,
-            height=ssp(22)
+            height=ssp(18)
         ))
 
         # Сборка верхней строки
