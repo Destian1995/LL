@@ -2344,51 +2344,6 @@ class MenuWidget(FloatLayout):
         if self.buttons:
             self.select_button(self.buttons[0])
 
-        # Инициализируем переменную клавиатуры
-        self._keyboard = None
-        # Запрашиваем клавиатуру с небольшой задержкой, чтобы избежать конфликтов
-        Clock.schedule_once(self._setup_keyboard, 0.1)
-
-    def _setup_keyboard(self, dt):
-        """Настройка клавиатуры с задержкой"""
-        try:
-            self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-            if self._keyboard:
-                self._keyboard.bind(on_key_down=self._on_keyboard_down)
-        except Exception as e:
-            print(f"Ошибка при настройке клавиатуры: {e}")
-
-    def _keyboard_closed(self):
-        """Закрытие клавиатуры"""
-        if self._keyboard:
-            try:
-                self._keyboard.unbind(on_key_down=self._on_keyboard_down)
-            except:
-                pass
-            self._keyboard = None
-
-    def _on_keyboard_down(self, keyboard, keycode, text, modifiers):
-        """Обработка нажатий клавиш"""
-        if not self.buttons or not self.selected_button:
-            return False
-
-        current_index = self.buttons.index(self.selected_button)
-
-        if keycode[1] == 'down':
-            next_index = (current_index + 1) % len(self.buttons)
-            self.select_button(self.buttons[next_index])
-            return True
-        elif keycode[1] == 'up':
-            next_index = (current_index - 1) % len(self.buttons)
-            self.select_button(self.buttons[next_index])
-            return True
-        elif keycode[1] == 'enter' or keycode[1] == 'spacebar':
-            # Активируем выбранную кнопку
-            self.activate_selected_button()
-            return True
-
-        return False
-
     def select_button(self, button):
         """Выделяет выбранную кнопку"""
         # Снимаем выделение с предыдущей кнопки
@@ -2441,10 +2396,6 @@ class MenuWidget(FloatLayout):
         app.on_stop()
         app.stop()
 
-    def on_parent(self, widget, parent):
-        """Очистка при удалении виджета"""
-        if parent is None:
-            self._keyboard_closed()
 
 
 class CustomTab(TabbedPanelItem):
