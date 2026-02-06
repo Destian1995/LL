@@ -2575,7 +2575,7 @@ class DossierScreen(Screen):
         )
 
         title = Label(
-            text="🏆 [b]Рейтинг[/b]",
+            text=" [b]Рейтинг[/b]",
             markup=True,
             font_size=ssp(20),
             color=get_color_from_hex('#FFD700'),
@@ -2602,7 +2602,7 @@ class DossierScreen(Screen):
         )
 
         back_btn = Button(
-            text="← Назад",
+            text="Назад",
             font_size=ssp(16),
             size_hint_y=None,
             height=sdp(48),
@@ -2611,7 +2611,7 @@ class DossierScreen(Screen):
         back_btn.bind(on_release=self.go_back)
 
         clear_btn = Button(
-            text="🗑 Очистить",
+            text="Очистить все",
             font_size=ssp(16),
             size_hint_y=None,
             height=sdp(48),
@@ -2692,96 +2692,80 @@ class DossierScreen(Screen):
         top_row.bind(minimum_height=top_row.setter('height'))
 
         # --------
-        # ЛЕВАЯ ПАНЕЛЬ (желтая зона)
+        # ЛЕВАЯ ПАНЕЛЬ
         # --------
-        left_panel = BoxLayout(
-            orientation='vertical',
-            spacing=sdp(6),
-            size_hint_x=0.4 if not is_small else 1
-        )
+        left_panel = AnchorLayout(size_hint_x=0.4 if not is_small else 1)
 
-        left_panel.add_widget(Label(
+        left_box = BoxLayout(orientation='vertical', spacing=sdp(6))
+        left_box.add_widget(Label(
             text="[b]Боевой рейтинг:[/b]",
             markup=True, font_size=ssp(14), halign='center'
         ))
-        left_panel.add_widget(Label(
+        left_box.add_widget(Label(
             text=str(data.get('avg_military_rating', 0)),
             font_size=ssp(16), halign='center'
         ))
-
-        left_panel.add_widget(Label(
+        left_box.add_widget(Label(
             text="[b]Голод:[/b]",
             markup=True, font_size=ssp(14), halign='center'
         ))
-        left_panel.add_widget(Label(
+        left_box.add_widget(Label(
             text=str(data.get('avg_soldiers_starving', 0)),
             font_size=ssp(16), halign='center'
         ))
+        left_panel.add_widget(left_box)
 
         # --------
-        # ЦЕНТР: РАНГ (XIX)
+        # ЦЕНТР
         # --------
-        center_panel = BoxLayout(
-            orientation='vertical',
-            spacing=sdp(4),
-            size_hint_x=0.2 if not is_small else 1
-        )
+        center_panel = AnchorLayout(size_hint_x=0.2 if not is_small else 1)
 
-        center_panel.add_widget(Label(
+        center_box = BoxLayout(orientation='vertical', spacing=sdp(4))
+        center_box.add_widget(Label(
             text=f"[b][color={rank_color}]{roman}[/color][/b]",
             markup=True,
             font_size=ssp(42),
-            size_hint_y=None,
-            height=sdp(56),
             halign='center',
             valign='middle'
         ))
-
-        center_panel.add_widget(Label(
+        center_box.add_widget(Label(
             text=raw_rank,
             font_size=ssp(14),
-            size_hint_y=None,
-            height=sdp(24),
             halign='center'
         ))
-
-        center_panel.add_widget(Label(
+        center_box.add_widget(Label(
             text=f"Уровень: {rank_num}/19",
             font_size=ssp(12),
             color=get_color_from_hex(rank_color),
-            size_hint_y=None,
-            height=sdp(20),
             halign='center'
         ))
+        center_panel.add_widget(center_box)
 
         # --------
-        # ПРАВАЯ ПАНЕЛЬ (красная зона)
+        # ПРАВАЯ ПАНЕЛЬ
         # --------
-        right_panel = BoxLayout(
-            orientation='vertical',
-            spacing=sdp(6),
-            size_hint_x=0.4 if not is_small else 1
-        )
+        right_panel = AnchorLayout(size_hint_x=0.4 if not is_small else 1)
 
-        right_panel.add_widget(Label(
+        right_box = BoxLayout(orientation='vertical', spacing=sdp(6))
+        right_box.add_widget(Label(
             text="[b]Сражения (В/П):[/b]",
             markup=True, font_size=ssp(14), halign='center'
         ))
-        right_panel.add_widget(Label(
+        right_box.add_widget(Label(
             text=f"[color=#00FF00]{data.get('victories', 0)}[/color]/"
                  f"[color=#FF4444]{data.get('defeats', 0)}[/color]",
             markup=True, font_size=ssp(16), halign='center'
         ))
-
-        right_panel.add_widget(Label(
+        right_box.add_widget(Label(
             text="[b]Матчи (В/П):[/b]",
             markup=True, font_size=ssp(14), halign='center'
         ))
-        right_panel.add_widget(Label(
+        right_box.add_widget(Label(
             text=f"[color=#00FF00]{data.get('matches_won', 0)}[/color]/"
                  f"[color=#FF4444]{data.get('matches_lost', 0)}[/color]",
             markup=True, font_size=ssp(16), halign='center'
         ))
+        right_panel.add_widget(right_box)
 
         # Сборка верхней строки
         top_row.add_widget(left_panel)
@@ -2789,19 +2773,6 @@ class DossierScreen(Screen):
         top_row.add_widget(right_panel)
 
         card.add_widget(top_row)
-
-        # =========================
-        # НИЖНЯЯ ПОЛОСА: ДАТА
-        # =========================
-
-        card.add_widget(Label(
-            text=f"Последняя игра: {data.get('last_data', '-')}",
-            font_size=ssp(12),
-            color=get_color_from_hex('#BBBBBB'),
-            size_hint_y=None,
-            height=sdp(22),
-            halign='center'
-        ))
 
         return card
 
@@ -2892,7 +2863,6 @@ class DossierScreen(Screen):
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
-
 
 
 class HowToPlayScreen(Screen):
