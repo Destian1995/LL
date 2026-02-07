@@ -1129,7 +1129,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint=(0.8, None),
             height=title_height,
             font_size=title_size,
-            pos_hint={'center_x': 0.27, 'top': 0.98 if is_android else 0.97}
+            pos_hint={'center_x': 0.22, 'top': 0.88 if is_android else 0.88}
         )
         self.add_widget(self.select_side_label)
 
