@@ -2558,10 +2558,6 @@ class DossierScreen(Screen):
         else:
             return '#AAAAAA'
 
-    # -------------------------
-    # CHARACTER CARD
-    # -------------------------
-
     def _create_character_card(self, data):
         is_small = Window.width < 360
 
@@ -2588,24 +2584,33 @@ class DossierScreen(Screen):
             size_hint_y=None,
             size_hint_x=1
         )
-        top_row.bind(minimum_height=top_row.setter('height'))
+
+        # Для мобильной версии задаем минимальную высоту
+        if is_small:
+            top_row.height = sdp(200)  # Фиксированная высота для вертикальной компоновки
+        else:
+            top_row.bind(minimum_height=top_row.setter('height'))
 
         # --------
-        # ЛЕВАЯ ПАНЕЛЬ (УЖЕ)
+        # ЛЕВАЯ ПАНЕЛЬ
         # --------
         left_panel = BoxLayout(
             orientation='vertical',
             size_hint_x=0.3 if not is_small else 1,
-            spacing=sdp(4),  # Минимальный spacing
-            padding=[0, sdp(2)]  # Минимальный padding
+            size_hint_y=1 if not is_small else None,
+            spacing=sdp(4),
+            padding=[0, sdp(2)]
         )
+
+        if is_small:
+            left_panel.height = sdp(60)  # Высота для мобильной версии
 
         left_panel.add_widget(Label(
             text="[b]Боевой рейтинг:[/b]",
             markup=True,
             font_size=ssp(12),
             halign='center',
-            valign='bottom',  # Выравнивание вниз
+            valign='middle',  # Изменено на middle для мобильной версии
             size_hint_y=None,
             height=ssp(15)
         ))
@@ -2613,7 +2618,7 @@ class DossierScreen(Screen):
             text=str(data.get('avg_military_rating', 0)),
             font_size=ssp(14),
             halign='center',
-            valign='top',
+            valign='middle',
             size_hint_y=None,
             height=ssp(18)
         ))
@@ -2622,7 +2627,7 @@ class DossierScreen(Screen):
             markup=True,
             font_size=ssp(12),
             halign='center',
-            valign='bottom',
+            valign='middle',
             size_hint_y=None,
             height=ssp(15)
         ))
@@ -2630,29 +2635,33 @@ class DossierScreen(Screen):
             text=str(data.get('avg_soldiers_starving', 0)),
             font_size=ssp(14),
             halign='center',
-            valign='top',
+            valign='middle',
             size_hint_y=None,
             height=ssp(18)
         ))
 
         # --------
-        # ЦЕНТР (ШИРЕ)
+        # ЦЕНТР
         # --------
         center_panel = BoxLayout(
             orientation='vertical',
             size_hint_x=0.4 if not is_small else 1,
-            spacing=sdp(1),  # Минимальный spacing
-            padding=[0, sdp(1)]  # Минимальный padding
+            size_hint_y=1 if not is_small else None,
+            spacing=sdp(1),
+            padding=[0, sdp(1)]
         )
+
+        if is_small:
+            center_panel.height = sdp(80)  # Высота для мобильной версии
 
         roman_label = Label(
             text=f"[b][color={rank_color}]{roman}[/color][/b]",
             markup=True,
-            font_size=ssp(36) if not is_small else ssp(30),
+            font_size=ssp(36) if not is_small else ssp(32),  # Уменьшен для мобильной
             halign='center',
-            valign='bottom',  # Цифра прижимается вниз
+            valign='middle' if is_small else 'bottom',  # Для мобильной по центру
             size_hint_y=None,
-            height=ssp(40) if not is_small else ssp(34)
+            height=ssp(40) if not is_small else ssp(36)
         )
         center_panel.add_widget(roman_label)
 
@@ -2675,21 +2684,25 @@ class DossierScreen(Screen):
         ))
 
         # --------
-        # ПРАВАЯ ПАНЕЛЬ (УЖЕ)
+        # ПРАВАЯ ПАНЕЛЬ
         # --------
         right_panel = BoxLayout(
             orientation='vertical',
             size_hint_x=0.3 if not is_small else 1,
+            size_hint_y=1 if not is_small else None,
             spacing=sdp(4),
             padding=[0, sdp(2)]
         )
+
+        if is_small:
+            right_panel.height = sdp(60)  # Высота для мобильной версии
 
         right_panel.add_widget(Label(
             text="[b]Сражения (В/П):[/b]",
             markup=True,
             font_size=ssp(12),
             halign='center',
-            valign='bottom',
+            valign='middle',
             size_hint_y=None,
             height=ssp(15)
         ))
@@ -2699,7 +2712,7 @@ class DossierScreen(Screen):
             markup=True,
             font_size=ssp(14),
             halign='center',
-            valign='top',
+            valign='middle',
             size_hint_y=None,
             height=ssp(18)
         ))
@@ -2708,7 +2721,7 @@ class DossierScreen(Screen):
             markup=True,
             font_size=ssp(12),
             halign='center',
-            valign='bottom',
+            valign='middle',
             size_hint_y=None,
             height=ssp(15)
         ))
@@ -2718,7 +2731,7 @@ class DossierScreen(Screen):
             markup=True,
             font_size=ssp(14),
             halign='center',
-            valign='top',
+            valign='middle',
             size_hint_y=None,
             height=ssp(18)
         ))
@@ -2731,10 +2744,6 @@ class DossierScreen(Screen):
         card.add_widget(top_row)
 
         return card
-
-    # -------------------------
-    # DATA LOADING
-    # -------------------------
 
     def load_dossier_data(self):
         self._load_dossier_data_to_tabs(self.tabs)
