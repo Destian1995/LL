@@ -3276,8 +3276,6 @@ class EnhancedDiplomacyChat():
         message_lower = message.lower()
         return any(keyword in message_lower for keyword in alliance_keywords)
 
-
-
     def _handle_alliance_proposal(self, message, faction, relation_level):
         """Обрабатывает предложение союза с разнообразными репликами"""
         try:
@@ -3311,24 +3309,17 @@ class EnhancedDiplomacyChat():
                 # Проверяем, есть ли у игрока достаточно крон
                 cursor.execute("SELECT amount FROM resources WHERE faction = ? AND resource_type = 'Кроны'",
                                (self.faction,))
-                player_crowns = cursor.fetchone()
+                result = cursor.fetchone()
+                player_crowns = result[0] if result else 0
 
-                if player_crowns is None or player_crowns[0] < alliance_cost:
+                if player_crowns < alliance_cost:
                     insufficient_responses = [
-                        f"У тебя недостаточно крон для заключения союза! Нужно {alliance_cost:,}, а у тебя всего {player_crowns[0] if player_crowns else 0:,}.",
-                        f"Сначала накопи {alliance_cost:,} крон, тогда поговорим о союзе. У тебя сейчас {player_crowns[0] if player_crowns else 0:,}.",
+                        f"У тебя недостаточно крон для заключения союза! Нужно {alliance_cost:,}, а у тебя всего {player_crowns:,}.",
+                        f"Сначала накопи {alliance_cost:,} крон, тогда поговорим о союзе. У тебя сейчас {player_crowns:,}.",
                         f"Союз стоит {alliance_cost:,} крон. Проверь свою казну!",
                         f"Без {alliance_cost:,} крон в казне союз невозможен."
                     ]
                     return random.choice(insufficient_responses)
-
-                # Союзнические отношения (90-100)
-                alliance_responses = [
-                    "С радостью принимаю предложение! Наши народы станут едины!",
-                    "Наконец-то! Я ждал этого момента. Союз заключён!",
-                    "Это исторический день! Отныне наши судьбы переплетены навеки!",
-                    "Сердце моё ликует! Принимаю твоё предложение о союзе без колебаний!"
-                ]
 
                 # СПИСЫВАЕМ КРОНЫ У ИГРОКА
                 cursor.execute("""
@@ -3337,19 +3328,51 @@ class EnhancedDiplomacyChat():
                     WHERE faction = ? AND resource_type = 'Кроны'
                 """, (alliance_cost, self.faction))
 
-                # ОБНОВЛЯЕМ ОТНОШЕНИЯ В ДИПЛОМАЦИЯХ
+                # ПРОВЕРЯЕМ И ОБНОВЛЯЕМ/СОЗДАЕМ ЗАПИСЬ В ДИПЛОМАЦИЯХ
                 cursor.execute("""
-                    UPDATE diplomacies 
-                    SET relationship = 'союз' 
+                    SELECT COUNT(*) FROM diplomacies 
                     WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
                 """, (self.faction, faction, faction, self.faction))
 
-                # ОБНОВЛЯЕМ ОТНОШЕНИЯ В RELATIONS
+                count = cursor.fetchone()[0]
+
+                if count > 0:
+                    # Обновляем существующую запись
+                    cursor.execute("""
+                        UPDATE diplomacies 
+                        SET relationship = 'союз' 
+                        WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                    """, (self.faction, faction, faction, self.faction))
+                else:
+                    # Создаем новую запись (обычно faction1 < faction2 для однозначности)
+                    factions_sorted = sorted([self.faction, faction])
+                    cursor.execute("""
+                        INSERT INTO diplomacies (faction1, faction2, relationship)
+                        VALUES (?, ?, ?)
+                    """, (factions_sorted[0], factions_sorted[1], 'союз'))
+
+                # ПРОВЕРЯЕМ И ОБНОВЛЯЕМ/СОЗДАЕМ ЗАПИСЬ В RELATIONS
                 cursor.execute("""
-                    UPDATE relations 
-                    SET relationship = 100 
+                    SELECT COUNT(*) FROM relations 
                     WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
                 """, (self.faction, faction, faction, self.faction))
+
+                count = cursor.fetchone()[0]
+
+                if count > 0:
+                    # Обновляем существующую запись
+                    cursor.execute("""
+                        UPDATE relations 
+                        SET relationship = 100 
+                        WHERE (faction1 = ? AND faction2 = ?) OR (faction1 = ? AND faction2 = ?)
+                    """, (self.faction, faction, faction, self.faction))
+                else:
+                    # Создаем новую запись (обычно faction1 < faction2 для однозначности)
+                    factions_sorted = sorted([self.faction, faction])
+                    cursor.execute("""
+                        INSERT INTO relations (faction1, faction2, relationship)
+                        VALUES (?, ?, ?)
+                    """, (factions_sorted[0], factions_sorted[1], 100))
 
                 # Создаем запись в trade_agreements как подтверждение союза
                 cursor.execute("""
@@ -3373,6 +3396,14 @@ class EnhancedDiplomacyChat():
 
                 # Получаем фразу для фракции
                 phrase = self.faction_phrases.get(faction, {}).get("alliance", "Союз заключён!")
+
+                # Союзнические отношения (90-100)
+                alliance_responses = [
+                    "С радостью принимаю предложение! Наши народы станут едины!",
+                    "Наконец-то! Я ждал этого момента. Союз заключён!",
+                    "Это исторический день! Отныне наши судьбы переплетены навеки!",
+                    "Сердце моё ликует! Принимаю твоё предложение о союзе без колебаний!"
+                ]
 
                 response = random.choice(alliance_responses)
                 return f"{phrase} {response} Союз заключён! С твоей казны списано {alliance_cost:,} крон."
@@ -3440,10 +3471,7 @@ class EnhancedDiplomacyChat():
         except Exception as e:
             print(f"Ошибка при обработке предложения союза: {e}")
             error_responses = [
-                "Что-то пошло не так при обработке твоего предложения.",
-                "Мои советники сообщают о технических неполадках. Повтори позже.",
-                "Сейчас не могу обработать твоё предложение. Попробуй ещё раз.",
-                "Система дала сбой. Давай обсудим это в другой раз."
+                "Мы не можем сейчас ответить тебе"
             ]
             return random.choice(error_responses)
 

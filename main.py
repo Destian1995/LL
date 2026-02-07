@@ -1103,7 +1103,6 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.add_widget(self.main_container)
 
         # ======== ЗАГОЛОВОК «Выберите сторону» ========
-        # Адаптируем размер заголовка под ориентацию
         if is_android:
             if is_landscape:
                 title_size = self.base_font_size * 1.5
@@ -1130,7 +1129,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint=(0.8, None),
             height=title_height,
             font_size=title_size,
-            pos_hint={'center_x': 0.27, 'top': title_top}
+            pos_hint={'center_x': 0.27, 'top': 0.98 if is_android else 0.97}
         )
         self.add_widget(self.select_side_label)
 
@@ -1222,8 +1221,8 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         # ======== ПАНЕЛЬ НАСТРОЕК (правая часть) ========
         self.settings_panel_container = MDFloatLayout(
-            size_hint=(panel_width, panel_height),
-            pos_hint={'right': 1 - 0.05, 'center_y': panel_y_center}  # 0.05 = отступ от правого края
+            size_hint=(0.4, panel_height),
+            pos_hint={'right': 0.95, 'center_y': panel_y_center}
         )
 
         # Фон для панели настроек
@@ -1243,24 +1242,13 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         # Рассчитываем высоту для каждого контейнера в настройках
         if is_android:
-            if is_landscape:
-                # Для альбомной ориентации
-                ideology_container_height = dp(80)
-                allies_container_height = dp(80)
-                faction_info_container_height = dp(70)
-                spinner_height = dp(38)  # Увеличиваем спиннеры
-                bonus_height = dp(32)  # Увеличиваем блоки с бонусами
-                label_height = dp(22)
-                stat_row_height = dp(20)
-            else:
-                # Для портретной ориентации
-                ideology_container_height = dp(85)
-                allies_container_height = dp(85)
-                faction_info_container_height = dp(75)
-                spinner_height = dp(38)  # Увеличиваем спиннеры
-                bonus_height = dp(32)  # Увеличиваем блоки с бонусами
-                label_height = dp(22)
-                stat_row_height = dp(20)
+            ideology_container_height = dp(100)
+            allies_container_height = dp(100)
+            faction_info_container_height = dp(85)
+            spinner_height = dp(35)
+            bonus_height = dp(30)
+            label_height = dp(20)
+            stat_row_height = dp(18)
         else:
             ideology_container_height = dp(120)
             allies_container_height = dp(120)
@@ -1270,12 +1258,13 @@ class KingdomSelectionWidget(MDFloatLayout):
             label_height = dp(25)
             stat_row_height = dp(20)
 
-        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(20)
+        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(
+            30)
 
         # Основной контейнер для вертикального расположения всех блоков
         self.settings_content_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(8) if is_android else dp(15),
+            spacing=dp(10) if is_android else dp(15),
             size_hint=(0.85, 0.9),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
@@ -1284,7 +1273,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ВЫБОР ИДЕОЛОГИИ ========
         ideology_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(4) if is_android else dp(8),
+            spacing=dp(5) if is_android else dp(8),
             size_hint=(1, None),
             height=ideology_container_height,
         )
@@ -1298,7 +1287,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint_y=None,
             height=label_height,
             halign='left',
-            font_size=self.base_font_size * 0.95  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.9
         )
         ideology_label.bind(size=ideology_label.setter('text_size'))
         ideology_container.add_widget(ideology_label)
@@ -1311,7 +1300,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             height=spinner_height,
             background_color=(0.2, 0.3, 0.4, 1),
             color=(1, 1, 1, 1),
-            font_size=self.base_font_size * 0.85  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.8
         )
         self.ideology_spinner.bind(text=self.on_ideology_selected)
         ideology_container.add_widget(self.ideology_spinner)
@@ -1349,7 +1338,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.ideology_bonus_icon = Image(
             source='files/pict/menu/bonus_icon.png',
             size_hint=(None, None),
-            size=(dp(22) if is_android else dp(25), dp(22) if is_android else dp(25)),
+            size=(dp(20) if is_android else dp(25), dp(20) if is_android else dp(25)),
             allow_stretch=True,
             keep_ratio=True
         )
@@ -1361,7 +1350,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             text_color=(0.8, 0.9, 1.0, 1),
             halign='left',
             valign='middle',
-            font_size=self.base_font_size * 0.8  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.7
         )
         self.ideology_bonus_label.bind(size=self.ideology_bonus_label.setter('text_size'))
 
@@ -1374,7 +1363,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ========
         allies_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(4) if is_android else dp(8),
+            spacing=dp(5) if is_android else dp(8),
             size_hint=(1, None),
             height=allies_container_height,
         )
@@ -1388,7 +1377,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint_y=None,
             height=label_height,
             halign='left',
-            font_size=self.base_font_size * 0.95  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.9
         )
         allies_label.bind(size=allies_label.setter('text_size'))
         allies_container.add_widget(allies_label)
@@ -1401,7 +1390,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             height=spinner_height,
             background_color=(0.2, 0.3, 0.4, 1),
             color=(1, 1, 1, 1),
-            font_size=self.base_font_size * 0.85  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.8
         )
         self.allies_spinner.bind(text=self.on_allies_selected)
         allies_container.add_widget(self.allies_spinner)
@@ -1442,7 +1431,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             text_color=(0.8, 0.9, 1.0, 1),
             halign='left',
             valign='middle',
-            font_size=self.base_font_size * 0.8  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.7
         )
         self.allies_count_label.bind(size=self.allies_count_label.setter('text_size'))
 
@@ -1467,7 +1456,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint_y=None,
             height=label_height,
             halign='left',
-            font_size=self.base_font_size * 0.95  # Увеличиваем шрифт
+            font_size=self.base_font_size * 0.9
         )
         info_title.bind(size=info_title.setter('text_size'))
         self.faction_info_container.add_widget(info_title)
@@ -1490,7 +1479,7 @@ class KingdomSelectionWidget(MDFloatLayout):
                 text_color=(0.9, 0.9, 0.9, 1),
                 size_hint_x=0.6,
                 halign='left',
-                font_size=self.base_font_size * 0.8  # Увеличиваем шрифт
+                font_size=self.base_font_size * 0.7
             )
             label.bind(size=label.setter('text_size'))
 
@@ -1501,7 +1490,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             )
 
             # Заполняем серыми иконками по умолчанию
-            icon_size = dp(14) if is_android else dp(14)  # Увеличиваем иконки
+            icon_size = dp(12) if is_android else dp(14)
             for i in range(3):
                 img = Image(
                     source='files/pict/menu/grey.png',
@@ -1519,22 +1508,14 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.main_container.add_widget(self.settings_panel_container)
 
         # ======== КНОПКИ ВНИЗУ ========
-        # Определяем размеры кнопок в зависимости от платформы и ориентации
+        # Определяем размеры кнопок в зависимости от платформы
         if is_android:
-            if is_landscape:
-                button_container_width = 0.6  # Шире для альбомной
-                back_btn_width = dp(100)  # Увеличиваем кнопки
-                start_btn_width = dp(180)  # Увеличиваем кнопки
-                button_height = dp(45)  # Выше кнопки
-                button_font_size = self.base_font_size * 1.0  # Больше шрифт
-                buttons_y_pos = 0.04  # Поднимаем кнопки выше
-            else:
-                button_container_width = 0.5  # Уже для портретной
-                back_btn_width = dp(100)  # Увеличиваем кнопки
-                start_btn_width = dp(180)  # Увеличиваем кнопки
-                button_height = dp(45)  # Выше кнопки
-                button_font_size = self.base_font_size * 1.0  # Больше шрифт
-                buttons_y_pos = 0.03  # Поднимаем кнопки выше
+            button_container_width = 0.4
+            back_btn_width = dp(90)
+            start_btn_width = dp(170)
+            button_height = dp(40)
+            button_font_size = self.base_font_size * 0.9
+            buttons_y_pos = 0.03  # Немного выше для Android
         else:
             button_container_width = 0.4
             back_btn_width = dp(100)
@@ -1548,7 +1529,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             orientation='horizontal',
             size_hint=(None, None),
             size=(Window.width * button_container_width, button_height + dp(5)),
-            spacing=dp(10) if is_android else dp(10),
+            spacing=dp(8) if is_android else dp(10),
             padding=[dp(5), 0, dp(5), 0],
             pos_hint={'x': 0.05, 'y': buttons_y_pos}
         )
@@ -1587,48 +1568,52 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== Запускаем анимацию появления ========
         Clock.schedule_once(lambda dt: self.animate_in(), 0.3)
 
-        # Привязываем обработчик изменения размера окна для адаптации
-        Window.bind(on_resize=self.on_window_resize)
+    def on_ideology_selected(self, spinner, text):
+        """Обработка выбора идеологии"""
+        if text == 'Случайная':
+            self.selected_ideology = 'random'
+            # Обновляем текст, цвет и иконку
+            self.ideology_bonus_label.text = "Идеология будет выбрана случайно"
+            self.ideology_bonus_label.color = (0.8, 0.8, 0.8, 1)
+            # Устанавливаем иконку по умолчанию или оставляем текущей
+            # self.ideology_bonus_icon.source = 'files/pict/menu/bonus_icon.png' # Пример иконки по умолчанию
+            # Если не хотите менять иконку для 'Случайная', просто не изменяйте self.ideology_bonus_icon.source
+        elif text == 'Смирение':
+            self.selected_ideology = 'Смирение'
+            # Обновляем текст, цвет и иконку
+            self.ideology_bonus_label.text = "+700% к доходам от налогов"
+            self.ideology_bonus_label.color = (0.5, 0.8, 1.0, 1)  # Голубой цвет
+            self.ideology_bonus_icon.source = 'files/status/resource_box/coin.png'
+            # Важно: перезагрузить текстуру изображения
+            self.ideology_bonus_icon.reload()
+        elif text == 'Борьба':
+            self.selected_ideology = 'Борьба'
+            # Обновляем текст, цвет и иконку
+            self.ideology_bonus_label.text = "+600% к добыче кристаллов"
+            self.ideology_bonus_label.color = (1.0, 0.5, 0.5, 1)  # Красноватый цвет
+            self.ideology_bonus_icon.source = 'files/status/resource_box/crystal.png'
+            # Важно: перезагрузить текстуру изображения
+            self.ideology_bonus_icon.reload()
+        print(f"Выбрана идеология: {self.selected_ideology}")
 
-    # ======== МЕТОДЫ КЛАССА ========
-
-    def loop_video(self, instance):
-        """Зацикливает видео при завершении"""
-        instance.state = 'stop'
-        instance.state = 'play'
-
-    def on_window_resize(self, window, width, height):
-        """Обработчик изменения размера окна для перестроения интерфейса"""
-        Clock.schedule_once(lambda dt: self._refresh_ui(), 0.1)
-
-    def _refresh_ui(self):
-        """Перестраивает интерфейс при изменении размера окна"""
-        try:
-            # Получаем текущие параметры
-            is_android = platform == 'android'
-            is_landscape = Window.width > Window.height
-
-            # Обновляем размер шрифтов и позиции
-            if is_android:
-                if is_landscape:
-                    # Обновляем для альбомной ориентации
-                    self.select_side_label.pos_hint = {'center_x': 0.27, 'top': 0.96}
-                else:
-                    # Обновляем для портретной ориентации
-                    self.select_side_label.pos_hint = {'center_x': 0.27, 'top': 0.97}
-
-                # Обновляем позиции панелей
-                panel_y_center = 0.5 + self.panel_y_offset
-                self.faction_panel_container.pos_hint = {'x': 0.05, 'center_y': panel_y_center}
-                self.settings_panel_container.pos_hint = {'right': 0.95, 'center_y': panel_y_center}
-
-                # Обновляем позицию нижних кнопок
-                if is_landscape:
-                    self.bottom_buttons_container.pos_hint = {'x': 0.05, 'y': 0.04}
-                else:
-                    self.bottom_buttons_container.pos_hint = {'x': 0.05, 'y': 0.03}
-        except Exception as e:
-            print(f"Ошибка при обновлении UI: {e}")
+    def on_allies_selected(self, spinner, text):
+        """Обработка выбора количества союзников"""
+        if text == 'Случайное количество':
+            self.selected_allies = 'random'
+            # Обновляем текст и цвет в self.allies_count_label
+            self.allies_count_label.text = "Случайно 1 или 2 союзника"
+            self.allies_count_label.color = (0.8, 0.8, 0.8, 1)
+        elif text == '1':
+            self.selected_allies = 1
+            # Обновляем текст и цвет в self.allies_count_label
+            self.allies_count_label.text = "1 фракция с такой же идеологией"
+            self.allies_count_label.color = (0.5, 1.0, 0.5, 1)  # Зеленый
+        elif text == '2':
+            self.selected_allies = 2
+            # Обновляем текст и цвет в self.allies_count_label
+            self.allies_count_label.text = "2 фракции с такой же идеологией"
+            self.allies_count_label.color = (0.5, 1.0, 0.5, 1)  # Зеленый
+        print(f"Выбрано союзников: {self.selected_allies}")
 
     def animate_in(self):
         """Анимация появления элементов"""
@@ -1654,6 +1639,14 @@ class KingdomSelectionWidget(MDFloatLayout):
             )
         self.buttons_locked = True
         Clock.schedule_once(lambda dt: setattr(self, 'buttons_locked', False), 1.5)
+
+    def loop_video(self, instance):
+        instance.state = 'stop'
+        instance.state = 'play'
+
+    def calculate_panel_height(self, btn_height, spacing, padding):
+        num_buttons = len(self.faction_data)
+        return (btn_height * num_buttons) + (spacing * (num_buttons - 1)) + (padding[1] + padding[3])
 
     def back_to_menu(self, instance):
         if getattr(self, 'buttons_locked', False):
@@ -1879,51 +1872,6 @@ class KingdomSelectionWidget(MDFloatLayout):
         for child in self.main_container.walk():
             if isinstance(child, (ModernButton, MDFlatButton, ModernSpinner)):
                 child.disabled = disabled
-
-    def on_ideology_selected(self, spinner, text):
-        """Обработка выбора идеологии"""
-        if text == 'Случайная':
-            self.selected_ideology = 'random'
-            # Обновляем текст, цвет и иконку
-            self.ideology_bonus_label.text = "Идеология будет выбрана случайно"
-            self.ideology_bonus_label.color = (0.8, 0.8, 0.8, 1)
-            # Устанавливаем иконку по умолчанию
-            self.ideology_bonus_icon.source = 'files/pict/menu/bonus_icon.png'
-            self.ideology_bonus_icon.reload()
-        elif text == 'Смирение':
-            self.selected_ideology = 'Смирение'
-            # Обновляем текст, цвет и иконку
-            self.ideology_bonus_label.text = "+700% к доходам от налогов"
-            self.ideology_bonus_label.color = (0.5, 0.8, 1.0, 1)  # Голубой цвет
-            self.ideology_bonus_icon.source = 'files/status/resource_box/coin.png'
-            self.ideology_bonus_icon.reload()
-        elif text == 'Борьба':
-            self.selected_ideology = 'Борьба'
-            # Обновляем текст, цвет и иконку
-            self.ideology_bonus_label.text = "+600% к добыче кристаллов"
-            self.ideology_bonus_label.color = (1.0, 0.5, 0.5, 1)  # Красноватый цвет
-            self.ideology_bonus_icon.source = 'files/status/resource_box/crystal.png'
-            self.ideology_bonus_icon.reload()
-        print(f"Выбрана идеология: {self.selected_ideology}")
-
-    def on_allies_selected(self, spinner, text):
-        """Обработка выбора количества союзников"""
-        if text == 'Случайное количество':
-            self.selected_allies = 'random'
-            # Обновляем текст и цвет в self.allies_count_label
-            self.allies_count_label.text = "Случайно 1 или 2 союзника"
-            self.allies_count_label.color = (0.8, 0.8, 0.8, 1)
-        elif text == '1':
-            self.selected_allies = 1
-            # Обновляем текст и цвет в self.allies_count_label
-            self.allies_count_label.text = "1 фракция с такой же идеологией"
-            self.allies_count_label.color = (0.5, 1.0, 0.5, 1)  # Зеленый
-        elif text == '2':
-            self.selected_allies = 2
-            # Обновляем текст и цвет в self.allies_count_label
-            self.allies_count_label.text = "2 фракции с такой же идеологией"
-            self.allies_count_label.color = (0.5, 1.0, 0.5, 1)  # Зеленый
-        print(f"Выбрано союзников: {self.selected_allies}")
 
 
 class RoundedButton(Button):
