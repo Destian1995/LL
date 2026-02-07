@@ -20,7 +20,7 @@ import re
 
 RANK_TO_FILENAME = {
     # Группа 1: Военные
-    "Главнокомандующий": "19.png",   # старший
+    "Главнокомандующий": "19.png",  # старший
     "Верховный маршал": "18.png",
     "Генерал-фельдмаршал": "17.png",
     "Генерал армии": "16.png",
@@ -38,7 +38,7 @@ RANK_TO_FILENAME = {
     "Серебряный лейтенант": "4.png",
     "Сержант": "3.png",
     "Прапорщик": "2.png",
-    "Рядовой": "1.png",               # младший
+    "Рядовой": "1.png",  # младший
 
     # Группа 2: Тьма
     "Владыка ночи": "19.png",
@@ -125,6 +125,7 @@ RANK_TO_FILENAME = {
     "Пепел Пустыни": "1.png",
 }
 
+
 def save_last_clicked_city(conn, city_name: str):
     """
     Сохраняет последний выбранный город в базу данных.
@@ -145,8 +146,9 @@ def load_cities_from_db(conn, selected_kingdom):
     """
     cursor = conn.cursor()
     try:
-        query = ("SELECT id, name, coordinates, faction, icon_coordinates, label_coordinates, color_faction FROM cities "
-                 "WHERE faction = ?")
+        query = (
+            "SELECT id, name, coordinates, faction, icon_coordinates, label_coordinates, color_faction FROM cities "
+            "WHERE faction = ?")
         cursor.execute(query, (selected_kingdom,))
         rows = cursor.fetchall()
         cities = []
@@ -245,6 +247,7 @@ def clear_tables(conn):
         print(f"Ошибка при очистке таблиц: {e}")
         conn.rollback()  # Откат изменений в случае ошибки
 
+
 class AuthorScreen(Screen):
     def __init__(self, conn, **kwargs):
         super(AuthorScreen, self).__init__(**kwargs)
@@ -255,10 +258,10 @@ class AuthorScreen(Screen):
         # Замените 'files/menu/author.jpg' на путь к вашему изображению-фону.
         # Рекомендуется использовать изображение в формате .jpg или .png.
         self.bg_image = Image(
-            source='files/menu/author.jpg', # <- Укажите путь к вашему изображению
-            allow_stretch=True, # Растягивать под размер виджета
-            keep_ratio=False,   # Игнорировать соотношение сторон
-            size_hint=(1, 1),   # Занимает весь родительский контейнер
+            source='files/menu/author.jpg',  # <- Укажите путь к вашему изображению
+            allow_stretch=True,  # Растягивать под размер виджета
+            keep_ratio=False,  # Игнорировать соотношение сторон
+            size_hint=(1, 1),  # Занимает весь родительский контейнер
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
         root.add_widget(self.bg_image)
@@ -302,6 +305,7 @@ class AuthorScreen(Screen):
         def update_top_bg_rect(instance, value):
             self.top_bg_rect.pos = instance.pos
             self.top_bg_rect.size = instance.size
+
         top_layout.bind(pos=update_top_bg_rect, size=update_top_bg_rect)
 
         # Создаем саму надпись (остается без изменений)
@@ -475,15 +479,15 @@ class LoadingScreen(FloatLayout):
         progress_ratio = self.current_progress / 100.0
         if progress_ratio <= 0.5:
             # От белого к голубому (0–50%)
-            r = 1 - progress_ratio * 0.5       # 1 → 0.75
-            g = 1 - progress_ratio * 0.3       # 1 → 0.85
-            b = 1                              # остаётся бело-голубым
+            r = 1 - progress_ratio * 0.5  # 1 → 0.75
+            g = 1 - progress_ratio * 0.3  # 1 → 0.85
+            b = 1  # остаётся бело-голубым
         else:
             # От голубого к насыщенно-синему (50–100%)
-            t = (progress_ratio - 0.5) * 2     # нормализуем вторую половину
-            r = 0.75 - t * 0.55                # 0.75 → 0.2
-            g = 0.85 - t * 0.65                # 0.85 → 0.2
-            b = 1 - t * 0.3                    # 1 → 0.7
+            t = (progress_ratio - 0.5) * 2  # нормализуем вторую половину
+            r = 0.75 - t * 0.55  # 0.75 → 0.2
+            g = 0.85 - t * 0.65  # 0.85 → 0.2
+            b = 1 - t * 0.3  # 1 → 0.7
 
         with self.pb_container.canvas:
             Color(r, g, b, 1)
@@ -546,6 +550,7 @@ class LoadingScreen(FloatLayout):
         def cleanup_task():
             clear_tables(self.conn)
             Clock.schedule_once(self.run_next_step, 0)
+
         Thread(target=cleanup_task, daemon=True).start()
 
     def step_restore_backup(self):
@@ -564,6 +569,7 @@ class LoadingScreen(FloatLayout):
             Clock.schedule_once(lambda dt: self.update_progress(10), 0)
             time.sleep(0.3)
             Clock.schedule_once(self.run_next_step, 0)
+
         Thread(target=load_task, daemon=True).start()
 
     def step_complete(self):
@@ -844,11 +850,11 @@ class MapWidget(Widget):
         print(f"[MapWidget] Запуск анимации мигания ({times} раз) для виджета {self.player_city_icon_widget}")
 
         # Создаем цепочку анимаций
-        anim = Animation(opacity=0.0, duration=duration) # Исчезновение 1
-        for i in range(times - 1): # Остальные (times-1) циклов
-            anim += Animation(opacity=1.0, duration=duration) # Появление
-            anim += Animation(opacity=0.0, duration=duration) # Исчезновение
-        anim += Animation(opacity=1.0, duration=duration) # Последнее появление
+        anim = Animation(opacity=0.0, duration=duration)  # Исчезновение 1
+        for i in range(times - 1):  # Остальные (times-1) циклов
+            anim += Animation(opacity=1.0, duration=duration)  # Появление
+            anim += Animation(opacity=0.0, duration=duration)  # Исчезновение
+        anim += Animation(opacity=1.0, duration=duration)  # Последнее появление
 
         # Запускаем анимацию
         anim.start(self.player_city_icon_widget)
@@ -856,10 +862,10 @@ class MapWidget(Widget):
 
     def _schedule_blink(self, dt):
         """Вспомогательный метод для планирования мигания."""
-        if not self.has_blinked: # Проверяем флаг
+        if not self.has_blinked:  # Проверяем флаг
             if self.find_and_set_player_city_icon():
                 self.blink_player_city_icon()
-                self.has_blinked = True # Устанавливаем флаг после запуска
+                self.has_blinked = True  # Устанавливаем флаг после запуска
             else:
                 print("[MapWidget] Повторная попытка найти иконку через 1 секунду...")
                 Clock.schedule_once(
@@ -900,7 +906,7 @@ class MapWidget(Widget):
         """Рисует дороги между ближайшими городами - вызывается один раз."""
         # Используем self.canvas.after или self.canvas, но не очищаем его в update_cities
         # Для простоты оставим как есть, но будем вызывать только один раз
-        self.canvas.after.clear() # Очищаем after только один раз
+        self.canvas.after.clear()  # Очищаем after только один раз
 
         try:
             cursor = self.conn.cursor()
@@ -1220,7 +1226,8 @@ class KingdomSelectionWidget(MDFloatLayout):
             label_height = dp(25)
             stat_row_height = dp(20)
 
-        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(30)
+        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(
+            30)
 
         # Основной контейнер для вертикального расположения всех блоков
         self.settings_content_container = MDBoxLayout(
@@ -1755,7 +1762,8 @@ class KingdomSelectionWidget(MDFloatLayout):
                 self.selected_allies if self.selected_allies != 'random' else None
             ))
             self.conn.commit()
-            print(f"Выбор игрока сохранен: {selected_faction}, идеология={self.selected_ideology}, союзников={self.selected_allies}")
+            print(
+                f"Выбор игрока сохранен: {selected_faction}, идеология={self.selected_ideology}, союзников={self.selected_allies}")
         except sqlite3.Error as e:
             print(f"Ошибка при сохранении выбора игрока: {e}")
             self.conn.rollback()
@@ -1791,7 +1799,8 @@ class KingdomSelectionWidget(MDFloatLayout):
                 GameScreen = getattr(current_module, 'GameScreen', None)
             if MapWidget and GameScreen:
                 # Создаем виджет карты
-                map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom, conn=self.conn)
+                map_widget = MapWidget(selected_kingdom=selected_kingdom, player_kingdom=selected_kingdom,
+                                       conn=self.conn)
                 # Загружаем города (нужно реализовать load_cities_from_db)
                 cities = load_cities_from_db(self.conn, selected_kingdom)
                 # Создаем экран игры
@@ -2156,7 +2165,7 @@ class GameButton(Button):
 
                 Color(*particle['color'])
                 Ellipse(
-                    pos=(px - particle['size']/2, py - particle['size']/2),
+                    pos=(px - particle['size'] / 2, py - particle['size'] / 2),
                     size=(particle['size'], particle['size'])
                 )
 
@@ -2198,8 +2207,8 @@ class GameButton(Button):
                 Color(*particle['color'])
                 Ellipse(
                     pos=(
-                        particle['x'] - particle['size']/2,
-                        particle['y'] - particle['size']/2
+                        particle['x'] - particle['size'] / 2,
+                        particle['y'] - particle['size'] / 2
                     ),
                     size=(particle['size'], particle['size'])
                 )
@@ -2245,6 +2254,7 @@ class GameButton(Button):
 
 class AnimatedLabel(Label):
     """Метка с анимацией и черной обводкой"""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.animation = None
@@ -2397,21 +2407,6 @@ class MenuWidget(FloatLayout):
         app.stop()
 
 
-class CustomTab(TabbedPanelItem):
-    def __init__(self, **kwargs):
-        super(CustomTab, self).__init__(**kwargs)
-        self.active_color = get_color_from_hex('#FF5733')  # например, оранжевый
-        self.inactive_color = get_color_from_hex('#DDDDDD')  # светло-серый
-        self.background_color = self.inactive_color
-        self.bind(state=self.update_background)
-
-    def update_background(self, *args):
-        if self.state == 'down':
-            self.background_color = self.active_color
-        else:
-            self.background_color = self.inactive_color
-
-
 def ui_scale():
     base_width = 400
     scale = Window.width / base_width
@@ -2434,36 +2429,276 @@ class DossierScreen(Screen):
         self.tabs = None
         self.build_ui()
 
+        # Привязываем обработчик изменения размера
+        Window.bind(on_resize=self.on_window_resize)
+
+    # Таблицы званий для каждой фракции
+    RANK_TABLES = {
+        'Вампиры': [
+            ("Владыка ночи", 1),
+            ("Вечный граф", 2),
+            ("Темный лорд", 3),
+            ("Князь тьмы", 4),
+            ("Старший вампир", 5),
+            ("Ночной страж", 6),
+            ("Теневой охотник", 7),
+            ("Призрачный убийца", 8),
+            ("Темный воитель", 9),
+            ("Ночной рейнджер", 10),
+            ("Младший вампир", 11),
+            ("Темный слуга", 12),
+            ("Младший слуга вампира", 13),
+            ("Ночная тень", 14),
+            ("Плутонический следопыт", 15),
+            ("Серебряный следопыт", 16),
+            ("Вестник смерти", 17),
+            ("Пепел прошлого", 18),
+            ("Укушенный", 19),
+        ],
+        'Север': [
+            ("Главнокомандующий", 1),
+            ("Верховный маршал", 2),
+            ("Генерал-фельдмаршал", 3),
+            ("Генерал армии", 4),
+            ("Генерал-полковник", 5),
+            ("Генерал-лейтенант", 6),
+            ("Генерал-майор", 7),
+            ("Бригадный генерал", 8),
+            ("Коммандер", 9),
+            ("Полковник", 10),
+            ("Подполковник", 11),
+            ("Майор", 12),
+            ("Капитан-лейтенант", 13),
+            ("Капитан", 14),
+            ("Платиновый лейтенант", 15),
+            ("Серебряный лейтенант", 16),
+            ("Сержант", 17),
+            ("Прапорщик", 18),
+            ("Рядовой", 19),
+        ],
+        'Эльфы': [
+            ("Верховный правитель", 1),
+            ("Лесной повелитель", 2),
+            ("Вечный страж", 3),
+            ("Магистр природы", 4),
+            ("Лесной воевода", 5),
+            ("Хранитель лесов", 6),
+            ("Мастер стрелы", 7),
+            ("Лесной командир", 8),
+            ("Древесный защитник", 9),
+            ("Мастер лука", 10),
+            ("Ловкий стрелок", 11),
+            ("Юркий воин", 12),
+            ("Стремительный охотник", 13),
+            ("Зеленый страж", 14),
+            ("Природный следопыт", 15),
+            ("Ученик жрицы", 16),
+            ("Начинающий охотник", 17),
+            ("Молодой эльф", 18),
+            ("Младший ученик эльфа", 19),
+        ],
+        'Адепты': [
+            ("Верховный Инквизитор", 1),
+            ("Великий Охотник на Еретиков", 2),
+            ("Магистр Святого Огня", 3),
+            ("Гранд-Инквизитор", 4),
+            ("Судья Правой Руки", 5),
+            ("Главный Следователь", 6),
+            ("Огонь Вердикта", 7),
+            ("Страж Чистоты", 8),
+            ("Палач Ереси", 9),
+            ("Исполнитель Клятвы", 10),
+            ("Сержант Ордена", 11),
+            ("Офицер Инквизиции", 12),
+            ("Кандидат Света", 13),
+            ("Новичок Клятвы", 14),
+            ("Причастный Костра", 15),
+            ("Ученик Веры", 16),
+            ("Искренний", 17),
+            ("Слушающий Слово", 18),
+            ("Пепел Греха", 19),
+        ],
+        'Элины': [
+            ("Повелитель Огня и Пустыни", 1),
+            ("Око Бури", 2),
+            ("Хранитель Песков", 3),
+            ("Гнев Ветров", 4),
+            ("Тень Дракона", 5),
+            ("Жар Пустыни", 6),
+            ("Клинок Вечного Солнца", 7),
+            ("Степной Судья", 8),
+            ("Мастер Ярости", 9),
+            ("Искра Пламени", 10),
+            ("Бегущий по Пескам", 11),
+            ("Вестник Жара", 12),
+            ("Порождение Торнадо", 13),
+            ("Песчаный Странник", 14),
+            ("Пыль Гривы", 15),
+            ("Песчинка", 16),
+            ("Забытый Ветром", 17),
+            ("Проклятый Солнцем", 18),
+            ("Пепел Пустыни", 19),
+        ],
+    }
+
+    # -------------------------
+    # РЕКУРСИВНЫЕ ФУНКЦИИ АДАПТАЦИИ
+    # -------------------------
+
+    def _get_orientation_params(self):
+        """Возвращает параметры для текущей ориентации экрана"""
+        is_landscape = Window.width > Window.height
+        is_small = Window.width < 400
+
+        return {
+            'is_landscape': is_landscape,
+            'is_small': is_small,
+            'window_width': Window.width,
+            'window_height': Window.height
+        }
+
+    def _get_font_sizes(self, base_size, is_landscape=False):
+        """Возвращает адаптивные размеры шрифтов"""
+        if is_landscape:
+            return {
+                'title': ssp(base_size * 0.9),
+                'normal': ssp(base_size * 0.85),
+                'small': ssp(base_size * 0.75)
+            }
+        return {
+            'title': ssp(base_size),
+            'normal': ssp(base_size * 0.9),
+            'small': ssp(base_size * 0.8)
+        }
+
+    def _get_spacing(self, base_spacing, is_landscape=False):
+        """Возвращает адаптивные отступы"""
+        return sdp(base_spacing * 0.8 if is_landscape else base_spacing)
+
+    # -------------------------
+    # RANK HELPERS
+    # -------------------------
+
+    def _priority_to_roman(self, priority):
+        """Конвертирует числовой приоритет (1-19) в римскую цифру"""
+        romans = {
+            1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
+            6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X',
+            11: 'XI', 12: 'XII', 13: 'XIII', 14: 'XIV',
+            15: 'XV', 16: 'XVI', 17: 'XVII', 18: 'XVIII', 19: 'XIX'
+        }
+        return romans.get(priority, 'XIX')
+
+    def _rank_color(self, rank_num):
+        """Определяет цвет ранга на основе приоритета"""
+        if rank_num == 1:
+            return '#FFD700'  # Золотой для самого высокого ранга
+        elif rank_num <= 5:
+            return '#FF6A00'  # Оранжевый для топ-5
+        elif rank_num <= 10:
+            return '#32CD32'  # Зеленый для топ-10
+        elif rank_num <= 15:
+            return '#1E90FF'  # Синий для топ-15
+        else:
+            return '#AAAAAA'  # Серый для остальных
+
+    def _get_rank_info(self, rank_text, faction):
+        """Возвращает полную информацию о ранге"""
+        if not rank_text or not faction:
+            # Возвращаем информацию по умолчанию
+            return {
+                'original_text': rank_text or "Нет звания",
+                'faction': faction or "Неизвестно",
+                'priority': 19,
+                'roman': 'XIX',
+                'color': '#AAAAAA',
+                'rank_name': "Нет звания"
+            }
+
+        rank_text = str(rank_text).strip()
+        faction = str(faction).strip()
+
+        # Получаем таблицу званий для фракции
+        rank_table = self.RANK_TABLES.get(faction)
+        if not rank_table:
+            return {
+                'original_text': rank_text,
+                'faction': faction,
+                'priority': 19,
+                'roman': 'XIX',
+                'color': '#AAAAAA',
+                'rank_name': rank_text  # Показываем оригинальный текст
+            }
+
+        # Ищем звание в таблице
+        for rank_name, priority in rank_table:
+            if rank_name.lower() == rank_text.lower():
+                roman = self._priority_to_roman(priority)
+                color = self._rank_color(priority)
+                return {
+                    'original_text': rank_text,
+                    'faction': faction,
+                    'priority': priority,
+                    'roman': roman,
+                    'color': color,
+                    'rank_name': rank_name
+                }
+
+        # Если звание не найдено, пытаемся найти частичное совпадение
+        for rank_name, priority in rank_table:
+            if rank_text.lower() in rank_name.lower():
+                roman = self._priority_to_roman(priority)
+                color = self._rank_color(priority)
+                return {
+                    'original_text': rank_text,
+                    'faction': faction,
+                    'priority': priority,
+                    'roman': roman,
+                    'color': color,
+                    'rank_name': rank_name
+                }
+
+        # Если совсем не нашли, показываем оригинальный текст
+        return {
+            'original_text': rank_text,
+            'faction': faction,
+            'priority': 19,
+            'roman': 'XIX',
+            'color': '#AAAAAA',
+            'rank_name': rank_text  # Показываем то, что есть в базе
+        }
+
     # -------------------------
     # ROOT UI
     # -------------------------
 
     def build_ui(self):
-        root = BoxLayout(orientation='vertical', spacing=sdp(6))
+        params = self._get_orientation_params()
 
-        root.add_widget(self._create_title_bar())
-
-        # Уменьшена высота табов (кнопок выбора фракции)
-        self.tabs = TabbedPanel(
-            do_default_tab=False,
-            tab_height=sdp(36),  # Было sdp(48) - уменьшили на 25%
-            tab_width=sdp(140)
+        root = BoxLayout(
+            orientation='vertical',
+            spacing=self._get_spacing(6, params['is_landscape'])
         )
-        self.load_dossier_data()
-        root.add_widget(self.tabs)
 
-        root.add_widget(self._create_bottom_panel())
+        root.add_widget(self._create_title_bar(params))
+        root.add_widget(self._create_tabs_panel(params))
+        root.add_widget(self._create_bottom_panel(params))
 
         self.add_widget(root)
 
     # -------------------------
-    # TITLE
+    # TITLE BAR
     # -------------------------
 
-    def _create_title_bar(self):
+    def _create_title_bar(self, params):
+        is_landscape = params['is_landscape']
+
+        bar_height = sdp(46 if is_landscape else 56)
+        font_sizes = self._get_font_sizes(20, is_landscape)
+
         bar = BoxLayout(
             size_hint_y=None,
-            height=sdp(56),
+            height=bar_height,
             padding=[sdp(12), 0],
             spacing=sdp(8)
         )
@@ -2471,284 +2706,374 @@ class DossierScreen(Screen):
         title = Label(
             text=" [b]Рейтинг[/b]",
             markup=True,
-            font_size=ssp(20),
+            font_size=font_sizes['title'],
             color=get_color_from_hex('#FFD700'),
             halign='left',
             valign='middle',
             size_hint_x=None,
-            width=Window.width
+            width=params['window_width'] - sdp(24)
         )
 
         bar.add_widget(title)
         return bar
 
     # -------------------------
-    # BOTTOM PANEL - УМЕНЬШЕНЫЕ КНОПКИ
+    # TABS PANEL
     # -------------------------
 
-    def _create_bottom_panel(self):
-        is_small = Window.width < 360
+    def _create_tabs_panel(self, params):
+        is_landscape = params['is_landscape']
+
+        tab_height = sdp(30 if is_landscape else 36)
+        self.tabs = TabbedPanel(
+            do_default_tab=False,
+            tab_height=tab_height,
+            tab_width=sdp(140)
+        )
+        self._load_dossier_data_to_tabs(self.tabs, params)
+        return self.tabs
+
+    # -------------------------
+    # BOTTOM PANEL
+    # -------------------------
+
+    def _create_bottom_panel(self, params):
+        is_landscape = params['is_landscape']
+        is_small = params['is_small']
+
+        # Определяем компоновку
+        if is_landscape:
+            orientation = 'horizontal'
+            height = sdp(40)
+        else:
+            orientation = 'vertical' if is_small else 'horizontal'
+            height = sdp(80 if is_small else 50)
 
         panel = BoxLayout(
-            orientation='vertical' if is_small else 'horizontal',
+            orientation=orientation,
             size_hint_y=None,
-            height=sdp(80 if is_small else 50),
-            spacing=sdp(6),
-            padding=sdp(6)
+            height=height,
+            spacing=self._get_spacing(6, is_landscape),
+            padding=self._get_spacing(6, is_landscape)
         )
 
-        back_btn = Button(
-            text="Назад",
-            font_size=ssp(14),
-            size_hint_y=None,
-            height=sdp(30),
-            size_hint_x=0.5 if not is_small else 1,
-            background_color=(0.2, 0.4, 0.8, 1)
-        )
-        back_btn.bind(on_release=self.go_back)
+        # Параметры кнопок
+        if is_landscape:
+            btn_config = {
+                'height': sdp(32),
+                'font_size': ssp(13),
+                'size_hint_x': 0.5
+            }
+        elif is_small:
+            btn_config = {
+                'height': sdp(30),
+                'font_size': ssp(14),
+                'size_hint_x': 1
+            }
+        else:
+            btn_config = {
+                'height': sdp(30),
+                'font_size': ssp(14),
+                'size_hint_x': 0.5
+            }
 
-        clear_btn = Button(
-            text="Очистить все",
-            font_size=ssp(14),
-            size_hint_y=None,
-            height=sdp(30),
-            size_hint_x=0.5 if not is_small else 1,
-            background_color=(0.6, 0.15, 0.15, 1)
-        )
-        clear_btn.bind(on_release=self.clear_dossier)
+        # Создаем кнопки
+        buttons = [
+            {
+                'text': "Назад",
+                'bg_color': (0.2, 0.4, 0.8, 1),
+                'action': self.go_back
+            },
+            {
+                'text': "Очистить все",
+                'bg_color': (0.6, 0.15, 0.15, 1),
+                'action': self.clear_dossier
+            }
+        ]
 
-        panel.add_widget(back_btn)
-        panel.add_widget(clear_btn)
+        for btn_info in buttons:
+            btn = Button(
+                text=btn_info['text'],
+                font_size=btn_config['font_size'],
+                size_hint_y=None,
+                height=btn_config['height'],
+                size_hint_x=btn_config['size_hint_x'],
+                background_color=btn_info['bg_color']
+            )
+            btn.bind(on_release=btn_info['action'])
+            panel.add_widget(btn)
 
         return panel
 
     # -------------------------
-    # RANK HELPERS
+    # EMPTY STATE
     # -------------------------
 
-    def _military_rank_to_roman(self, rank_text):
-        try:
-            rank_num = int(rank_text)
-        except:
-            rank_num = 19
-            nums = re.findall(r'\d+', str(rank_text))
-            if nums:
-                rank_num = int(nums[0])
+    def _create_empty_state(self, params):
+        """Создает адаптивное сообщение об отсутствии данных"""
+        is_landscape = params['is_landscape']
 
-        rank_num = max(1, min(19, rank_num))
+        # Используем BoxLayout для центрирования
+        container = BoxLayout(
+            orientation='vertical',
+            padding=self._get_spacing(20, is_landscape)
+        )
 
-        romans = {
-            1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
-            6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X',
-            11: 'XI', 12: 'XII', 13: 'XIII', 14: 'XIV',
-            15: 'XV', 16: 'XVI', 17: 'XVII', 18: 'XVIII', 19: 'XIX'
-        }
+        font_sizes = self._get_font_sizes(16, is_landscape)
 
-        return romans.get(rank_num, 'XIX'), rank_num
+        # Основной текст
+        main_label = Label(
+            text="Вы еще не воевали...",
+            font_size=font_sizes['title'],
+            halign='center',
+            valign='middle'
+        )
 
-    def _rank_color(self, rank_num):
-        if rank_num == 1:
-            return '#FFD700'
-        elif rank_num <= 5:
-            return '#FF6A00'
-        elif rank_num <= 10:
-            return '#32CD32'
-        elif rank_num <= 15:
-            return '#1E90FF'
-        else:
-            return '#AAAAAA'
+        # Подзаголовок
+        sub_label = Label(
+            text="Начните играть, чтобы увидеть статистику",
+            font_size=font_sizes['small'],
+            halign='center',
+            valign='top',
+            color=(0.7, 0.7, 0.7, 1)
+        )
 
-    def _create_character_card(self, data):
-        is_small = Window.width < 360
+        container.add_widget(main_label)
+        container.add_widget(sub_label)
+
+        return container
+
+    # -------------------------
+    # CHARACTER CARD
+    # -------------------------
+
+    def _create_character_card(self, data, params, faction=None):
+        """Создает адаптивную карточку персонажа с учетом фракции"""
+        is_landscape = params['is_landscape']
+
+        # Динамические параметры
+        card_padding = self._get_spacing(8 if is_landscape else 12, is_landscape)
+        card_spacing = self._get_spacing(6 if is_landscape else 8, is_landscape)
 
         card = BoxLayout(
             orientation='vertical',
-            spacing=sdp(8),
-            padding=sdp(12),
+            spacing=card_spacing,
+            padding=card_padding,
             size_hint_y=None,
             size_hint_x=1
         )
         card.bind(minimum_height=card.setter('height'))
 
+        # Получаем звание и фракцию
         raw_rank = data.get('military_rank') or "Еще не признан..."
-        roman, rank_num = self._military_rank_to_roman(raw_rank)
-        rank_color = self._rank_color(rank_num)
+        if faction is None:
+            faction = data.get('faction', 'Неизвестно')
 
-        # =========================
-        # ВЕРХНЯЯ СТРОКА: 3 ЗОНЫ
-        # =========================
+        # Получаем полную информацию о ранге
+        rank_info = self._get_rank_info(raw_rank, faction)
 
-        top_row = BoxLayout(
-            orientation='horizontal' if not is_small else 'vertical',
-            spacing=sdp(10),
-            size_hint_y=None,
-            size_hint_x=1
-        )
-
-        # Для мобильной версии задаем минимальную высоту
-        if is_small:
-            top_row.height = sdp(200)  # Фиксированная высота для вертикальной компоновки
-        else:
-            top_row.bind(minimum_height=top_row.setter('height'))
-
-        # --------
-        # ЛЕВАЯ ПАНЕЛЬ
-        # --------
-        left_panel = BoxLayout(
-            orientation='vertical',
-            size_hint_x=0.3 if not is_small else 1,
-            size_hint_y=1 if not is_small else None,
-            spacing=sdp(4),
-            padding=[0, sdp(2)]
-        )
-
-        if is_small:
-            left_panel.height = sdp(60)  # Высота для мобильной версии
-
-        left_panel.add_widget(Label(
-            text="[b]Боевой рейтинг:[/b]",
-            markup=True,
-            font_size=ssp(12),
-            halign='center',
-            valign='middle',  # Изменено на middle для мобильной версии
-            size_hint_y=None,
-            height=ssp(15)
-        ))
-        left_panel.add_widget(Label(
-            text=str(data.get('avg_military_rating', 0)),
-            font_size=ssp(14),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(18)
-        ))
-        left_panel.add_widget(Label(
-            text="[b]Голод:[/b]",
-            markup=True,
-            font_size=ssp(12),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(15)
-        ))
-        left_panel.add_widget(Label(
-            text=str(data.get('avg_soldiers_starving', 0)),
-            font_size=ssp(14),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(18)
-        ))
-
-        # --------
-        # ЦЕНТР
-        # --------
-        center_panel = BoxLayout(
-            orientation='vertical',
-            size_hint_x=0.4 if not is_small else 1,
-            size_hint_y=1 if not is_small else None,
-            spacing=sdp(1),
-            padding=[0, sdp(1)]
-        )
-
-        if is_small:
-            center_panel.height = sdp(80)  # Высота для мобильной версии
-
-        roman_label = Label(
-            text=f"[b][color={rank_color}]{roman}[/color][/b]",
-            markup=True,
-            font_size=ssp(36) if not is_small else ssp(32),  # Уменьшен для мобильной
-            halign='center',
-            valign='middle' if is_small else 'bottom',  # Для мобильной по центру
-            size_hint_y=None,
-            height=ssp(40) if not is_small else ssp(36)
-        )
-        center_panel.add_widget(roman_label)
-
-        center_panel.add_widget(Label(
-            text=raw_rank,
-            font_size=ssp(10),
-            halign='center',
-            valign='top',
-            size_hint_y=None,
-            height=ssp(14)
-        ))
-        center_panel.add_widget(Label(
-            text=f"Уровень: {rank_num}/19",
-            font_size=ssp(9),
-            color=get_color_from_hex(rank_color),
-            halign='center',
-            valign='top',
-            size_hint_y=None,
-            height=ssp(12)
-        ))
-
-        # --------
-        # ПРАВАЯ ПАНЕЛЬ
-        # --------
-        right_panel = BoxLayout(
-            orientation='vertical',
-            size_hint_x=0.3 if not is_small else 1,
-            size_hint_y=1 if not is_small else None,
-            spacing=sdp(4),
-            padding=[0, sdp(2)]
-        )
-
-        if is_small:
-            right_panel.height = sdp(60)  # Высота для мобильной версии
-
-        right_panel.add_widget(Label(
-            text="[b]Сражения (В/П):[/b]",
-            markup=True,
-            font_size=ssp(12),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(15)
-        ))
-        right_panel.add_widget(Label(
-            text=f"[color=#00FF00]{data.get('victories', 0)}[/color]/"
-                 f"[color=#FF4444]{data.get('defeats', 0)}[/color]",
-            markup=True,
-            font_size=ssp(14),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(18)
-        ))
-        right_panel.add_widget(Label(
-            text="[b]Матчи (В/П):[/b]",
-            markup=True,
-            font_size=ssp(12),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(15)
-        ))
-        right_panel.add_widget(Label(
-            text=f"[color=#00FF00]{data.get('matches_won', 0)}[/color]/"
-                 f"[color=#FF4444]{data.get('matches_lost', 0)}[/color]",
-            markup=True,
-            font_size=ssp(14),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=ssp(18)
-        ))
-
-        # Сборка верхней строки
-        top_row.add_widget(left_panel)
-        top_row.add_widget(center_panel)
-        top_row.add_widget(right_panel)
-
+        # Создаем верхнюю строку
+        top_row = self._create_card_top_row(data, rank_info, params)
         card.add_widget(top_row)
 
         return card
 
-    def load_dossier_data(self):
-        self._load_dossier_data_to_tabs(self.tabs)
+    def _create_card_top_row(self, data, rank_info, params):
+        """Создает верхнюю строку карточки с адаптивной компоновкой"""
+        is_landscape = params['is_landscape']
+        is_small = params['is_small']
 
-    def _load_dossier_data_to_tabs(self, tabs_widget):
+        if is_landscape:
+            # Горизонтальная компоновка для альбомной ориентации
+            return self._create_horizontal_layout(data, rank_info, params)
+        else:
+            # Адаптивная компоновка для портретной ориентации
+            return self._create_adaptive_portrait_layout(data, rank_info, params)
+
+    def _create_horizontal_layout(self, data, rank_info, params):
+        """Горизонтальная компоновка (3 колонки)"""
+        row = BoxLayout(
+            orientation='horizontal',
+            spacing=self._get_spacing(8, True),
+            size_hint_y=None,
+            height=sdp(80),
+            size_hint_x=1
+        )
+
+        # Панели с динамическими размерами
+        row.add_widget(self._create_info_panel(data, 0.3, True))
+        row.add_widget(self._create_rank_panel(rank_info, 0.4, True))
+        row.add_widget(self._create_battles_panel(data, 0.3, True))
+
+        return row
+
+    def _create_adaptive_portrait_layout(self, data, rank_info, params):
+        """Адаптивная компоновка для портретной ориентации"""
+        is_small = params['is_small']
+
+        if is_small:
+            # Вертикальная компоновка для маленьких экранов
+            row = BoxLayout(
+                orientation='vertical',
+                spacing=self._get_spacing(8, False),
+                size_hint_y=None,
+                size_hint_x=1
+            )
+
+            # Ранг по центру
+            rank_panel = self._create_rank_panel(rank_info, 1, False)
+            rank_panel.size_hint_y = None
+            rank_panel.height = sdp(60)
+
+            # Информация в 2 колонки
+            info_row = BoxLayout(
+                orientation='horizontal',
+                spacing=self._get_spacing(10, False),
+                size_hint_y=None,
+                height=sdp(60)
+            )
+
+            info_row.add_widget(self._create_info_panel(data, 0.5, False))
+            info_row.add_widget(self._create_battles_panel(data, 0.5, False))
+
+            row.add_widget(rank_panel)
+            row.add_widget(info_row)
+
+        else:
+            # Горизонтальная компоновка для нормальных экранов
+            row = BoxLayout(
+                orientation='horizontal',
+                spacing=self._get_spacing(10, False),
+                size_hint_y=None,
+                height=sdp(100),
+                size_hint_x=1
+            )
+
+            row.add_widget(self._create_info_panel(data, 0.3, False))
+            row.add_widget(self._create_rank_panel(rank_info, 0.4, False))
+            row.add_widget(self._create_battles_panel(data, 0.3, False))
+
+        return row
+
+    # -------------------------
+    # PANEL CREATORS
+    # -------------------------
+
+    def _create_info_panel(self, data, size_hint_x, is_landscape):
+        """Информационная панель"""
+        font_sizes = self._get_font_sizes(12, is_landscape)
+
+        panel = BoxLayout(
+            orientation='vertical',
+            size_hint_x=size_hint_x,
+            spacing=self._get_spacing(2, is_landscape),
+            padding=[0, self._get_spacing(2, is_landscape)]
+        )
+
+        # Добавляем элементы с адаптивными шрифтами
+        self._add_panel_label(panel, "[b]Боевой рейтинг:[/b]",
+                              font_sizes['small'], ssp(14))
+        self._add_panel_label(panel, str(data.get('avg_military_rating', 0)),
+                              font_sizes['normal'], ssp(16))
+        self._add_panel_label(panel, "[b]Голод:[/b]",
+                              font_sizes['small'], ssp(14))
+        self._add_panel_label(panel, str(data.get('avg_soldiers_starving', 0)),
+                              font_sizes['normal'], ssp(16))
+
+        return panel
+
+    def _create_rank_panel(self, rank_info, size_hint_x, is_landscape):
+        """Панель с рангом - показывает римскую цифру и название звания"""
+        font_sizes = self._get_font_sizes(36, is_landscape)
+
+        panel = BoxLayout(
+            orientation='vertical',
+            size_hint_x=size_hint_x,
+            spacing=self._get_spacing(1, is_landscape),
+            padding=[0, self._get_spacing(1, is_landscape)]
+        )
+
+        # Римская цифра (приоритет)
+        roman_label = Label(
+            text=f"[b][color={rank_info['color']}]{rank_info['roman']}[/color][/b]",
+            markup=True,
+            font_size=font_sizes['title'] * (0.9 if is_landscape else 1),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=ssp(40 if not is_landscape else 36)
+        )
+        panel.add_widget(roman_label)
+
+        # Название звания
+        rank_name = rank_info['rank_name']
+        if len(rank_name) > 20:
+            rank_name = rank_name[:18] + "..."
+
+        rank_label = Label(
+            text=rank_name,
+            font_size=font_sizes['small'] * 0.7,
+            color=get_color_from_hex(rank_info['color']),
+            halign='center',
+            valign='top',
+            size_hint_y=None,
+            height=ssp(12),
+            text_size=(Window.width * size_hint_x - sdp(10), None)
+        )
+        panel.add_widget(rank_label)
+
+        return panel
+
+    def _create_battles_panel(self, data, size_hint_x, is_landscape):
+        """Панель с боями"""
+        font_sizes = self._get_font_sizes(12, is_landscape)
+
+        panel = BoxLayout(
+            orientation='vertical',
+            size_hint_x=size_hint_x,
+            spacing=self._get_spacing(2, is_landscape),
+            padding=[0, self._get_spacing(2, is_landscape)]
+        )
+
+        # Добавляем элементы
+        self._add_panel_label(panel, "[b]Сражения (В/П):[/b]",
+                              font_sizes['small'], ssp(14))
+
+        battles_text = f"[color=#00FF00]{data.get('victories', 0)}[/color]/" \
+                       f"[color=#FF4444]{data.get('defeats', 0)}[/color]"
+        self._add_panel_label(panel, battles_text,
+                              font_sizes['normal'], ssp(16))
+
+        self._add_panel_label(panel, "[b]Матчи (В/П):[/b]",
+                              font_sizes['small'], ssp(14))
+
+        matches_text = f"[color=#00FF00]{data.get('matches_won', 0)}[/color]/" \
+                       f"[color=#FF4444]{data.get('matches_lost', 0)}[/color]"
+        self._add_panel_label(panel, matches_text,
+                              font_sizes['normal'], ssp(16))
+
+        return panel
+
+    def _add_panel_label(self, panel, text, font_size, height):
+        """Вспомогательный метод для добавления меток"""
+        label = Label(
+            text=text,
+            markup='[' in text,
+            font_size=font_size,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=height
+        )
+        panel.add_widget(label)
+
+    # -------------------------
+    # DATA LOADING
+    # -------------------------
+
+    def _load_dossier_data_to_tabs(self, tabs_widget, params):
+        """Загружает данные с учетом фракции для правильной конвертации званий"""
+        # Очищаем все существующие вкладки
         for tab in list(tabs_widget.get_tab_list()):
             tabs_widget.remove_widget(tab)
 
@@ -2759,22 +3084,20 @@ class DossierScreen(Screen):
         except:
             rows = []
 
+        # Если нет данных - создаем адаптивное пустое состояние
         if not rows:
             tab = TabbedPanelItem(text="Инфо")
-            label = Label(
-                text="Вы еще не воевали...",
-                font_size=ssp(16),
-                halign='center',
-                valign='middle'
-            )
-            tab.add_widget(label)
+            empty_container = self._create_empty_state(params)
+            tab.add_widget(empty_container)
             tabs_widget.add_widget(tab)
             return
 
+        # Группируем данные по фракциям
         factions = {}
         for row in rows:
             faction = row[1]
             data = {
+                'faction': faction,
                 'military_rank': row[2],
                 'avg_military_rating': row[3],
                 'avg_soldiers_starving': row[4],
@@ -2786,28 +3109,31 @@ class DossierScreen(Screen):
             }
             factions.setdefault(faction, []).append(data)
 
+        # Создаем вкладки для каждой фракции
         for faction, items in factions.items():
             tab = TabbedPanelItem(text=faction)
 
             scroll = ScrollView()
             grid = GridLayout(
                 cols=1,
-                spacing=sdp(10),
-                padding=sdp(10),
+                spacing=self._get_spacing(10, params['is_landscape']),
+                padding=self._get_spacing(10, params['is_landscape']),
                 size_hint_y=None,
                 size_hint_x=1
             )
             grid.bind(minimum_height=grid.setter('height'))
 
+            # Сортировка по приоритету звания
             sorted_items = []
             for d in items:
-                _, r = self._military_rank_to_roman(d.get('military_rank'))
-                sorted_items.append((r, d))
+                rank_info = self._get_rank_info(d.get('military_rank'), faction)
+                sorted_items.append((rank_info['priority'], d))
 
             sorted_items.sort(key=lambda x: x[0])
 
+            # Создаем карточки
             for _, data in sorted_items:
-                card = self._create_character_card(data)
+                card = self._create_character_card(data, params, faction)
                 grid.add_widget(card)
 
             scroll.add_widget(grid)
@@ -2818,23 +3144,60 @@ class DossierScreen(Screen):
     # ACTIONS
     # -------------------------
 
+    def load_dossier_data(self):
+        """Загружает данные с адаптивными параметрами"""
+        params = self._get_orientation_params()
+        self._load_dossier_data_to_tabs(self.tabs, params)
+
     def clear_dossier(self, instance):
+        """Очищает все данные досье"""
         try:
             cur = self.conn.cursor()
             cur.execute("DELETE FROM dossier")
             self.conn.commit()
-        except:
-            pass
+        except Exception as e:
+            print(f"Ошибка при очистке досье: {e}")
+
+        # Перезагружаем вкладки после очистки
         self._reload_tabs()
 
     def _reload_tabs(self):
+        """Перезагружает вкладки с адаптивными параметрами"""
+        params = self._get_orientation_params()
         self.tabs.clear_widgets()
-        self.load_dossier_data()
+        self._load_dossier_data_to_tabs(self.tabs, params)
 
     def go_back(self, instance):
+        """Возврат в главное меню"""
         app = App.get_running_app()
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
+
+    # -------------------------
+    # ОБРАБОТКА ИЗМЕНЕНИЯ РАЗМЕРА ЭКРАНА
+    # -------------------------
+
+    def on_window_resize(self, window, width, height):
+        """Вызывается при изменении размера окна"""
+        # Обновляем UI при изменении ориентации с небольшой задержкой
+        Clock.schedule_once(self._refresh_ui, 0.1)
+
+    def _refresh_ui(self, dt):
+        """Обновляет UI с небольшой задержкой"""
+        try:
+            # Перестраиваем весь интерфейс с новыми параметрами
+            self.clear_widgets()
+            self.build_ui()
+        except Exception as e:
+            print(f"Ошибка при обновлении UI: {e}")
+
+    # -------------------------
+    # ПУБЛИЧНЫЙ МЕТОД ДЛЯ ОБНОВЛЕНИЯ ДАННЫХ
+    # -------------------------
+
+    def refresh_data(self):
+        """Публичный метод для обновления данных из других частей приложения"""
+        self._reload_tabs()
 
 
 class HowToPlayScreen(Screen):
@@ -3047,6 +3410,7 @@ class Lerdon(MDApp):
     def get_connection(self):
         """Возвращает текущее соединение с БД."""
         return self.conn
+
 
 if __name__ == '__main__':
     Lerdon().run()
