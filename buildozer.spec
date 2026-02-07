@@ -4,7 +4,7 @@
 # Основные параметры приложения
 # ---------------------------------
 
-version = 4.0.6
+version = 4.0.7
 title = Легенды Лэрдона
 package.name = lerdonlegends
 package.domain = com.lerdonlegends
