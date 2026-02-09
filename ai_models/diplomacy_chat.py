@@ -318,6 +318,178 @@ class EnhancedDiplomacyChat():
 
         return chat_area
 
+    def _get_faction_resources(self, faction):
+        """Получает точные данные о ресурсах фракции из базы данных"""
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute("""
+                SELECT resource_type, amount 
+                FROM resources 
+                WHERE faction = ? 
+                AND resource_type IN ('Кроны', 'Кристаллы', 'Рабочие')
+            """, (faction,))
+            resources = {row[0]: row[1] for row in cursor.fetchall()}
+            # Убедимся, что все ресурсы присутствуют
+            for res_type in ['Кроны', 'Кристаллы', 'Рабочие']:
+                if res_type not in resources:
+                    resources[res_type] = 0
+            return resources
+        except Exception as e:
+            print(f"Ошибка при получении ресурсов для {faction}: {e}")
+            return {'Кроны': 0, 'Кристаллы': 0, 'Рабочие': 0}
+
+    def _is_resource_inquiry(self, message):
+        """Определяет, является ли сообщение вопросом о количестве ресурсов"""
+        message_lower = message.lower().strip()
+
+        # Ключевые слова для вопросов
+        question_words = ['че по', 'че с', 'сколько', 'как много', 'какое количество', 'есть ли', 'хватает ли', 'что с', 'есть']
+        has_question = any(word in message_lower for word in question_words)
+
+        if not has_question:
+            return False
+
+        # Типы ресурсов
+        resource_keywords = {
+            'all': ['ресурс', 'ресурсов', 'ресурсами', 'всего', 'всё', 'все ресурсы', 'положение с ресурсами', 'ресы', 'ресам'],
+            'Кроны': ['крон', 'золот', 'деньг', 'монет', 'казна', 'финанс', 'капитал', 'денег'],
+            'Кристаллы': ['кристалл', 'кристал', 'кристалов', 'минерал', 'камн'],
+            'Рабочие': ['рабоч', 'люд', 'крестьян', 'работник']
+        }
+
+        # Проверяем упоминание любого ресурса
+        for res_type, keywords in resource_keywords.items():
+            if any(keyword in message_lower for keyword in keywords):
+                return True
+
+        return False
+
+    def _handle_resource_inquiry(self, message, faction, relation_level):
+        """Обрабатывает вопросы о количестве ресурсов с учётом уровня отношений"""
+        message_lower = message.lower()
+
+        # Определяем тип запрашиваемого ресурса
+        resource_type = None
+        if any(word in message_lower for word in ['крон', 'золот', 'деньг', 'монет', 'казна']):
+            resource_type = 'Кроны'
+        elif any(word in message_lower for word in ['кристалл', 'руда', 'минерал', 'камн']):
+            resource_type = 'Кристаллы'
+        elif any(word in message_lower for word in ['рабоч', 'люд', 'крестьян', 'работник']):
+            resource_type = 'Рабочие'
+        else:
+            resource_type = 'all'  # Все ресурсы
+
+        # Получаем реальные ресурсы
+        real_resources = self._get_faction_resources(faction)
+
+        # При плохих отношениях (<30) — дезинформация или отказ
+        if relation_level < 30:
+            deception_type = random.choice(['refuse', 'lie_small', 'lie_big'])
+
+            if deception_type == 'refuse':
+                responses = [
+                    "Мои ресурсы — не твоё дело!",
+                    "Думаешь, я буду раскрывать тебе свои секреты? Ха!",
+                    "Иди узнай сам, если сможешь!",
+                    "Ты мне не друг, чтобы я рассказывал о своих ресурсах.",
+                    "Заткнись и убирайся со своими вопросами!"
+                ]
+                return random.choice(responses)
+
+            elif deception_type == 'lie_small':
+                # Небольшая дезинформация (±20%)
+                fake_resources = {
+                    'Кроны': int(real_resources['Кроны'] * random.uniform(0.8, 1.2)),
+                    'Кристаллы': int(real_resources['Кристаллы'] * random.uniform(0.8, 1.2)),
+                    'Рабочие': int(real_resources['Рабочие'] * random.uniform(0.8, 1.2))
+                }
+                if resource_type == 'all':
+                    return (f"У меня есть {fake_resources['Кроны']:,} крон, "
+                            f"{fake_resources['Кристаллы']:,} кристаллов и "
+                            f"{fake_resources['Рабочие']:,} рабочих. Доволен?")
+                else:
+                    return f"У меня {fake_resources[resource_type]:,} {resource_type.lower()}."
+
+            else:  # lie_big
+                # Сильная дезинформация (завышение в 2-5 раз)
+                multiplier = random.uniform(2.0, 5.0)
+                fake_amount = int(real_resources[resource_type if resource_type != 'all' else 'Кроны'] * multiplier)
+                if resource_type == 'all':
+                    return (f"Мои казны переполнены! {int(real_resources['Кроны'] * multiplier):,} крон, "
+                            f"{int(real_resources['Кристаллы'] * multiplier):,} кристаллов, "
+                            f"{int(real_resources['Рабочие'] * multiplier):,} рабочих! Завидуешь?")
+                else:
+                    return f"У меня {fake_amount:,} {resource_type.lower()}! Хочешь позавидовать?"
+
+        # При нейтральных отношениях (30-69) — честный ответ, но без энтузиазма
+        elif 30 <= relation_level < 70:
+            if resource_type == 'all':
+                return (f"У меня есть {real_resources['Кроны']:,} крон, "
+                        f"{real_resources['Кристаллы']:,} кристаллов и "
+                        f"{real_resources['Рабочие']:,} рабочих.")
+            else:
+                return f"У меня {real_resources[resource_type]:,} {resource_type.lower()}."
+
+        # При хороших отношениях (70-89) — честный ответ + дополнительная информация
+        elif 70 <= relation_level < 90:
+            if resource_type == 'all':
+                responses = [
+                    f"Рад поделиться: {real_resources['Кроны']:,} крон, {real_resources['Кристаллы']:,} кристаллов, {real_resources['Рабочие']:,} рабочих. Всё в порядке!",
+                    f"На данный момент в казне {real_resources['Кроны']:,} крон, в хранилищах {real_resources['Кристаллы']:,} кристаллов, и {real_resources['Рабочие']:,} рабочих трудятся на благо фракции.",
+                    f"Могу сказать точно: крон — {real_resources['Кроны']:,}, кристаллов — {real_resources['Кристаллы']:,}, рабочих — {real_resources['Рабочие']:,}."
+                ]
+                return random.choice(responses)
+            else:
+                responses = {
+                    'Кроны': [
+                        f"В казне {real_resources['Кроны']:,} крон. Хватает на текущие нужды.",
+                        f"Крон в наличии: {real_resources['Кроны']:,}. Ситуация стабильна.",
+                        f"На счету {real_resources['Кроны']:,} золотых монет."
+                    ],
+                    'Кристаллы': [
+                        f"Кристаллов в хранилищах: {real_resources['Кристаллы']:,}.",
+                        f"Магических кристаллов: {real_resources['Кристаллы']:,}. Достаточно для нужд.",
+                        f"Запас кристаллов составляет {real_resources['Кристаллы']:,}."
+                    ],
+                    'Рабочие': [
+                        f"Рабочих трудится {real_resources['Рабочие']:,}.",
+                        f"Население активных рабочих: {real_resources['Рабочие']:,} душ.",
+                        f"Рабочая сила: {real_resources['Рабочие']:,} человек."
+                    ]
+                }
+                return random.choice(responses.get(resource_type, [
+                    f"У меня {real_resources[resource_type]:,} {resource_type.lower()}."]))
+
+        # При отличных отношениях (90+) — максимально открытый и дружелюбный ответ
+        else:
+            if resource_type == 'all':
+                responses = [
+                    f"Для тебя расскажу всё! Крон: {real_resources['Кроны']:,}, кристаллов: {real_resources['Кристаллы']:,}, рабочих: {real_resources['Рабочие']:,}. Можешь на меня положиться!",
+                    f"Мой друг, у меня {real_resources['Кроны']:,} крон в казне, {real_resources['Кристаллы']:,} кристаллов в хранилищах и {real_resources['Рабочие']:,} верных рабочих. Всё прозрачно между нами!",
+                    f"Как у брата: крон — {real_resources['Кроны']:,}, кристаллов — {real_resources['Кристаллы']:,}, рабочих — {real_resources['Рабочие']:,}."
+                ]
+                return random.choice(responses)
+            else:
+                friendly_responses = {
+                    'Кроны': [
+                        f"Для тебя без секретов: в казне {real_resources['Кроны']:,} крон!",
+                        f"Золота у меня {real_resources['Кроны']:,} монет. Можешь не сомневаться!",
+                        f"Крон в наличии: {real_resources['Кроны']:,}. Всё честно!"
+                    ],
+                    'Кристаллы': [
+                        f"Кристаллов у меня {real_resources['Кристаллы']:,}. Сияют как никогда!",
+                        f"В хранилищах {real_resources['Кристаллы']:,} кристаллов. Можешь проверить сам!",
+                        f"Магических кристаллов: {real_resources['Кристаллы']:,}. Полный порядок!"
+                    ],
+                    'Рабочие': [
+                        f"Рабочих трудится {real_resources['Рабочие']:,}. Все верны и преданы!",
+                        f"Наш народ: {real_resources['Рабочие']:,} трудолюбивых рабочих!",
+                        f"Рабочая сила в полном объёме: {real_resources['Рабочие']:,} человек."
+                    ]
+                }
+                return random.choice(friendly_responses.get(resource_type, [
+                    f"У меня {real_resources[resource_type]:,} {resource_type.lower()}."]))
+
     def _on_textinput_focus_android(self, instance, value):
         """Обработка фокуса для Android с адаптивной прокруткой"""
         if kivy_platform != 'android':
@@ -981,11 +1153,15 @@ class EnhancedDiplomacyChat():
         if self._is_improve_relations_request(player_message):
             return self._handle_improve_relations_request(player_message, target_faction, relation_level)
 
-        # 6. ПРОВЕРКА НА ОСКОРБЛЕНИЯ И УГРОЗЫ (ПЕРЕД ВОЙНОЙ)
+        # 6. ПРОВЕРКА НА ВОПРОСЫ О РЕСУРСАХ (ТОЧНЫЕ ЦИФРЫ)
+        if self._is_resource_inquiry(player_message):
+            return self._handle_resource_inquiry(player_message, target_faction, relation_level)
+
+        # 7. ПРОВЕРКА НА ОСКОРБЛЕНИЯ И УГРОЗЫ (ПЕРЕД ВОЙНОЙ)
         if self._is_insult_or_threat(player_message):
             return self._handle_insult_or_threat(player_message, target_faction, relation_level)
 
-        # 7. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ (общие)
+        # 8. ПРОВЕРКА НА ВОПРОСЫ О ДЕЛАХ/СОСТОЯНИИ/РЕСУРСАХ/АРМИИ (общие)
         if self._is_status_inquiry(player_message):
             # При плохих отношениях - хамим на запросы о ресурсах/армии
             if relation_level < 20:
@@ -1002,27 +1178,27 @@ class EnhancedDiplomacyChat():
             else:
                 return self._generate_status_response(target_faction)
 
-        # 8. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
+        # 9. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ СОЮЗА
         if self._is_alliance_proposal(player_message):
             return self._handle_alliance_proposal(player_message, target_faction, relation_level)
 
-        # 9. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
+        # 10. ПРОВЕРКА НА ПРЕДЛОЖЕНИЯ МИРА
         if self._is_peace_proposal(player_message):
             return self._handle_peace_proposal(player_message, target_faction)
 
-        # 10. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
+        # 11. ПРОВЕРКА НА ОБЪЯВЛЕНИЕ ВОЙНЫ
         if self._is_war_declaration(player_message):
             return self._handle_war_declaration(player_message, target_faction)
 
-        # 11. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
+        # 12. ПРОВЕРКА НА ПОДСТРЕКАТЕЛЬСТВО/ПРОВОКАЦИЮ
         if self._is_provocation(player_message):
             return self._handle_provocation(player_message, target_faction, relation_level)
 
-        # 12. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
+        # 13. ПРОВЕРКА НА РАЗРЫВ ОТНОШЕНИЙ
         if self._is_relationship_break(player_message):
             return self._handle_relationship_break(player_message, target_faction)
 
-        # 12. НОВАЯ ЛОГИКА: Определяем запрос ресурсов БЕЗ указания типа/количества
+        # 14. НОВАЯ ЛОГИКА: Определяем запрос ресурсов БЕЗ указания типа/количества
         is_resource_request = self._is_resource_request(player_message)
 
         if is_resource_request:
@@ -1076,7 +1252,7 @@ class EnhancedDiplomacyChat():
                 }
                 return f"Хочешь {amount:,} {resource_type}? Что предлагаешь взамен?"
 
-        # 13. Старый метод как запасной вариант для прямых запросов
+        # 15. Старый метод как запасной вариант для прямых запросов
         trade_offer = self._extract_trade_offer(player_message)
         if trade_offer:
             print(f"DEBUG: Найден готовый trade_offer: {trade_offer}")
@@ -2028,6 +2204,7 @@ class EnhancedDiplomacyChat():
         request_words = [
             'нужен', 'нужны', 'нужно', 'нуждаюсь', 'нуждается',
             'дай', 'дайте', 'предоставь', 'предоставьте', 'отдай', 'отдайте',
+            'подкинь', 'скинь', 'переведи',
             'хочу', 'хотел', 'хотела', 'хотелось', 'желаю', 'желаем',
             'получить', 'получать', 'достать', 'надо', 'надобно',
             'можно', 'мог бы', 'могла бы', 'могли бы',
@@ -3166,16 +3343,21 @@ class EnhancedDiplomacyChat():
             return (1, 1, 1, 1)
 
     def _is_status_inquiry(self, message):
-        """Определяет, является ли сообщение запросом о делах/состоянии"""
+        """Определяет, является ли сообщение общим запросом о состоянии (без упоминания конкретных ресурсов)"""
+        message_lower = message.lower()
+
+        # Исключаем вопросы с упоминанием конкретных ресурсов
+        resource_words = ['крон', 'золот', 'деньг', 'монет', 'кристалл', 'руда', 'минерал',
+                          'рабоч', 'люд', 'крестьян', 'работник', 'ресурс']
+        if any(word in message_lower for word in resource_words):
+            return False
+
         inquiry_keywords = [
             'как дела', 'как ты', 'как ваши дела', 'что нового', 'как твои дела', 'ты как',
             'как поживаешь', 'как жизнь', 'как успехи', 'что по войскам',
-            'как армия', 'какие ресурсы', 'сколько войск', 'сила армии',
-            'ресурсы есть', 'есть ли войска', 'мощь', 'могущество', 'что у тебя с ресурсами',
-            'состояние', 'положение', 'обстановка', 'ситуация', 'что с ресурсами', 'какие у тебя ресурсы'
+            'как армия', 'сила армии', 'мощь', 'могущество', 'состояние',
+            'положение', 'обстановка', 'ситуация'
         ]
-
-        message_lower = message.lower()
         return any(keyword in message_lower for keyword in inquiry_keywords)
 
     def _generate_status_response(self, faction):
