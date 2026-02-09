@@ -4,15 +4,12 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
-from kivy.graphics import Color, Line, RoundedRectangle
+from kivy.graphics import Color, RoundedRectangle
 from kivy.metrics import dp, sp
-from kivy.clock import Clock
 from kivy.uix.popup import Popup
-from kivy.uix.spinner import Spinner
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.core.window import Window
 import sqlite3
-import random
 import threading
 
 from economic import format_number
@@ -487,54 +484,64 @@ class StyledButton(ButtonBehavior, BoxLayout):
 
 def calculate_peace_army_points(conn, faction):
     """
-    Вычисляет общую силу армии фракции по новой логике:
-    - Класс 1: базовая сила
-    - Герои (класс 2 и 3): усиливают класс 1 умножением
-    - Прочие юниты (класс 4+): просто добавляются к общей силе
+    Вычисляет общую силу армии фракции с локальными бонусами:
+    - Герои 2 и 3 класса усиливают ТОЛЬКО юнитов 1 класса из своего гарнизона
+    - Бонусы не распространяются между городами
     """
     cursor = conn.cursor()
-    factions_data = {}
 
     try:
+        # Получаем данные с привязкой к городу
         cursor.execute("""
-            SELECT g.unit_name, g.unit_count, u.attack, u.defense, u.durability, u.unit_class 
+            SELECT g.city_name, g.unit_name, g.unit_count, u.attack, u.defense, u.durability, u.unit_class 
             FROM garrisons g
             JOIN units u ON g.unit_name = u.unit_name
             WHERE u.faction = ?
         """, (faction,))
         units_data = cursor.fetchall()
 
-        # Инициализируем данные для текущей фракции
-        factions_data[faction] = {
-            "class_1": {"count": 0, "total_stats": 0},
-            "heroes": {"total_stats": 0},   # классы 2 и 3
-            "others": {"total_stats": 0}    # классы 4 и выше
-        }
+        # Группируем юниты по городам
+        cities_data = {}
 
-        for unit_name, unit_count, attack, defense, durability, unit_class in units_data:
+        for row in units_data:
+            city_name, unit_name, unit_count, attack, defense, durability, unit_class = row
+
+            if city_name not in cities_data:
+                cities_data[city_name] = {
+                    "class_1": {"count": 0, "total_stats": 0},
+                    "heroes": {"total_stats": 0},   # классы 2 и 3
+                    "others": {"total_stats": 0}    # классы 4 и выше
+                }
+
             stats_sum = attack + defense + durability
 
             if unit_class == "1":
-                factions_data[faction]["class_1"]["count"] += unit_count
-                factions_data[faction]["class_1"]["total_stats"] += stats_sum * unit_count
+                cities_data[city_name]["class_1"]["count"] += unit_count
+                cities_data[city_name]["class_1"]["total_stats"] += stats_sum * unit_count
             elif unit_class in ("2", "3"):
-                factions_data[faction]["heroes"]["total_stats"] += stats_sum * unit_count
+                cities_data[city_name]["heroes"]["total_stats"] += stats_sum * unit_count
             else:
-                factions_data[faction]["others"]["total_stats"] += stats_sum * unit_count
+                cities_data[city_name]["others"]["total_stats"] += stats_sum * unit_count
 
-        # Рассчитываем силу армии
-        data = factions_data[faction]
-        class_1_count = data["class_1"]["count"]
-        base_stats = data["class_1"]["total_stats"]
-        hero_bonus = data["heroes"]["total_stats"]
-        others_stats = data["others"]["total_stats"]
-
+        # Рассчитываем силу для каждого города отдельно
         total_strength = 0
 
-        if class_1_count > 0:
-            total_strength += base_stats + hero_bonus * class_1_count
+        for city, data in cities_data.items():
+            class_1_count = data["class_1"]["count"]
+            base_stats = data["class_1"]["total_stats"]
+            hero_bonus = data["heroes"]["total_stats"]
+            others_stats = data["others"]["total_stats"]
 
-        total_strength += others_stats
+            city_strength = 0
+
+            # Бонусы героев применяются ТОЛЬКО к юнитам 1 класса в этом городе
+            if class_1_count > 0:
+                city_strength += base_stats + hero_bonus * class_1_count
+
+            # Юниты 4+ класса добавляются без бонусов
+            city_strength += others_stats
+
+            total_strength += city_strength
 
         return total_strength
 
@@ -542,66 +549,73 @@ def calculate_peace_army_points(conn, faction):
         print(f"Ошибка при вычислении очков армии: {e}")
         return 0
 
-#-------------------------------------
 
 def calculate_army_strength(conn):
-    """Рассчитывает силу армий для каждой фракции по новой логике."""
+    """Рассчитывает силу армий для каждой фракции с локальными бонусами по гарнизонам."""
 
     army_strength = {}
 
     try:
         cursor = conn.cursor()
 
-        # Получаем все юниты из таблицы garrisons и их характеристики из units
+        # Получаем все юниты с привязкой к городу
         cursor.execute("""
-            SELECT g.unit_name, g.unit_count, u.faction, u.attack, u.defense, u.durability, u.unit_class 
+            SELECT g.city_name, g.unit_name, g.unit_count, u.faction, u.attack, u.defense, u.durability, u.unit_class 
             FROM garrisons g
             JOIN units u ON g.unit_name = u.unit_name
         """)
         garrison_data = cursor.fetchall()
 
-        # Собираем данные по фракциям
+        # Собираем данные по фракциям и городам
         factions_data = {}
 
         for row in garrison_data:
-            unit_name, unit_count, faction, attack, defense, durability, unit_class = row
+            city_name, unit_name, unit_count, faction, attack, defense, durability, unit_class = row
 
             if not faction:
                 continue
 
-            key = faction
-            if key not in factions_data:
-                factions_data[key] = {
+            if faction not in factions_data:
+                factions_data[faction] = {}
+
+            if city_name not in factions_data[faction]:
+                factions_data[faction][city_name] = {
                     "class_1": {"count": 0, "total_stats": 0},
                     "heroes": {"total_stats": 0},  # герои класса 2 и 3
-                    "others": {"total_stats": 0}   # юниты класса 4 и 5
+                    "others": {"total_stats": 0}   # юниты класса 4 и выше
                 }
 
             stats_sum = attack + defense + durability
+            city_data = factions_data[faction][city_name]
 
             if unit_class == "1":
-                factions_data[key]["class_1"]["count"] += unit_count
-                factions_data[key]["class_1"]["total_stats"] += stats_sum * unit_count
+                city_data["class_1"]["count"] += unit_count
+                city_data["class_1"]["total_stats"] += stats_sum * unit_count
             elif unit_class in ("2", "3"):
-                factions_data[key]["heroes"]["total_stats"] += stats_sum * unit_count
+                city_data["heroes"]["total_stats"] += stats_sum * unit_count
             else:  # класс 4 и выше
-                factions_data[key]["others"]["total_stats"] += stats_sum * unit_count
+                city_data["others"]["total_stats"] += stats_sum * unit_count
 
-        # Применяем новую формулу
-        for faction, data in factions_data.items():
-            class_1_count = data["class_1"]["count"]
-            base_stats = data["class_1"]["total_stats"]
-            hero_bonus = data["heroes"]["total_stats"]
-            others_stats = data["others"]["total_stats"]
+        # Рассчитываем силу для каждой фракции
+        for faction, cities in factions_data.items():
+            faction_strength = 0
 
-            total_strength = 0
+            for city, data in cities.items():
+                class_1_count = data["class_1"]["count"]
+                base_stats = data["class_1"]["total_stats"]
+                hero_bonus = data["heroes"]["total_stats"]
+                others_stats = data["others"]["total_stats"]
 
-            if class_1_count > 0:
-                total_strength += base_stats + hero_bonus * class_1_count
+                city_strength = 0
 
-            total_strength += others_stats
+                # Локальное применение бонусов: только внутри города
+                if class_1_count > 0:
+                    city_strength += base_stats + hero_bonus * class_1_count
 
-            army_strength[faction] = total_strength
+                city_strength += others_stats
+                faction_strength += city_strength
+
+            army_strength[faction] = faction_strength
 
     except Exception as e:
         print(f"Ошибка при работе с базой данных: {e}")
@@ -610,7 +624,6 @@ def calculate_army_strength(conn):
     # Возвращаем два словаря: один с числовыми значениями, другой с отформатированными строками
     formatted_army_strength = {faction: format_number(strength) for faction, strength in army_strength.items()}
     return army_strength, formatted_army_strength
-
 
 def create_army_rating_table(conn):
     """Создает таблицу рейтинга армий с улучшенным дизайном."""
