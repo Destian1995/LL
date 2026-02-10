@@ -1307,35 +1307,9 @@ class FortressInfoPopup(Popup):
             spacing=dp(5)
         )
 
-        # Текущее потребление (форматируем до 1 знака)
-        current_label = Label(
-            text=f"Текущее потребление: {current_consumption:.1f}",
-            font_size=sp(16),
-            color=(0.7, 0.7, 0.7, 1),
-            size_hint_y=None,
-            height=dp(30),
-            halign='left',
-            valign='middle'
-        )
-        current_label.bind(size=current_label.setter('text_size'))
-        consumption_info.add_widget(current_label)
-
-        # Лимит армии (форматируем до 1 знака)
-        limit_label = Label(
-            text=f"Лимит армии: {army_limit:.1f}",
-            font_size=sp(16),
-            color=(0.7, 0.7, 0.7, 1),
-            size_hint_y=None,
-            height=dp(30),
-            halign='left',
-            valign='middle'
-        )
-        limit_label.bind(size=limit_label.setter('text_size'))
-        consumption_info.add_widget(limit_label)
-
-        # Новое потребление (динамически обновляется, форматируем до 1 знака)
+        # Потребление (динамически обновляется, форматируем до 1 знака)
         new_consumption_label = Label(
-            text=f"Новое потребление: {current_consumption:.1f}",
+            text=f"Потребление: {current_consumption:.1f}",
             font_size=sp(18),
             color=(0.3, 0.7, 0.3, 1),  # Зелёный по умолчанию
             bold=True,
@@ -1381,7 +1355,7 @@ class FortressInfoPopup(Popup):
             selected_count = int(value)
             slider_label.text = f"Количество: {selected_count}"
 
-            # Рассчитываем новое потребление (без округления для точной проверки)
+            # Рассчитываем Потребление (без округления для точной проверки)
             new_consumption = current_consumption + (unit_consumption * selected_count)
 
             # Форматируем для отображения с 1 знаком после запятой
@@ -1390,10 +1364,10 @@ class FortressInfoPopup(Popup):
             # Обновляем цвет в зависимости от превышения лимита
             if new_consumption > army_limit:
                 new_consumption_label.color = (1, 0, 0, 1)  # Красный
-                new_consumption_label.text = f"Новое потребление: {formatted_consumption} (ПРЕВЫШЕНИЕ!)"
+                new_consumption_label.text = f"Потребление: {formatted_consumption} (ПРЕВЫШЕНИЕ!)"
             else:
                 new_consumption_label.color = (0.3, 0.7, 0.3, 1)  # Зелёный
-                new_consumption_label.text = f"Новое потребление: {formatted_consumption}"
+                new_consumption_label.text = f"Потребление: {formatted_consumption}"
 
         slider.bind(value=update_slider_label_and_consumption)
         slider_container.add_widget(slider_label)
@@ -1435,7 +1409,7 @@ class FortressInfoPopup(Popup):
                     if new_consumption > army_limit:
                         show_popup_message(
                             "Превышение лимита",
-                            f"Новое потребление ({new_consumption:.1f}) превысит лимит армии ({army_limit:.1f})."
+                            f"Потребление ({new_consumption:.1f}) превысит лимит армии ({army_limit:.1f})."
                         )
                         return
 
