@@ -2300,17 +2300,6 @@ def open_development_popup(faction):
         RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(8)])
     header_layout.add_widget(icon_container)
 
-    title_label = Label(
-        text="[b]Развитие государства[/b]",
-        markup=True,
-        font_size=sp(20) if is_mobile else sp(26),
-        color=(0.95, 0.98, 1, 1),
-        halign='left',
-        valign='middle',
-        size_hint_x=0.9
-    )
-    title_label.bind(size=title_label.setter('text_size'))
-    header_layout.add_widget(title_label)
     main_layout.add_widget(header_layout)
 
     # Tabbed Panel - компактный
@@ -2362,35 +2351,40 @@ def open_development_popup(faction):
     )
     build_content.bind(minimum_height=build_content.setter('height'))
 
-    # 1. Визуальный индикатор соотношения - КОМПАКТНЫЙ
-    visual_ratio = BoxLayout(
+    # 1. Название стратегии и описание под ним
+    strategy_display = BoxLayout(
         orientation='vertical',
         size_hint_y=None,
-        height=dp(70) if is_mobile else dp(140),
+        height=dp(90) if is_mobile else dp(120),
         padding=[dp(6), dp(6), dp(6), dp(4)]
     )
 
-    ratio_label = Label(
-        text="Соотношение строительства",
-        font_size=sp(13) if is_mobile else sp(16),
-        color=(0.7, 0.85, 1, 1),
-        size_hint_y=None,
-        height=dp(18)
-    )
-
-    ratio_big = Label(
-        text="1 : 1",
-        font_size=sp(28) if is_mobile else sp(48),
+    # Название стратегии
+    strategy_main_name = Label(
+        text="Баланс",
+        font_size=sp(22) if is_mobile else sp(28),
         bold=True,
         color=(1, 0.95, 0.8, 1),
         halign='center',
         valign='middle'
     )
-    ratio_big.bind(size=ratio_big.setter('text_size'))
+    strategy_main_name.bind(size=strategy_main_name.setter('text_size'))
 
-    visual_ratio.add_widget(ratio_label)
-    visual_ratio.add_widget(ratio_big)
-    build_content.add_widget(visual_ratio)
+    # Описание стратегии под названием
+    strategy_description = Label(
+        text="Идеально если не знаете что выбрать",
+        font_size=sp(13) if is_mobile else sp(15),
+        color=(0.85, 0.9, 0.95, 0.9),
+        halign='center',
+        valign='top',
+        size_hint_y=None,
+        height=dp(50) if is_mobile else dp(70)
+    )
+    strategy_description.bind(size=strategy_description.setter('text_size'))
+
+    strategy_display.add_widget(strategy_main_name)
+    strategy_display.add_widget(strategy_description)
+    build_content.add_widget(strategy_display)
 
     # 2. Слайдер с компактной индикацией
     slider_container = BoxLayout(
@@ -2400,18 +2394,13 @@ def open_development_popup(faction):
         height=dp(65) if is_mobile else dp(70)
     )
 
-    # Метки для слайдера
-    slider_labels = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(18))
-    slider_container.add_widget(slider_labels)
-
-    # Сам слайдер - увеличен для тача (ИСПРАВЛЕНО: убран cursor_image)
+    # Сам слайдер
     slider = Slider(
         min=0,
         max=8,
         value=4,
         step=1,
         cursor_size=(dp(42) if is_mobile else dp(45), dp(42) if is_mobile else dp(45)),
-        # cursor_image убран - нельзя передавать None
         background_width=dp(10),
         size_hint_y=None,
         height=dp(30) if is_mobile else dp(35)
@@ -2427,11 +2416,12 @@ def open_development_popup(faction):
         height=dp(45) if is_mobile else dp(55)
     )
 
+    # Изменены цвета: Больницы - зеленый, Фабрики - синий
     left_btn = Button(
         text="Больницы",
         font_size=sp(14) if is_mobile else sp(16),
         bold=True,
-        background_color=(0.75, 0.3, 0.3, 1),
+        background_color=(0.35, 0.75, 0.4, 1),  # Зеленый
         background_normal='',
         padding=[dp(6), dp(6)]
     )
@@ -2440,7 +2430,7 @@ def open_development_popup(faction):
         text="Фабрики",
         font_size=sp(14) if is_mobile else sp(16),
         bold=True,
-        background_color=(0.3, 0.7, 0.4, 1),
+        background_color=(0.3, 0.5, 0.9, 1),  # Синий
         background_normal='',
         padding=[dp(6), dp(6)]
     )
@@ -2453,50 +2443,7 @@ def open_development_popup(faction):
     quick_buttons.add_widget(right_btn)
     build_content.add_widget(quick_buttons)
 
-    # 4. Карточка стратегии - КОМПАКТНАЯ
-    strategy_card = BoxLayout(
-        orientation='vertical',
-        size_hint_y=None,
-        height=dp(75) if is_mobile else dp(100),
-        padding=[dp(10), dp(8), dp(10), dp(8)],
-        spacing=dp(2)
-    )
-    with strategy_card.canvas.before:
-        Color(0.22, 0.28, 0.42, 0.9)
-        strategy_card.bg = RoundedRectangle(radius=[dp(10)], size=strategy_card.size, pos=strategy_card.pos)
-        strategy_card.bind(
-            pos=lambda inst, val: setattr(strategy_card.bg, 'pos', val),
-            size=lambda inst, val: setattr(strategy_card.bg, 'size', val)
-        )
-
-    strategy_title = Label(
-        text="[b]Баланс[/b]",
-        markup=True,
-        font_size=sp(16) if is_mobile else sp(20),
-        color=(0.7, 0.95, 1, 1),
-        halign='center',
-        valign='middle',
-        size_hint_y=None,
-        height=dp(22)
-    )
-    strategy_title.bind(size=strategy_title.setter('text_size'))
-
-    strategy_desc = Label(
-        text="Идеально если не знаете что выбрать",
-        font_size=sp(12) if is_mobile else sp(15),
-        color=(0.85, 0.9, 0.95, 0.9),
-        halign='center',
-        valign='top',
-        size_hint_y=None,
-        height=dp(40) if is_mobile else dp(55)
-    )
-    strategy_desc.bind(size=strategy_desc.setter('text_size'))
-
-    strategy_card.add_widget(strategy_title)
-    strategy_card.add_widget(strategy_desc)
-    build_content.add_widget(strategy_card)
-
-    # 5. Основные кнопки действия - КОМПАКТНЫЕ
+    # 4. Основные кнопки действия - КОМПАКТНЫЕ
     action_buttons = BoxLayout(
         orientation='horizontal',
         spacing=dp(10) if is_mobile else dp(15),
@@ -2532,12 +2479,11 @@ def open_development_popup(faction):
 
     # Устанавливаем минимальную высоту контента
     build_content.height = (
-            visual_ratio.height +
+            strategy_display.height +
             slider_container.height +
             quick_buttons.height +
-            strategy_card.height +
             action_buttons.height +
-            (build_content.spacing * 4) +
+            (build_content.spacing * 3) +
             (build_content.padding[1] + build_content.padding[3])
     )
 
@@ -2675,20 +2621,26 @@ def open_development_popup(faction):
     def update_ui(instance, value):
         idx = int(value)
         h, f = RATIOS[idx]
-        ratio_big.text = f"{h} : {f}"
-        strategy_title.text = f"[b]{RATIO_NAMES[idx]}[/b]"
-        strategy_desc.text = RATIO_DESCS[idx]
 
-        # Цветовая индикация кнопок
+        # Обновляем главное название стратегии
+        strategy_main_name.text = RATIO_NAMES[idx]
+
+        # Обновляем описание под названием
+        strategy_description.text = RATIO_DESCS[idx]
+
+        # Цветовая индикация кнопок - теперь для зеленого/синего
         if h > f:
-            left_btn.background_color = (0.9, 0.35, 0.35, 1)
-            right_btn.background_color = (0.35, 0.7, 0.45, 0.7)
+            # Больше больниц - левая кнопка (зеленая) ярче
+            left_btn.background_color = (0.35, 0.85, 0.45, 1)  # Ярко-зеленый
+            right_btn.background_color = (0.3, 0.5, 0.9, 0.7)  # Бледно-синий
         elif f > h:
-            left_btn.background_color = (0.85, 0.4, 0.4, 0.7)
-            right_btn.background_color = (0.35, 0.9, 0.45, 1)
+            # Больше фабрик - правая кнопка (синяя) ярче
+            left_btn.background_color = (0.35, 0.75, 0.4, 0.7)  # Бледно-зеленый
+            right_btn.background_color = (0.3, 0.6, 1, 1)  # Ярко-синий
         else:
-            left_btn.background_color = (0.85, 0.4, 0.4, 1)
-            right_btn.background_color = (0.35, 0.7, 0.45, 1)
+            # Равные соотношения - обе кнопки нормальные
+            left_btn.background_color = (0.35, 0.75, 0.4, 1)  # Зеленый
+            right_btn.background_color = (0.3, 0.5, 0.9, 1)  # Синий
 
     # Загрузка текущих настроек
     if hasattr(faction, 'auto_build_ratio') and faction.auto_build_ratio in RATIOS:
@@ -2713,7 +2665,7 @@ def open_development_popup(faction):
         faction.auto_build_enabled = True
         faction.save_auto_build_settings()
         dev_popup.dismiss()
-        show_message("Как прикажете!", f"Соотношение: {RATIOS[idx][0]}:{RATIOS[idx][1]}")
+        show_message("Сохранение...", f"Как прикажете!")
 
     apply_btn.bind(on_release=apply_settings)
     cancel_btn.bind(on_release=lambda _: dev_popup.dismiss())
