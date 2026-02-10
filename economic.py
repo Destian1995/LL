@@ -2292,15 +2292,6 @@ def open_development_popup(faction):
 
     main_layout = BoxLayout(orientation='vertical', padding=padding, spacing=spacing)
 
-    # Заголовок - ультра-компактный для мобильных
-    header_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=header_height, spacing=dp(6))
-    icon_container = BoxLayout(size_hint=(None, None), size=(dp(36), dp(36)))
-    with icon_container.canvas:
-        Color(0.3, 0.5, 0.9, 1)
-        RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(8)])
-    header_layout.add_widget(icon_container)
-
-    main_layout.add_widget(header_layout)
 
     # Tabbed Panel - компактный
     tab_panel = TabbedPanel(
