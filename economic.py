@@ -2256,7 +2256,7 @@ def open_development_popup(faction):
     from kivy.uix.image import Image
     from kivy.uix.slider import Slider
     from kivy.uix.popup import Popup
-    from kivy import platform  # Используем platform вместо Platform
+    from kivy import platform
 
     # Вспомогательная функция форматирования чисел
     def format_number(value):
@@ -2265,18 +2265,22 @@ def open_development_popup(faction):
         return str(value)
 
     # Определяем размеры для мобильных устройств
-    current_platform = platform  # Получаем платформу
+    current_platform = platform
     is_mobile = current_platform in ['android', 'ios']
+
     if is_mobile:
-        popup_size_hint = (0.96, 0.94)
-        tab_height = dp(45)
-        header_height = dp(50)
-        spacing = dp(10)
+        # Более компактные размеры для Android
+        popup_size_hint = (0.98, 0.95)
+        tab_height = dp(40)
+        header_height = dp(45)
+        spacing = dp(8)
+        padding = [dp(8), dp(10), dp(8), dp(8)]
     else:
         popup_size_hint = (0.94, 0.9)
         tab_height = dp(50)
         header_height = dp(60)
         spacing = dp(16)
+        padding = [dp(16), dp(20), dp(16), dp(16)]
 
     dev_popup = Popup(
         title="",
@@ -2286,32 +2290,33 @@ def open_development_popup(faction):
         auto_dismiss=False
     )
 
-    main_layout = BoxLayout(orientation='vertical', padding=[dp(12), dp(15), dp(12), dp(12)], spacing=spacing)
+    main_layout = BoxLayout(orientation='vertical', padding=padding, spacing=spacing)
 
-    # Заголовок - адаптированный для мобильных
-    header_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=header_height, spacing=dp(8))
-    icon_container = BoxLayout(size_hint=(None, None), size=(dp(40), dp(40)))
+    # Заголовок - ультра-компактный для мобильных
+    header_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=header_height, spacing=dp(6))
+    icon_container = BoxLayout(size_hint=(None, None), size=(dp(36), dp(36)))
     with icon_container.canvas:
         Color(0.3, 0.5, 0.9, 1)
-        RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(10)])
+        RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(8)])
     header_layout.add_widget(icon_container)
 
     title_label = Label(
         text="[b]Развитие государства[/b]",
         markup=True,
-        font_size=sp(22) if is_mobile else sp(26),
+        font_size=sp(20) if is_mobile else sp(26),
         color=(0.95, 0.98, 1, 1),
         halign='left',
-        valign='middle'
+        valign='middle',
+        size_hint_x=0.9
     )
     title_label.bind(size=title_label.setter('text_size'))
     header_layout.add_widget(title_label)
     main_layout.add_widget(header_layout)
 
-    # Tabbed Panel - адаптированный для мобильных
+    # Tabbed Panel - компактный
     tab_panel = TabbedPanel(
         do_default_tab=False,
-        tab_width=dp(140) if is_mobile else dp(160),
+        tab_width=dp(120) if is_mobile else dp(160),
         tab_height=tab_height,
         background_color=(0, 0, 0, 0)
     )
@@ -2319,7 +2324,7 @@ def open_development_popup(faction):
     # === Вкладка "Строительство" ===
     build_tab = TabbedPanelItem(
         text=" Строительство",
-        font_size=sp(16) if is_mobile else sp(17),
+        font_size=sp(15) if is_mobile else sp(17),
         color=(0.9, 0.95, 1, 1),
         background_normal='',
         background_down='',
@@ -2329,11 +2334,10 @@ def open_development_popup(faction):
     # Контейнер для вкладки строительства
     build_content_container = BoxLayout(orientation='vertical')
 
-    # Фон для контента вкладки
     with build_content_container.canvas.before:
         Color(0.0, 0.0, 0.0, 1)
         build_content_container.bg = RoundedRectangle(
-            radius=[dp(12)],
+            radius=[dp(10)],
             size=build_content_container.size,
             pos=build_content_container.pos
         )
@@ -2342,127 +2346,149 @@ def open_development_popup(faction):
             size=lambda inst, val: setattr(build_content_container.bg, 'size', val)
         )
 
-    # ScrollView для мобильных устройств
-    build_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
-    build_content = BoxLayout(orientation='vertical', spacing=dp(12) if is_mobile else dp(18), padding=dp(10) if is_mobile else dp(14))
+    # ScrollView для мобильных устройств - обязательно!
+    build_scroll = ScrollView(
+        size_hint=(1, 1),
+        do_scroll_x=False,
+        bar_width=dp(4) if is_mobile else dp(6),
+        bar_color=(0.5, 0.5, 0.5, 0.3)
+    )
 
-    # Визуальный индикатор - адаптированный размер
+    build_content = BoxLayout(
+        orientation='vertical',
+        spacing=dp(10) if is_mobile else dp(18),
+        padding=[dp(8), dp(10), dp(8), dp(10)] if is_mobile else dp(14),
+        size_hint_y=None
+    )
+    build_content.bind(minimum_height=build_content.setter('height'))
+
+    # 1. Визуальный индикатор соотношения - КОМПАКТНЫЙ
     visual_ratio = BoxLayout(
         orientation='vertical',
         size_hint_y=None,
-        height=dp(100) if is_mobile else dp(140),
-        padding=[dp(8), dp(10), dp(8), dp(5)]
+        height=dp(70) if is_mobile else dp(140),
+        padding=[dp(6), dp(6), dp(6), dp(4)]
     )
+
     ratio_label = Label(
-        text="Текущее соотношение",
-        font_size=sp(14) if is_mobile else sp(16),
+        text="Соотношение строительства",
+        font_size=sp(13) if is_mobile else sp(16),
         color=(0.7, 0.85, 1, 1),
         size_hint_y=None,
-        height=dp(20)
+        height=dp(18)
     )
+
     ratio_big = Label(
         text="1 : 1",
-        font_size=sp(36) if is_mobile else sp(48),
+        font_size=sp(28) if is_mobile else sp(48),
         bold=True,
         color=(1, 0.95, 0.8, 1),
         halign='center',
         valign='middle'
     )
     ratio_big.bind(size=ratio_big.setter('text_size'))
+
     visual_ratio.add_widget(ratio_label)
     visual_ratio.add_widget(ratio_big)
     build_content.add_widget(visual_ratio)
 
-    # Слайдер - увеличен для тач-управления
-    slider_container = BoxLayout(orientation='vertical', spacing=dp(5), size_hint_y=None, height=dp(80) if is_mobile else dp(70))
+    # 2. Слайдер с компактной индикацией
+    slider_container = BoxLayout(
+        orientation='vertical',
+        spacing=dp(4),
+        size_hint_y=None,
+        height=dp(65) if is_mobile else dp(70)
+    )
 
-    # Добавляем метки для слайдера
-    slider_labels = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(20))
+    # Метки для слайдера
+    slider_labels = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(18))
     slider_container.add_widget(slider_labels)
 
+    # Сам слайдер - увеличен для тача (ИСПРАВЛЕНО: убран cursor_image)
     slider = Slider(
         min=0,
         max=8,
         value=4,
         step=1,
-        cursor_size=(dp(50) if is_mobile else dp(45), dp(50) if is_mobile else dp(45)),  # Увеличен для тача
-        background_width=dp(12),
+        cursor_size=(dp(42) if is_mobile else dp(45), dp(42) if is_mobile else dp(45)),
+        # cursor_image убран - нельзя передавать None
+        background_width=dp(10),
         size_hint_y=None,
-        height=dp(40) if is_mobile else dp(35)
+        height=dp(30) if is_mobile else dp(35)
     )
     slider_container.add_widget(slider)
     build_content.add_widget(slider_container)
 
-    # Кнопки управления слайдером - увеличены для тача
-    slider_buttons = BoxLayout(
+    # 3. Быстрые кнопки управления слайдером - КОМПАКТНЫЕ
+    quick_buttons = BoxLayout(
         orientation='horizontal',
-        spacing=dp(15) if is_mobile else dp(25),
+        spacing=dp(8) if is_mobile else dp(15),
         size_hint_y=None,
-        height=dp(60) if is_mobile else dp(55)
+        height=dp(45) if is_mobile else dp(55)
     )
+
     left_btn = Button(
         text="Больницы",
-        font_size=sp(16) if is_mobile else sp(16),
+        font_size=sp(14) if is_mobile else sp(16),
         bold=True,
         background_color=(0.75, 0.3, 0.3, 1),
-        background_normal=''
+        background_normal='',
+        padding=[dp(6), dp(6)]
     )
+
     right_btn = Button(
         text="Фабрики",
-        font_size=sp(16) if is_mobile else sp(16),
+        font_size=sp(14) if is_mobile else sp(16),
         bold=True,
         background_color=(0.3, 0.7, 0.4, 1),
-        background_normal=''
+        background_normal='',
+        padding=[dp(6), dp(6)]
     )
 
-    # Для мобильных: делаем кнопки одинакового размера
-    if is_mobile:
-        left_btn.size_hint_x = 0.48
-        right_btn.size_hint_x = 0.48
-    else:
-        left_btn.size_hint_x = 0.45
-        right_btn.size_hint_x = 0.45
+    # Равные размеры кнопок
+    left_btn.size_hint_x = 0.48
+    right_btn.size_hint_x = 0.48
 
-    slider_buttons.add_widget(left_btn)
-    slider_buttons.add_widget(right_btn)
-    build_content.add_widget(slider_buttons)
+    quick_buttons.add_widget(left_btn)
+    quick_buttons.add_widget(right_btn)
+    build_content.add_widget(quick_buttons)
 
-    # Стратегия - адаптированный размер
+    # 4. Карточка стратегии - КОМПАКТНАЯ
     strategy_card = BoxLayout(
         orientation='vertical',
         size_hint_y=None,
-        height=dp(85) if is_mobile else dp(100),
-        padding=[dp(12) if is_mobile else dp(18), dp(10) if is_mobile else dp(14), dp(12) if is_mobile else dp(18), dp(10) if is_mobile else dp(14)],
-        spacing=dp(4)
+        height=dp(75) if is_mobile else dp(100),
+        padding=[dp(10), dp(8), dp(10), dp(8)],
+        spacing=dp(2)
     )
     with strategy_card.canvas.before:
-        Color(0.22, 0.28, 0.42, 1)
-        strategy_card.bg = RoundedRectangle(radius=[dp(12)], size=strategy_card.size, pos=strategy_card.pos)
+        Color(0.22, 0.28, 0.42, 0.9)
+        strategy_card.bg = RoundedRectangle(radius=[dp(10)], size=strategy_card.size, pos=strategy_card.pos)
         strategy_card.bind(
             pos=lambda inst, val: setattr(strategy_card.bg, 'pos', val),
             size=lambda inst, val: setattr(strategy_card.bg, 'size', val)
         )
 
     strategy_title = Label(
-        text="[b]Идеальный баланс[/b]",
+        text="[b]Баланс[/b]",
         markup=True,
-        font_size=sp(18) if is_mobile else sp(20),
+        font_size=sp(16) if is_mobile else sp(20),
         color=(0.7, 0.95, 1, 1),
         halign='center',
         valign='middle',
         size_hint_y=None,
-        height=dp(25)
+        height=dp(22)
     )
     strategy_title.bind(size=strategy_title.setter('text_size'))
 
     strategy_desc = Label(
-        text="Равное развитие больниц и фабрик для стабильного роста",
-        font_size=sp(13) if is_mobile else sp(15),
-        color=(0.85, 0.9, 0.95, 1),
+        text="Идеально если не знаете что выбрать",
+        font_size=sp(12) if is_mobile else sp(15),
+        color=(0.85, 0.9, 0.95, 0.9),
         halign='center',
-        valign='middle',
+        valign='top',
         size_hint_y=None,
-        height=dp(50) if is_mobile else dp(55)
+        height=dp(40) if is_mobile else dp(55)
     )
     strategy_desc.bind(size=strategy_desc.setter('text_size'))
 
@@ -2470,39 +2496,50 @@ def open_development_popup(faction):
     strategy_card.add_widget(strategy_desc)
     build_content.add_widget(strategy_card)
 
-    # Кнопки действия - увеличены для тача
+    # 5. Основные кнопки действия - КОМПАКТНЫЕ
     action_buttons = BoxLayout(
         orientation='horizontal',
-        spacing=dp(15) if is_mobile else dp(20),
+        spacing=dp(10) if is_mobile else dp(15),
         size_hint_y=None,
-        height=dp(65) if is_mobile else dp(70)
-    )
-    cancel_btn = Button(
-        text="Отмена",
-        font_size=sp(18) if is_mobile else sp(20),
-        bold=True,
-        background_color=(0.65, 0.25, 0.25, 1),
-        background_normal=''
-    )
-    apply_btn = Button(
-        text="Применить",
-        font_size=sp(18) if is_mobile else sp(20),
-        bold=True,
-        background_color=(0.35, 0.75, 0.4, 1),
-        background_normal=''
+        height=dp(50) if is_mobile else dp(65)
     )
 
-    # Для мобильных: делаем кнопки одинакового размера
-    if is_mobile:
-        cancel_btn.size_hint_x = 0.48
-        apply_btn.size_hint_x = 0.48
-    else:
-        cancel_btn.size_hint_x = 0.45
-        apply_btn.size_hint_x = 0.45
+    cancel_btn = Button(
+        text="Отмена",
+        font_size=sp(16) if is_mobile else sp(18),
+        bold=True,
+        background_color=(0.65, 0.25, 0.25, 1),
+        background_normal='',
+        padding=[dp(8), dp(8)]
+    )
+
+    apply_btn = Button(
+        text="Применить",
+        font_size=sp(16) if is_mobile else sp(18),
+        bold=True,
+        background_color=(0.35, 0.75, 0.4, 1),
+        background_normal='',
+        padding=[dp(8), dp(8)]
+    )
+
+    # Равные размеры кнопок
+    cancel_btn.size_hint_x = 0.48
+    apply_btn.size_hint_x = 0.48
 
     action_buttons.add_widget(cancel_btn)
     action_buttons.add_widget(apply_btn)
     build_content.add_widget(action_buttons)
+
+    # Устанавливаем минимальную высоту контента
+    build_content.height = (
+            visual_ratio.height +
+            slider_container.height +
+            quick_buttons.height +
+            strategy_card.height +
+            action_buttons.height +
+            (build_content.spacing * 4) +
+            (build_content.padding[1] + build_content.padding[3])
+    )
 
     build_scroll.add_widget(build_content)
     build_content_container.add_widget(build_scroll)
@@ -2511,7 +2548,7 @@ def open_development_popup(faction):
     # === Вкладка "Статистика" ===
     stat_tab = TabbedPanelItem(
         text="Статистика",
-        font_size=sp(16) if is_mobile else sp(17),
+        font_size=sp(15) if is_mobile else sp(17),
         color=(0.9, 0.95, 1, 1),
         background_normal='',
         background_down='',
@@ -2521,11 +2558,10 @@ def open_development_popup(faction):
     # Контейнер для статистики
     stat_content_container = BoxLayout(orientation='vertical')
 
-    # Фон для контента статистики
     with stat_content_container.canvas.before:
         Color(0.0, 0.0, 0.0, 1)
         stat_content_container.bg = RoundedRectangle(
-            radius=[dp(12)],
+            radius=[dp(10)],
             size=stat_content_container.size,
             pos=stat_content_container.pos
         )
@@ -2535,16 +2571,22 @@ def open_development_popup(faction):
         )
 
     # ScrollView для статистики
-    stat_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+    stat_scroll = ScrollView(
+        size_hint=(1, 1),
+        do_scroll_x=False,
+        bar_width=dp(4) if is_mobile else dp(6),
+        bar_color=(0.5, 0.5, 0.5, 0.3)
+    )
+
     stats_grid = GridLayout(
         cols=1,
         size_hint_y=None,
-        spacing=dp(10) if is_mobile else dp(14),
-        padding=[dp(8) if is_mobile else dp(12), dp(8) if is_mobile else dp(12), dp(8) if is_mobile else dp(12), dp(8) if is_mobile else dp(12)]
+        spacing=dp(6) if is_mobile else dp(10),
+        padding=[dp(6), dp(8), dp(6), dp(8)] if is_mobile else [dp(12), dp(12), dp(12), dp(12)]
     )
     stats_grid.bind(minimum_height=stats_grid.setter('height'))
 
-    # Данные статистики
+    # Данные статистики - КОМПАКТНЫЕ
     stats_data = [
         ("Больницы", format_number(faction.hospitals), (0.85, 0.4, 0.4, 1)),
         ("Фабрики", format_number(faction.factories), (0.4, 0.85, 0.5, 1)),
@@ -2563,36 +2605,38 @@ def open_development_popup(faction):
         card = BoxLayout(
             orientation='horizontal',
             size_hint_y=None,
-            height=dp(60) if is_mobile else dp(72),
-            padding=[dp(12) if is_mobile else dp(16), dp(6) if is_mobile else dp(8), dp(12) if is_mobile else dp(16), dp(6) if is_mobile else dp(8)]
+            height=dp(48) if is_mobile else dp(60),
+            padding=[dp(8), dp(4), dp(8), dp(4)] if is_mobile else [dp(12), dp(6), dp(12), dp(6)]
         )
         with card.canvas.before:
             Color(0.18, 0.23, 0.38, 1)
-            card.bg = RoundedRectangle(radius=[dp(10)], size=card.size, pos=card.pos)
+            card.bg = RoundedRectangle(radius=[dp(8)], size=card.size, pos=card.pos)
             card.bind(
                 pos=lambda inst, val, bg=card.bg: setattr(bg, 'pos', val),
                 size=lambda inst, val, bg=card.bg: setattr(bg, 'size', val)
             )
 
-        left_col = BoxLayout(orientation='vertical', size_hint_x=0.65, spacing=dp(1))
+        left_col = BoxLayout(orientation='vertical', size_hint_x=0.7, spacing=dp(0))
         title = Label(
             text=label_text,
-            font_size=sp(15) if is_mobile else sp(17),
+            font_size=sp(13) if is_mobile else sp(15),
             bold=True,
             color=(0.92, 0.95, 1, 1),
             halign='left',
-            valign='middle'
+            valign='middle',
+            text_size=(dp(150) if is_mobile else None, None)
         )
         title.bind(size=title.setter('text_size'))
         left_col.add_widget(title)
 
         value_label = Label(
             text=str(value),
-            font_size=sp(18) if is_mobile else sp(21),
+            font_size=sp(15) if is_mobile else sp(18),
             bold=True,
             color=color,
             halign='right',
-            valign='middle'
+            valign='middle',
+            size_hint_x=0.3
         )
         value_label.bind(size=value_label.setter('text_size'))
 
@@ -2609,9 +2653,13 @@ def open_development_popup(faction):
     tab_panel.add_widget(stat_tab)
     main_layout.add_widget(tab_panel)
 
-    # === ЛОГИКА С ПРАВИЛЬНОЙ СИГНАТУРОЙ ===
+    # === ЛОГИКА ===
     RATIOS = [(5, 2), (3, 2), (3, 1), (2, 1), (1, 1), (1, 2), (1, 3), (2, 3), (2, 5)]
-    RATIO_NAMES = ["x2.5 рост населения", "Небольшой прирост", "Тройной рост населения", "Двойной рост населения", "Баланс", "Двойной рост добычи", "Тройной рост добычи", "Небольшой рост добычи", "x2.5 рост добычи"]
+    RATIO_NAMES = [
+        "x2.5 рост населения", "Небольшой прирост", "Тройной рост населения",
+        "Двойной рост населения", "Баланс", "Двойной рост добычи",
+        "Тройной рост добычи", "Небольшой рост добычи", "x2.5 рост добычи"
+    ]
     RATIO_DESCS = [
         "Средний рост населения и потребление кристаллов",
         "Умеренный прирост населения",
@@ -2624,7 +2672,6 @@ def open_development_popup(faction):
         "Средний рост кристаллов"
     ]
 
-    # === ИСПРАВЛЕНА СИГНАТУРА ===
     def update_ui(instance, value):
         idx = int(value)
         h, f = RATIOS[idx]
@@ -2647,8 +2694,8 @@ def open_development_popup(faction):
     if hasattr(faction, 'auto_build_ratio') and faction.auto_build_ratio in RATIOS:
         slider.value = RATIOS.index(faction.auto_build_ratio)
 
-    update_ui(None, slider.value)  # Инициализация
-    slider.bind(value=update_ui)   # Привязка с правильной сигнатурой
+    update_ui(None, slider.value)
+    slider.bind(value=update_ui)
 
     # Управление слайдером кнопками
     def slide_left(instance):
@@ -2666,7 +2713,7 @@ def open_development_popup(faction):
         faction.auto_build_enabled = True
         faction.save_auto_build_settings()
         dev_popup.dismiss()
-        show_message("Как прикажете!", f"Как прикажете! (Соотношение: {RATIOS[idx][0]}:{RATIOS[idx][1]})")
+        show_message("Как прикажете!", f"Соотношение: {RATIOS[idx][0]}:{RATIOS[idx][1]}")
 
     apply_btn.bind(on_release=apply_settings)
     cancel_btn.bind(on_release=lambda _: dev_popup.dismiss())
