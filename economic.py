@@ -107,7 +107,7 @@ class Faction:
             'Кристаллы': self.raw_material,
             'Население': self.population,
             'Потребление': self.current_consumption,
-            'Лимит армии': self.max_army_limit
+            'Лимит Армии': self.max_army_limit
         }
         self.economic_params = {
             "Север": {"tax_rate": 0.06},
@@ -522,14 +522,19 @@ class Faction:
     def update_cash(self):
         """
         Обновляет ресурсы и сохраняет их в БД.
+        Пересчитывает потребление перед сохранением.
         """
-        self.load_resources()
+        self.load_resources()  # Загружаем актуальные значения из БД
+        self.recalculate_consumption()
+
+        # Обновляем остальные ресурсы
         self.resources['Кроны'] = self.money
         self.resources['Рабочие'] = self.free_peoples
         self.resources['Кристаллы'] = self.raw_material
         self.resources['Население'] = self.population
-        self.resources['Потребление'] = self.current_consumption
-        self.resources['Лимит армии'] = self.max_army_limit
+        self.resources['Лимит Армии'] = self.max_army_limit
+
+        print('Обновление ресурсов Потребление:', self.resources['Потребление'])
         self.save_resources_to_db()
         return self.resources
 
@@ -664,6 +669,35 @@ class Faction:
         except sqlite3.Error as e:
             print(f"Ошибка при обновлении ресурсов: {e}")
 
+    def recalculate_consumption(self):
+        """
+        Пересчитывает текущее потребление армии на основе данных из таблицы garrisons.
+        Обновляет атрибуты current_consumption и ресурс 'Потребление'.
+        """
+        try:
+            self.current_consumption = 0
+            # Выгрузка всех гарнизонов фракции
+            self.cursor.execute("""
+                SELECT g.unit_name, g.unit_count, u.consumption
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                WHERE u.faction = ?
+            """, (self.faction,))
+            rows = self.cursor.fetchall()
+
+            for unit_name, unit_count, consumption in rows:
+                self.current_consumption += consumption * unit_count
+
+            # Обновляем ресурс в словаре
+            self.resources['Потребление'] = self.current_consumption
+
+            print(f"[DEBUG] Пересчитано потребление: {self.current_consumption}")
+            return self.current_consumption
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при пересчёте потребления: {e}")
+            return self.current_consumption
+
     def load_resources_from_db(self):
         """
         Загружает текущие ресурсы фракции из таблицы resources.
@@ -681,6 +715,8 @@ class Faction:
             self.free_peoples = 0
             self.raw_material = 0
             self.population = 0
+            self.current_consumption = 0
+            # Лимит армии рассчитывается динамически, но потребление загружаем
 
             # Обновление ресурсов на основе данных из базы данных
             for resource_type, amount in rows:
@@ -692,6 +728,8 @@ class Faction:
                     self.raw_material = amount
                 elif resource_type == "Население":
                     self.population = amount
+                elif resource_type == "Потребление":  # ← Добавлено
+                    self.current_consumption = amount
 
         except sqlite3.Error as e:
             print(f"Ошибка при загрузке ресурсов: {e}")
@@ -1125,7 +1163,7 @@ class Faction:
             "Кристаллы": max(min(round(self.raw_material, 2), 10_000_000), 0),  # Не более 10 млн, 2 знака
             "Население": max(min(round(self.population, 2), 1_000_000), 0),  # Не более 1 млн, 2 знака
             "Потребление": round(self.current_consumption, 2),  # 2 знака
-            "Лимит армии": round(self.max_army_limit, 2)  # 2 знака
+            "Лимит Армии": round(self.max_army_limit, 2)  # 2 знака
         })
 
         # Рассчитываем чистую прибыль (разница после *всех* изменений)
@@ -1917,10 +1955,8 @@ def handle_trade(game_instance, action, quantity, trade_popup, sell_all=False):
 def open_tax_popup(faction):
     # Проверка платформы
     is_android = platform == 'android'
-
     # Размеры popup в зависимости от платформы
     popup_size_hint = (0.9, 0.7) if is_android else (0.8, 0.6)
-
     tax_popup = Popup(
         title="Управление налогами",
         size_hint=popup_size_hint,
@@ -1930,19 +1966,28 @@ def open_tax_popup(faction):
         title_size=sp(28) if is_android else sp(24),
         title_align='center'
     )
-
     main_layout = FloatLayout()
-
-
     try:
         current_tax_rate = int(faction.current_tax_rate.strip('%')) \
             if isinstance(faction.current_tax_rate, str) else int(faction.current_tax_rate)
     except:
         current_tax_rate = 0
 
-    # === Метка с текущим уровнем налогов ===
+    # === Метка с текущим уровнем налогов и эффектом на население ===
+    # Рассчитываем начальный эффект
+    initial_effect = faction.tax_effect(current_tax_rate)
+    if initial_effect > 0:
+        effect_text = f"+{initial_effect}% доп. прирост населения"
+        effect_color = (0, 1, 0, 1)  # Зелёный для положительного эффекта
+    elif initial_effect < 0:
+        effect_text = f"{initial_effect}% доп. прирост населения"
+        effect_color = (1, 0, 0, 1)  # Красный для отрицательного эффекта
+    else:
+        effect_text = "0% доп. населения"
+        effect_color = (1, 1, 0, 1)  # Жёлтый для нулевого эффекта
+
     tax_label = Label(
-        text=f"Налог: {current_tax_rate}%",
+        text=f"Налог: {current_tax_rate}% ({effect_text})",
         color=(0.7, 0.9, 0.7, 1),
         font_size=sp(32) if is_android else sp(28),
         bold=True,
@@ -1967,12 +2012,24 @@ def open_tax_popup(faction):
     )
 
     def update_tax_label(instance, value):
-        tax_label.text = f"Налог: {int(value)}%"
-        r = value / 100
-        g = 1 - r
-        tax_label.color = (r, g, 0, 1)
-        Animation(font_size=sp(36), duration=0.1).start(tax_label)
-        Animation(font_size=sp(32), duration=0.2).start(tax_label)
+        tax_rate = int(value)
+        # Рассчитываем эффект на население
+        effect = faction.tax_effect(tax_rate)
+
+        # Формируем текст эффекта с цветовой индикацией
+        if effect > 0:
+            effect_text = f"+{effect}% доп. прирост населения"
+            effect_color = (0, 1, 0, 1)  # Зелёный
+        elif effect < 0:
+            effect_text = f"{effect}% доп. прирост населения"
+            effect_color = (1, 0, 0, 1)  # Красный
+        else:
+            effect_text = "0% доп. прирост населения"
+            effect_color = (1, 1, 0, 1)  # Жёлтый
+
+        # Обновляем текст метки
+        tax_label.text = f"Налог: {tax_rate}% ({effect_text})"
+        tax_label.color = effect_color
 
     tax_slider.bind(value=update_tax_label)
     main_layout.add_widget(tax_slider)
@@ -1987,7 +2044,6 @@ def open_tax_popup(faction):
         font_size=sp(24) if is_android else sp(20),
         bold=True
     )
-
     with set_tax_button.canvas.before:
         Color(0.3, 0.3, 0.3, 0.5)
         set_tax_button.rect = RoundedRectangle(
@@ -1995,11 +2051,9 @@ def open_tax_popup(faction):
             pos=set_tax_button.pos,
             radius=[dp(15)]
         )
-
     def update_rect(instance, value):
         instance.rect.pos = instance.pos
         instance.rect.size = instance.size
-
     set_tax_button.bind(pos=update_rect, size=update_rect)
 
     def set_tax(instance):
@@ -2008,7 +2062,6 @@ def open_tax_popup(faction):
         faction.set_taxes(tax_rate)
         faction.apply_tax_effect(tax_rate)
         tax_popup.dismiss()
-
     set_tax_button.bind(on_release=set_tax)
     main_layout.add_widget(set_tax_button)
 
@@ -2016,113 +2069,177 @@ def open_tax_popup(faction):
     def dismiss_on_outside(instance, touch):
         if not main_layout.collide_point(*touch.pos):
             tax_popup.dismiss()
-
     tax_popup.bind(on_touch_down=dismiss_on_outside)
-
     tax_popup.content = main_layout
     tax_popup.open()
 
+
+
 def open_auto_build_popup(faction):
+    from kivy.graphics import Color, RoundedRectangle
+    from kivy.metrics import dp, sp
+    from kivy.uix.image import Image
+
+    # Соотношения с описаниями
+    RATIOS = [
+        (5, 2, "Агрессивный рост", "Больше рабочих для быстрого расширения"),
+        (3, 2, "Баланс+", "Умеренный прирост населения и ресурсов"),
+        (3, 1, "Рост населения", "Фокус на увеличение рабочей силы"),
+        (2, 1, "Умеренный рост", "Сбалансированное развитие"),
+        (1, 1, "Идеальный баланс", "Равное развитие больниц и фабрик"),
+        (1, 2, "Умеренная промышленность", "Небольшой уклон в производство"),
+        (1, 3, "Промышленность", "Фокус на добычу кристаллов"),
+        (2, 3, "Промышленность+", "Усиленное производство ресурсов"),
+        (2, 5, "Максимальная добыча", "Приоритет — кристаллы для армии")
+    ]
+
     auto_popup = Popup(
-        title="Министерство развития",
-        size_hint=(0.8, 0.8),
-        background_color=(0.1, 0.1, 0.1, 0.95),
-        title_color=(1, 1, 0.7, 1),
-        title_size='24sp',
+        title="",
+        size_hint=(0.92, 0.85),
+        background_color=(0.12, 0.15, 0.22, 0.97),
+        separator_height=0,
+        auto_dismiss=False
     )
 
-    main_layout = BoxLayout(orientation='vertical', spacing=20, padding=25)
+    main_layout = BoxLayout(orientation='vertical', padding=[dp(18), dp(22), dp(18), dp(18)], spacing=dp(18))
 
-    # Шапка
-    header = BoxLayout(size_hint=(1, 0.15), spacing=20)
-    left_label = Label(text="[b]Больницы[/b]", markup=True, color=(1, 0.4, 0.4, 1), font_size='20sp')
-    right_label = Label(text="[b]Фабрики[/b]", markup=True, color=(0.4, 1, 0.4, 1), font_size='20sp')
-    header.add_widget(left_label)
-    header.add_widget(right_label)
+    # Заголовок
+    header = BoxLayout(size_hint_y=None, height=dp(55), spacing=dp(12))
+    icon_container = BoxLayout(size_hint=(None, None), size=(dp(42), dp(42)))
+    with icon_container.canvas:
+        Color(0.25, 0.45, 0.85, 1)
+        RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(12)])
+    icon_img = Image(source='files/status/icons/building.png', size_hint=(0.6, 0.6), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+    icon_container.add_widget(icon_img)
+    header.add_widget(icon_container)
 
-    # Панель управления
-    controls = BoxLayout(orientation='horizontal', size_hint=(1, 0.2), spacing=15)
-    left_btn = Button(text="<<", font_size='18sp', background_normal='', background_color=(0.5, 0.1, 0.1, 1))
-    slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(24, 24))
-    right_btn = Button(text=">>", font_size='18sp', background_normal='', background_color=(0.1, 0.5, 0.1, 1))
-    controls.add_widget(left_btn)
-    controls.add_widget(slider)
-    controls.add_widget(right_btn)
-
-    # Индикатор
-    ratio_layout = BoxLayout(size_hint=(1, 0.2))
-    ratio_display = Label(text="1:1", font_size='28sp', color=(1, 1, 0.5, 1))
-    ratio_layout.add_widget(ratio_display)
-
-    # Описание
-    description = Label(
-        text="Соотношение больниц и фабрик для строительства",
-        color=(0.8, 0.8, 0.8, 1),
-        font_size='16sp',
-        size_hint=(1, 0.2),
-        halign='center',
-        valign='middle'
+    title_label = Label(
+        text="[b]Министерство развития[/b]",
+        markup=True,
+        font_size=sp(24),
+        color=(1, 0.95, 0.85, 1),
+        halign='left',
+        valign='middle',
+        size_hint_x=0.85
     )
-    description.bind(size=description.setter('text_size'))
+    title_label.bind(size=title_label.setter('text_size'))
+    header.add_widget(title_label)
+    main_layout.add_widget(header)
+
+    # Визуальный индикатор соотношения
+    ratio_visual = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(60), padding=[dp(8), 0, dp(8), 0], spacing=dp(6))
+
+    hospitals_bar = BoxLayout(size_hint=(0.5, 1))
+    with hospitals_bar.canvas.before:
+        Color(0.85, 0.35, 0.35, 1)
+        hospitals_bar.rect = RoundedRectangle(pos=hospitals_bar.pos, size=hospitals_bar.size, radius=[dp(8), 0, 0, dp(8)])
+        hospitals_bar.bind(pos=lambda inst, val: setattr(hospitals_bar.rect, 'pos', val))
+        hospitals_bar.bind(size=lambda inst, val: setattr(hospitals_bar.rect, 'size', val))
+    hospitals_label = Label(text="🏥 1", font_size=sp(18), bold=True, color=(1, 1, 1, 1), halign='center', valign='middle')
+    hospitals_label.bind(size=hospitals_label.setter('text_size'))
+    hospitals_bar.add_widget(hospitals_label)
+    ratio_visual.add_widget(hospitals_bar)
+
+    factories_bar = BoxLayout(size_hint=(0.5, 1))
+    with factories_bar.canvas.before:
+        Color(0.35, 0.75, 0.45, 1)
+        factories_bar.rect = RoundedRectangle(pos=factories_bar.pos, size=factories_bar.size, radius=[0, dp(8), dp(8), 0])
+        factories_bar.bind(pos=lambda inst, val: setattr(factories_bar.rect, 'pos', val))
+        factories_bar.bind(size=lambda inst, val: setattr(factories_bar.rect, 'size', val))
+    factories_label = Label(text="1", font_size=sp(18), bold=True, color=(1, 1, 1, 1), halign='center', valign='middle')
+    factories_label.bind(size=factories_label.setter('text_size'))
+    factories_bar.add_widget(factories_label)
+    ratio_visual.add_widget(factories_bar)
+
+    main_layout.add_widget(ratio_visual)
+
+    # Слайдер
+    slider_container = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None, height=dp(100))
+    ratio_display = Label(text="1 : 1", font_size=sp(32), bold=True, color=(1, 0.95, 0.8, 1), halign='center', valign='middle', size_hint_y=None, height=dp(40))
+    ratio_display.bind(size=ratio_display.setter('text_size'))
+    slider_container.add_widget(ratio_display)
+
+    slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(dp(40), dp(40)), background_width=dp(12), size_hint_y=None, height=dp(40))
+    slider_container.add_widget(slider)
+    main_layout.add_widget(slider_container)
+
+    # Описание стратегии
+    strategy_card = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(95), padding=[dp(15), dp(12), dp(15), dp(12)], spacing=dp(4))
+    with strategy_card.canvas.before:
+        Color(0.18, 0.22, 0.32, 1)
+        strategy_card.bg = RoundedRectangle(radius=[dp(14)], size=strategy_card.size, pos=strategy_card.pos)
+        strategy_card.bind(pos=lambda inst, val: setattr(strategy_card.bg, 'pos', val))
+        strategy_card.bind(size=lambda inst, val: setattr(strategy_card.bg, 'size', val))
+
+    strategy_name = Label(text="[b]Идеальный баланс[/b]", markup=True, font_size=sp(19), color=(0.65, 0.95, 1, 1), halign='center', valign='top', size_hint_y=None, height=dp(28))
+    strategy_name.bind(size=strategy_name.setter('text_size'))
+    strategy_desc = Label(text="Равное развитие больниц и фабрик", font_size=sp(15), color=(0.85, 0.85, 0.9, 1), halign='center', valign='top', size_hint_y=None, height=dp(45))
+    strategy_desc.bind(size=strategy_desc.setter('text_size'))
+    strategy_card.add_widget(strategy_name)
+    strategy_card.add_widget(strategy_desc)
+    main_layout.add_widget(strategy_card)
 
     # Кнопки
-    buttons_layout = BoxLayout(size_hint=(1, 0.2), spacing=15)
+    buttons_layout = BoxLayout(orientation='horizontal', spacing=dp(15), size_hint_y=None, height=dp(65))
 
-    def styled_button(text, color):
-        btn = Button(text=text, font_size='18sp', background_normal='', background_color=color)
+    def create_button(text, bg_color):
+        btn = Button(text=text, font_size=sp(19), bold=True, background_color=(0, 0, 0, 0), color=(1, 1, 1, 1), size_hint=(0.5, 1))
         with btn.canvas.before:
-            Color(*color)
-            btn.rect = RoundedRectangle(size=btn.size, pos=btn.pos, radius=[12])
-            btn.bind(pos=lambda i, v: setattr(btn.rect, 'pos', v))
-            btn.bind(size=lambda i, v: setattr(btn.rect, 'size', v))
+            Color(*bg_color)
+            btn.bg = RoundedRectangle(radius=[dp(16)], size=btn.size, pos=btn.pos)
+            btn.bind(pos=lambda inst, val: setattr(btn.bg, 'pos', val))
+            btn.bind(size=lambda inst, val: setattr(btn.bg, 'size', val))
         return btn
 
-    save_btn = styled_button("Сохранить", (0.2, 0.6, 0.2, 1))
-    cancel_btn = styled_button("Отмена", (0.6, 0.2, 0.2, 1))
-    buttons_layout.add_widget(save_btn)
+    cancel_btn = create_button("Отмена", (0.65, 0.25, 0.25, 1))
+    save_btn = create_button("Применить", (0.35, 0.7, 0.35, 1))
     buttons_layout.add_widget(cancel_btn)
-
-    # Добавление элементов
-    main_layout.add_widget(header)
-    main_layout.add_widget(controls)
-    main_layout.add_widget(ratio_layout)
-    main_layout.add_widget(description)
+    buttons_layout.add_widget(save_btn)
     main_layout.add_widget(buttons_layout)
 
-    # Соотношения
-    RATIOS = [(5, 2), (3, 2), (3, 1), (2, 1), (1, 1), (1, 2), (1, 3), (2, 3), (2, 5)]
-
+    # === ИСПРАВЛЕНА СИГНАТУРА ОБРАБОТЧИКА ===
     def update_display(instance, value):
         idx = int(value)
-        ratio = RATIOS[idx]
-        ratio_display.text = f"{ratio[0]}:{ratio[1]}"
-        description.text = f"Строить: {ratio[0]} больниц и {ratio[1]} фабрик за ход"
-        if ratio[0] > ratio[1]:
-            ratio_display.color = (1, 0.4, 0.4, 1)
-        elif ratio[1] > ratio[0]:
-            ratio_display.color = (0.4, 1, 0.4, 1)
-        else:
-            ratio_display.color = (1, 1, 0.6, 1)
+        hospitals, factories, name, desc = RATIOS[idx]
 
-    if hasattr(faction, 'auto_build_ratio') and faction.auto_build_ratio in RATIOS:
-        saved_index = RATIOS.index(faction.auto_build_ratio)
-        slider.value = saved_index
-        update_display(slider, saved_index)
+        # Обновление визуального индикатора
+        hospitals_label.text = f"🏥 {hospitals}"
+        factories_label.text = f"🏭 {factories}"
 
-    slider.bind(value=update_display)
-    left_btn.bind(on_release=lambda _: setattr(slider, 'value', max(slider.value - 1, 0)))
-    right_btn.bind(on_release=lambda _: setattr(slider, 'value', min(slider.value + 1, 8)))
+        # Обновление пропорций баров
+        total = hospitals + factories
+        hospitals_bar.size_hint_x = hospitals / total
+        factories_bar.size_hint_x = factories / total
 
+        # Обновление крупного дисплея
+        ratio_display.text = f"{hospitals} : {factories}"
+
+        # Обновление описания стратегии
+        strategy_name.text = f"[b]{name}[/b]"
+        strategy_desc.text = desc
+
+    # Загрузка текущих настроек
+    if hasattr(faction, 'auto_build_ratio'):
+        for idx, (h, f, _, _) in enumerate(RATIOS):
+            if (h, f) == faction.auto_build_ratio:
+                slider.value = idx
+                break
+
+    update_display(None, slider.value)  # Инициализация
+    slider.bind(value=update_display)  # Привязка с правильной сигнатурой
+
+    # Обработка кнопок
     def save_settings(instance):
         idx = int(slider.value)
-        faction.auto_build_ratio = RATIOS[idx]
+        hospitals, factories, _, _ = RATIOS[idx]
+        faction.auto_build_ratio = (hospitals, factories)
         faction.auto_build_enabled = True
         faction.save_auto_build_settings()
         auto_popup.dismiss()
-        show_message("Сохранено", "Как прикажете!")
+        show_message("Сохранено", f"Строить: {hospitals} больниц и {factories} фабрик за ход")
 
+    cancel_btn.bind(on_release=lambda x: auto_popup.dismiss())
     save_btn.bind(on_release=save_settings)
-    cancel_btn.bind(on_release=auto_popup.dismiss)
 
     auto_popup.content = main_layout
     auto_popup.open()
@@ -2137,267 +2254,257 @@ def open_development_popup(faction):
     from kivy.uix.label import Label
     from kivy.graphics import Color, RoundedRectangle
     from kivy.metrics import dp, sp
-    from kivy.animation import Animation
-    from kivy.core.window import Window
+    from kivy.uix.image import Image
+    from kivy.uix.slider import Slider
+    from kivy.uix.popup import Popup
 
-    # === Создание всплывающего окна ===
+    # Вспомогательная функция форматирования чисел (если нет глобальной)
+    def format_number(value):
+        if isinstance(value, (int, float)):
+            return f"{value:,.0f}".replace(",", " ")
+        return str(value)
+
     dev_popup = Popup(
-        title="Развитие",
-        size_hint=(0.9, 0.85),
-        title_size=sp(20),
-        title_align='center',
-        title_color=(0.9, 0.9, 0.9, 1),
-        background_color=(0.08, 0.08, 0.08, 0.98),  # Темнее
-        separator_color=(0.3, 0.3, 0.3, 1),
+        title="",
+        size_hint=(0.94, 0.9),
+        background_color=(0.10, 0.12, 0.18, 0.98),
+        separator_height=0,
         auto_dismiss=False
     )
 
-    # === Создание TabbedPanel с улучшенным дизайном ===
-    tab_panel = TabbedPanel(
-        do_default_tab=False,
-        tab_width=dp(140),
-        tab_height=dp(50),
-        background_color=(0.15, 0.15, 0.15, 1)
-    )
+    main_layout = BoxLayout(orientation='vertical', padding=[dp(16), dp(20), dp(16), dp(16)], spacing=dp(16))
 
-    # Установка стиля для вкладок
-    with tab_panel.canvas.before:
-        Color(0.2, 0.2, 0.2, 1)
-        tab_panel.bg_rect = RoundedRectangle(
-            pos=tab_panel.pos,
-            size=tab_panel.size,
-            radius=[10]
-        )
-        def update_bg_rect(instance, val):
-            instance.bg_rect.pos = instance.pos
-            instance.bg_rect.size = instance.size
-        tab_panel.bind(pos=update_bg_rect, size=update_bg_rect)
+    # Заголовок
+    header_layout = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(60), spacing=dp(10))
+    icon_container = BoxLayout(size_hint=(None, None), size=(dp(48), dp(48)))
+    with icon_container.canvas:
+        Color(0.3, 0.5, 0.9, 1)
+        RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(14)])
+    header_layout.add_widget(icon_container)
+
+    title_label = Label(text="[b]Развитие государства[/b]", markup=True, font_size=sp(26), color=(0.95, 0.98, 1, 1), halign='left', valign='middle')
+    title_label.bind(size=title_label.setter('text_size'))
+    header_layout.add_widget(title_label)
+    main_layout.add_widget(header_layout)
+
+    # Tabbed Panel - БЕЗ ФОНА
+    tab_panel = TabbedPanel(do_default_tab=False, tab_width=dp(160), tab_height=dp(50), background_color=(0, 0, 0, 0))
 
     # === Вкладка "Строительство" ===
-    build_tab = TabbedPanelItem(text="Строительство")
-    # Настройка стиля вкладки
-    build_tab.background_normal = ''
-    build_tab.background_down = ''
-    build_tab.background_color = (0.3, 0.3, 0.3, 1)
-    build_tab.color = (0.9, 0.9, 0.9, 1)
-    build_tab.font_size = sp(16)
-
-    # Контент для вкладки "Строительство" - сразу открываем настройки
-    build_content = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
-
-    # Шапка
-    header = BoxLayout(size_hint=(1, 0.15), spacing=20)
-    left_label = Label(text="[b]Больницы[/b]", markup=True, color=(1, 0.4, 0.4, 1), font_size='20sp')
-    right_label = Label(text="[b]Фабрики[/b]", markup=True, color=(0.4, 1, 0.4, 1), font_size='20sp')
-    header.add_widget(left_label)
-    header.add_widget(right_label)
-    build_content.add_widget(header)
-
-    # Панель управления
-    controls = BoxLayout(orientation='horizontal', size_hint=(1, 0.2), spacing=15)
-    left_btn = Button(text="<<", font_size='18sp', background_normal='', background_color=(0.3, 0.1, 0.1, 1))
-    slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(24, 24))
-    right_btn = Button(text=">>", font_size='18sp', background_normal='', background_color=(0.1, 0.3, 0.1, 1))
-    controls.add_widget(left_btn)
-    controls.add_widget(slider)
-    controls.add_widget(right_btn)
-    build_content.add_widget(controls)
-
-    # Индикатор
-    ratio_layout = BoxLayout(size_hint=(1, 0.2))
-    ratio_display = Label(text="1:1", font_size='28sp', color=(1, 1, 0.5, 1))
-    ratio_layout.add_widget(ratio_display)
-    build_content.add_widget(ratio_layout)
-
-    # Описание
-    description = Label(
-        text="Соотношение больниц и фабрик для строительства",
-        color=(0.8, 0.8, 0.8, 1),
-        font_size='16sp',
-        size_hint=(1, 0.2),
-        halign='center',
-        valign='middle'
+    build_tab = TabbedPanelItem(
+        text=" Строительство",
+        font_size=sp(17),
+        color=(0.9, 0.95, 1, 1),
+        background_normal='',
+        background_down='',
+        background_color=(0.25, 0.35, 0.65, 1)
     )
-    description.bind(size=description.setter('text_size'))
-    build_content.add_widget(description)
 
-    # Кнопки
-    buttons_layout = BoxLayout(size_hint=(1, 0.2), spacing=15)
+    # Контент для вкладки строительства с собственным фоном
+    build_content_container = BoxLayout(orientation='vertical')
 
-    def styled_button(text, color):
-        btn = Button(text=text, font_size='18sp', background_normal='', background_color=color)
-        with btn.canvas.before:
-            Color(*color)
-            btn.rect = RoundedRectangle(size=btn.size, pos=btn.pos, radius=[12])
-            btn.bind(pos=lambda i, v: setattr(btn.rect, 'pos', v))
-            btn.bind(size=lambda i, v: setattr(btn.rect, 'size', v))
-        return btn
+    # Добавляем фон только для контента вкладки
+    with build_content_container.canvas.before:
+        Color(0.0, 0.0, 0.0, 1)
+        build_content_container.bg = RoundedRectangle(
+            radius=[dp(16)],
+            size=build_content_container.size,
+            pos=build_content_container.pos
+        )
+        build_content_container.bind(
+            pos=lambda inst, val: setattr(build_content_container.bg, 'pos', val),
+            size=lambda inst, val: setattr(build_content_container.bg, 'size', val)
+        )
 
-    save_btn = styled_button("Сохранить", (0.2, 0.6, 0.2, 1))
-    cancel_btn = styled_button("Закрыть", (0.6, 0.2, 0.2, 1))  # Переименовали
-    buttons_layout.add_widget(save_btn)
-    buttons_layout.add_widget(cancel_btn)
-    build_content.add_widget(buttons_layout)
+    build_content = BoxLayout(orientation='vertical', spacing=dp(18), padding=dp(14))
 
-    # Соотношения
+    # Визуальный индикатор
+    visual_ratio = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(140), padding=[dp(10), dp(15), dp(10), dp(5)])
+    ratio_label = Label(text="Текущее соотношение", font_size=sp(16), color=(0.7, 0.85, 1, 1), size_hint_y=None, height=dp(25))
+    ratio_big = Label(text="1 : 1", font_size=sp(48), bold=True, color=(1, 0.95, 0.8, 1), halign='center', valign='middle')
+    ratio_big.bind(size=ratio_big.setter('text_size'))
+    visual_ratio.add_widget(ratio_label)
+    visual_ratio.add_widget(ratio_big)
+    build_content.add_widget(visual_ratio)
+
+    # Слайдер
+    slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(dp(45), dp(45)), background_width=dp(10), size_hint_y=None, height=dp(50))
+    build_content.add_widget(slider)
+
+    # Кнопки управления
+    slider_buttons = BoxLayout(orientation='horizontal', spacing=dp(25), size_hint_y=None, height=dp(55))
+    left_btn = Button(text="Больницы", font_size=sp(16), bold=True, background_color=(0.75, 0.3, 0.3, 1), background_normal='', size_hint_x=0.45)
+    right_btn = Button(text="Фабрики", font_size=sp(16), bold=True, background_color=(0.3, 0.7, 0.4, 1), background_normal='', size_hint_x=0.45)
+    slider_buttons.add_widget(left_btn)
+    slider_buttons.add_widget(right_btn)
+    build_content.add_widget(slider_buttons)
+
+    # Стратегия
+    strategy_card = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(100), padding=[dp(18), dp(14), dp(18), dp(14)], spacing=dp(5))
+    with strategy_card.canvas.before:
+        Color(0.22, 0.28, 0.42, 1)
+        strategy_card.bg = RoundedRectangle(radius=[dp(16)], size=strategy_card.size, pos=strategy_card.pos)
+        strategy_card.bind(pos=lambda inst, val: setattr(strategy_card.bg, 'pos', val))
+        strategy_card.bind(size=lambda inst, val: setattr(strategy_card.bg, 'size', val))
+
+    strategy_title = Label(text="[b]Идеальный баланс[/b]", markup=True, font_size=sp(20), color=(0.7, 0.95, 1, 1), halign='center', valign='middle', size_hint_y=None, height=dp(30))
+    strategy_title.bind(size=strategy_title.setter('text_size'))
+    strategy_desc = Label(text="Равное развитие больниц и фабрик для стабильного роста", font_size=sp(15), color=(0.85, 0.9, 0.95, 1), halign='center', valign='middle', size_hint_y=None, height=dp(55))
+    strategy_desc.bind(size=strategy_desc.setter('text_size'))
+    strategy_card.add_widget(strategy_title)
+    strategy_card.add_widget(strategy_desc)
+    build_content.add_widget(strategy_card)
+
+    # Кнопки действия
+    action_buttons = BoxLayout(orientation='horizontal', spacing=dp(20), size_hint_y=None, height=dp(70))
+    cancel_btn = Button(text="Отмена", font_size=sp(20), bold=True, background_color=(0.65, 0.25, 0.25, 1), background_normal='', size_hint_x=0.45)
+    apply_btn = Button(text="Применить", font_size=sp(20), bold=True, background_color=(0.35, 0.75, 0.4, 1), background_normal='', size_hint_x=0.45)
+    action_buttons.add_widget(cancel_btn)
+    action_buttons.add_widget(apply_btn)
+    build_content.add_widget(action_buttons)
+
+    build_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+    build_scroll.add_widget(build_content)
+    build_content_container.add_widget(build_scroll)
+    build_tab.content = build_content_container
+
+    # === Вкладка "Статистика" ===
+    stat_tab = TabbedPanelItem(
+        text="Статистика",
+        font_size=sp(17),
+        color=(0.9, 0.95, 1, 1),
+        background_normal='',
+        background_down='',
+        background_color=(0.25, 0.35, 0.65, 1)
+    )
+
+    # Контейнер для статистики с фоном
+    stat_content_container = BoxLayout(orientation='vertical')
+
+    # Добавляем фон только для контента статистики
+    with stat_content_container.canvas.before:
+        Color(0.0, 0.0, 0.0, 1)
+        stat_content_container.bg = RoundedRectangle(
+            radius=[dp(16)],
+            size=stat_content_container.size,
+            pos=stat_content_container.pos
+        )
+        stat_content_container.bind(
+            pos=lambda inst, val: setattr(stat_content_container.bg, 'pos', val),
+            size=lambda inst, val: setattr(stat_content_container.bg, 'size', val)
+        )
+
+    # Просто ScrollView
+    stat_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+    stats_grid = GridLayout(cols=1, size_hint_y=None, spacing=dp(14), padding=[dp(12), dp(12), dp(12), dp(12)])
+    stats_grid.bind(minimum_height=stats_grid.setter('height'))
+
+    # Данные статистики
+    stats_data = [
+        ("Больницы", format_number(faction.hospitals), (0.85, 0.4, 0.4, 1)),
+        ("Фабрики", format_number(faction.factories), (0.4, 0.85, 0.5, 1)),
+        ("Рабочих на фабриках", format_number(faction.work_peoples), (0.9, 0.7, 0.4, 1)),
+        ("Прирост рабочих", format_number(faction.clear_up_peoples), (0.5, 0.7, 0.95, 1)),
+        ("Расход на больницы", format_number(faction.money_info), (0.95, 0.5, 0.5, 1)),
+        ("Прирост кристаллов", format_number(faction.food_info), (0.6, 0.6, 1, 1)),
+        ("Чистый доход", format_number(faction.money_up), (0.5, 0.95, 0.6, 1)),
+        ("Доход от налогов", format_number(faction.taxes_info), (0.95, 0.9, 0.5, 1)),
+        ("Эффект налогов",
+         format_number(faction.apply_tax_effect(int(faction.current_tax_rate[:-1]))) if faction.tax_set else "–",
+         (0.95, 0.6, 0.95, 1))
+    ]
+
+    for label_text, value, color in stats_data:
+        card = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(72),
+                         padding=[dp(16), dp(8), dp(16), dp(8)])
+        with card.canvas.before:
+            Color(0.18, 0.23, 0.38, 1)  # Цвет карточки
+            card.bg = RoundedRectangle(radius=[dp(14)], size=card.size, pos=card.pos)
+            card.bind(
+                pos=lambda inst, val, bg=card.bg: setattr(bg, 'pos', val),
+                size=lambda inst, val, bg=card.bg: setattr(bg, 'size', val)
+            )
+
+        left_col = BoxLayout(orientation='vertical', size_hint_x=0.65, spacing=dp(2))
+        title = Label(text=label_text, font_size=sp(17), bold=True, color=(0.92, 0.95, 1, 1), halign='left',
+                      valign='middle')
+        title.bind(size=title.setter('text_size'))
+        left_col.add_widget(title)
+
+        value_label = Label(text=str(value), font_size=sp(21), bold=True, color=color, halign='right', valign='middle')
+        value_label.bind(size=value_label.setter('text_size'))
+
+        card.add_widget(left_col)
+        card.add_widget(value_label)
+        stats_grid.add_widget(card)
+
+    stat_scroll.add_widget(stats_grid)
+    stat_content_container.add_widget(stat_scroll)
+    stat_tab.content = stat_content_container
+
+    # Добавление вкладок
+    tab_panel.add_widget(build_tab)
+    tab_panel.add_widget(stat_tab)
+    main_layout.add_widget(tab_panel)
+
+    # === ЛОГИКА С ПРАВИЛЬНОЙ СИГНАТУРОЙ ===
     RATIOS = [(5, 2), (3, 2), (3, 1), (2, 1), (1, 1), (1, 2), (1, 3), (2, 3), (2, 5)]
+    RATIO_NAMES = ["x2.5 рост населения", "Небольшой прирост", "Тройной рост населения", "Двойной рост населения", "Баланс", "Двойной рост добычи", "Тройной рост добычи", "Небольшой рост добычи", "x2.5 рост добычи"]
+    RATIO_DESCS = [
+        "Средний рост населения и потребление кристаллов",
+        "Умеренный прирост населения",
+        "Сильный рост населения и потребление кристаллов",
+        "Серьезный акцент на рост населения, стоит задуматься о закупке кристаллов",
+        "Идеально если не знаете что выбрать",
+        "Серьезный уклон в производство, людей может не хватать",
+        "Усиленный фокус на добычу кристаллов может ощущаться острая нехватка людей",
+        "Умеренный уклон в производство кристаллов",
+        "Средний рост кристаллов"
+    ]
 
-    def update_display(instance, value):
+    # === ИСПРАВЛЕНА СИГНАТУРА ===
+    def update_ui(instance, value):
         idx = int(value)
-        ratio = RATIOS[idx]
-        ratio_display.text = f"{ratio[0]}:{ratio[1]}"
-        description.text = f"Строить: {ratio[0]} больниц и {ratio[1]} фабрик за ход"
-        if ratio[0] > ratio[1]:
-            ratio_display.color = (1, 0.4, 0.4, 1)
-        elif ratio[1] > ratio[0]:
-            ratio_display.color = (0.4, 1, 0.4, 1)
+        h, f = RATIOS[idx]
+        ratio_big.text = f"{h} : {f}"
+        strategy_title.text = f"[b]{RATIO_NAMES[idx]}[/b]"
+        strategy_desc.text = RATIO_DESCS[idx]
+
+        # Цветовая индикация кнопок
+        if h > f:
+            left_btn.background_color = (0.9, 0.35, 0.35, 1)
+            right_btn.background_color = (0.35, 0.7, 0.45, 0.7)
+        elif f > h:
+            left_btn.background_color = (0.85, 0.4, 0.4, 0.7)
+            right_btn.background_color = (0.35, 0.9, 0.45, 1)
         else:
-            ratio_display.color = (1, 1, 0.6, 1)
+            left_btn.background_color = (0.85, 0.4, 0.4, 1)
+            right_btn.background_color = (0.35, 0.7, 0.45, 1)
 
+    # Загрузка текущих настроек
     if hasattr(faction, 'auto_build_ratio') and faction.auto_build_ratio in RATIOS:
-        saved_index = RATIOS.index(faction.auto_build_ratio)
-        slider.value = saved_index
-        update_display(slider, saved_index)
+        slider.value = RATIOS.index(faction.auto_build_ratio)
 
-    slider.bind(value=update_display)
+    update_ui(None, slider.value)  # Инициализация
+    slider.bind(value=update_ui)   # Привязка с правильной сигнатурой
+
+    # Управление слайдером кнопками
     left_btn.bind(on_release=lambda _: setattr(slider, 'value', max(slider.value - 1, 0)))
     right_btn.bind(on_release=lambda _: setattr(slider, 'value', min(slider.value + 1, 8)))
 
-    def save_settings(instance):
+    def apply_settings(instance):
         idx = int(slider.value)
         faction.auto_build_ratio = RATIOS[idx]
         faction.auto_build_enabled = True
         faction.save_auto_build_settings()
-        show_message("Сохранено", "Как прикажете!")
-        dev_popup.dismiss()  # Закрываем после сохранения
+        dev_popup.dismiss()
+        show_message("Как прикажете!", f"Как прикажете! (Соотношение: {RATIOS[idx][0]}:{RATIOS[idx][1]})")
 
-    save_btn.bind(on_release=save_settings)
-    cancel_btn.bind(on_release=lambda x: dev_popup.dismiss())
-
-    build_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
-    build_scroll.add_widget(build_content)
-    build_tab.content = build_scroll
-
-    # === Вкладка "Статистика" ===
-    stat_tab = TabbedPanelItem(text="Статистика")
-    # Настройка стиля вкладки
-    stat_tab.background_normal = ''
-    stat_tab.background_down = ''
-    stat_tab.background_color = (0.3, 0.3, 0.3, 1)
-    stat_tab.color = (0.9, 0.9, 0.9, 1)
-    stat_tab.font_size = sp(16)
-
-    # Контент для вкладки "Статистика"
-    stat_content = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
-    stat_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False, do_scroll_y=True)
-
-    screen_w, _ = Window.size
-    cols_count = 1 if screen_w < dp(600) else 2
-
-    stats_grid = GridLayout(
-        cols=cols_count,
-        size_hint_y=None,
-        spacing=dp(12),
-        row_force_default=True,
-        row_default_height=dp(80)
-    )
-    stats_grid.bind(minimum_height=stats_grid.setter('height'))
-
-    # Адаптивный шрифт
-    def calculate_font_size():
-        w, _ = Window.size
-        base = 14 + (w - dp(360)) / (dp(720)) * 4
-        return sp(max(14, min(18, base)))
-
-    adaptive_font = calculate_font_size()
-
-    # Данные статистики
-    stats_data = [
-        ("Количество больниц:", format_number(faction.hospitals)),
-        ("Количество фабрик:", format_number(faction.factories)),
-        ("Рабочих на фабриках:", format_number(faction.work_peoples)),
-        ("Прирост рабочих:", format_number(faction.clear_up_peoples)),
-        ("Расход денег больницами:", format_number(faction.money_info)),
-        ("Прирост кристаллов:", format_number(faction.food_info)),
-        ("Чистый прирост денег:", format_number(faction.money_up)),
-        ("Доход от налогов:", format_number(faction.taxes_info)),
-        ("Эффект от налогов:",
-         format_number(faction.apply_tax_effect(int(faction.current_tax_rate[:-1]))) if faction.tax_set else "–")
-    ]
-
-    for label_text, value in stats_data:
-        card = BoxLayout(
-            orientation='vertical',
-            padding=[dp(12), dp(8), dp(12), dp(8)],
-            spacing=dp(4),
-            size_hint_y=None,
-            height=dp(80)
-        )
-        with card.canvas.before:
-            Color(0.2, 0.2, 0.2, 1)
-            card.bg_rect = RoundedRectangle(
-                pos=card.pos,
-                size=card.size,
-                radius=[12]
-            )
-        def update_stat_card_rect(instance, val):
-            instance.bg_rect.pos = instance.pos
-            instance.bg_rect.size = instance.size
-        card.bind(pos=update_stat_card_rect, size=update_stat_card_rect)
-
-        lbl = Label(
-            text=label_text,
-            font_size=adaptive_font,
-            color=(0.9, 0.9, 0.9, 1),  # Ярче
-            bold=True,
-            size_hint_y=None,
-            height=dp(24),
-            halign='left',
-            valign='middle'
-        )
-        lbl.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        card.add_widget(lbl)
-
-        if isinstance(value, (int, float)):
-            val_color = (0, 1, 0, 1) if value >= 0 else (1, 0, 0, 1)
-            val_text = str(value)
-        else:
-            val_color = (0.9, 0.9, 0.9, 1)  # Ярче
-            val_text = str(value)
-
-        val = Label(
-            text=val_text,
-            font_size=adaptive_font,
-            color=val_color,
-            bold=True,
-            size_hint_y=None,
-            height=dp(28),
-            halign='right',
-            valign='middle'
-        )
-        val.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        card.add_widget(val)
-
-        stats_grid.add_widget(card)
-
-    stat_scroll.add_widget(stats_grid)
-    stat_tab.content = stat_scroll
-
-    # === Добавление вкладок в TabbedPanel ===
-    tab_panel.add_widget(build_tab)
-    tab_panel.add_widget(stat_tab)
-
-    # === Основной макет — без кнопки "Закрыть" внизу ===
-    main_layout = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(16))
-    main_layout.add_widget(tab_panel)
-
-    # Убрали кнопку "Закрыть" внизу
-    # btn_box = BoxLayout(...)
-    # main_layout.add_widget(btn_box)
+    apply_btn.bind(on_release=apply_settings)
+    cancel_btn.bind(on_release=lambda _: dev_popup.dismiss())
 
     dev_popup.content = main_layout
     dev_popup.open()
-
 
 #--------------------------
 def start_economy_mode(faction, game_area, db_conn, season_manager):

@@ -632,6 +632,99 @@ class FortressInfoPopup(Popup):
         popup.content = layout
         popup.open()
 
+    def get_army_consumption_and_limit(self):
+        """
+        Получает текущее потребление армии и лимит из таблицы resources.
+        :return: кортеж (текущее_потребление, лимит_армии)
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            # Получаем лимит армии
+            cursor.execute("""
+                SELECT amount FROM resources
+                WHERE faction = ? AND resource_type = ?
+            """, (self.player_fraction, "Лимит Армии"))
+            limit_result = cursor.fetchone()
+            army_limit = limit_result[0] if limit_result else 0
+
+            # Получаем текущее потребление
+            cursor.execute("""
+                SELECT amount FROM resources
+                WHERE faction = ? AND resource_type = ?
+            """, (self.player_fraction, "Потребление"))
+            consumption_result = cursor.fetchone()
+            current_consumption = consumption_result[0] if consumption_result else 0
+
+            return current_consumption, army_limit
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении данных о потреблении: {e}")
+            return 0, 0
+
+    def recalculate_and_update_army_consumption(self):
+        """
+        Пересчитывает текущее потребление армии и лимит армии для фракции игрока
+        и немедленно обновляет записи в таблице resources.
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            # 1. Пересчёт потребления: сумма потребления ВСЕХ юнитов в гарнизонах фракции игрока
+            cursor.execute("""
+                SELECT g.unit_name, g.unit_count, u.consumption
+                FROM garrisons g
+                JOIN units u ON g.unit_name = u.unit_name
+                WHERE u.faction = ?
+            """, (self.player_fraction,))
+            rows = cursor.fetchall()
+
+            total_consumption = 0
+            for row in rows:
+                unit_name, unit_count, consumption = row
+                total_consumption += consumption * unit_count
+
+            # 2. Пересчёт лимита армии: 4000 + 1000 * количество городов фракции
+            cursor.execute("""
+                SELECT COUNT(*) FROM cities WHERE faction = ?
+            """, (self.player_fraction,))
+            city_count_row = cursor.fetchone()
+            city_count = city_count_row[0] if city_count_row else 0
+            army_limit = 4000 + 1000 * city_count
+
+            # 3. Обновление записи "Потребление" (создаём если не существует)
+            cursor.execute("""
+                UPDATE resources 
+                SET amount = ? 
+                WHERE faction = ? AND resource_type = ?
+            """, (total_consumption, self.player_fraction, "Потребление"))
+
+            if cursor.rowcount == 0:  # Запись не найдена — создаём новую
+                cursor.execute("""
+                    INSERT INTO resources (faction, resource_type, amount)
+                    VALUES (?, ?, ?)
+                """, (self.player_fraction, "Потребление", total_consumption))
+
+            # 4. Обновление записи "Лимит Армии" (создаём если не существует)
+            cursor.execute("""
+                UPDATE resources 
+                SET amount = ? 
+                WHERE faction = ? AND resource_type = ?
+            """, (army_limit, self.player_fraction, "Лимит Армии"))
+
+            if cursor.rowcount == 0:  # Запись не найдена — создаём новую
+                cursor.execute("""
+                    INSERT INTO resources (faction, resource_type, amount)
+                    VALUES (?, ?, ?)
+                """, (self.player_fraction, "Лимит Армии", army_limit))
+
+            self.conn.commit()
+            print(f"[DEBUG] Потребление обновлено: {total_consumption}, Лимит армии: {army_limit}")
+
+        except sqlite3.Error as e:
+            print(f"Ошибка при пересчёте потребления: {e}")
+            self.conn.rollback()
+
     def update_troops_table(self):
         """
         Обновляет таблицу доступных войск без пересоздания всего popup'а.
@@ -1153,41 +1246,109 @@ class FortressInfoPopup(Popup):
         Открывает адаптивное всплывающее окно с ползунком для выбора количества войск
         или немедленно размещает, если доступен только 1 юнит.
         """
-        from kivy.metrics import dp, sp  # Убедитесь, что импортированы
+        from kivy.metrics import dp, sp
         unit_type = unit_data["unit_type"]
         available_count = unit_data["quantity"]
 
-        # --- НОВАЯ ЛОГИКА: Немедленное размещение, если юнит один ---
         if available_count == 1:
             # Немедленно размещаем 1 юнит без открытия popup
-            self.transfer_army_to_garrison(unit_data, 1) # Передаем 1
-            # name_label.color = (0, 1, 0, 1) # Можно изменить цвет кнопки, если нужно
-            return # Выходим из функции
-        # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+            self.transfer_army_to_garrison(unit_data, 1)
+            return
 
         # Определение платформы
         is_mobile = platform == 'android' or platform == 'ios'
+
         # Расчёт ширины окна (95% ширины экрана без ограничения)
         window_width = Window.width * 0.95 if is_mobile else Window.width * 0.7
+
         # Высота окна с коррекцией для Android
         window_height = Window.height * 0.75 if is_mobile else Window.height * 0.4
         if is_mobile:
             window_height *= 0.9  # Компенсация высоты для Android
+
         # Создание Popup
         popup = Popup(
-            title=f"", # Убираем заголовок или делаем пустым
+            title=f"Размещение {unit_type}",
             size_hint=(None, None),
             width=window_width,
             height=window_height,
             title_size=sp(20) if is_mobile else sp(18),
             background_color=(0.1, 0.1, 0.1, 0.95)
         )
+
         # Основной контейнер с адаптированными отступами
         layout = BoxLayout(
             orientation='vertical',
             padding=[dp(20), dp(15)],
             spacing=dp(20)
         )
+
+        # === Получаем данные о потреблении ===
+        current_consumption, army_limit = self.get_army_consumption_and_limit()
+
+        # Получаем потребление одного юнита
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT consumption FROM units
+                WHERE unit_name = ?
+            """, (unit_type,))
+            consumption_result = cursor.fetchone()
+            unit_consumption = consumption_result[0] if consumption_result else 0
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении потребления юнита: {e}")
+            unit_consumption = 0
+
+        # === Информация о потреблении ===
+        consumption_info = BoxLayout(
+            orientation='vertical',
+            size_hint_y=None,
+            height=dp(100),
+            spacing=dp(5)
+        )
+
+        # Текущее потребление (форматируем до 1 знака)
+        current_label = Label(
+            text=f"Текущее потребление: {current_consumption:.1f}",
+            font_size=sp(16),
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint_y=None,
+            height=dp(30),
+            halign='left',
+            valign='middle'
+        )
+        current_label.bind(size=current_label.setter('text_size'))
+        consumption_info.add_widget(current_label)
+
+        # Лимит армии (форматируем до 1 знака)
+        limit_label = Label(
+            text=f"Лимит армии: {army_limit:.1f}",
+            font_size=sp(16),
+            color=(0.7, 0.7, 0.7, 1),
+            size_hint_y=None,
+            height=dp(30),
+            halign='left',
+            valign='middle'
+        )
+        limit_label.bind(size=limit_label.setter('text_size'))
+        consumption_info.add_widget(limit_label)
+
+        # Новое потребление (динамически обновляется, форматируем до 1 знака)
+        new_consumption_label = Label(
+            text=f"Новое потребление: {current_consumption:.1f}",
+            font_size=sp(18),
+            color=(0.3, 0.7, 0.3, 1),  # Зелёный по умолчанию
+            bold=True,
+            size_hint_y=None,
+            height=dp(40),
+            halign='left',
+            valign='middle'
+        )
+        new_consumption_label.bind(size=new_consumption_label.setter('text_size'))
+        consumption_info.add_widget(new_consumption_label)
+
+        layout.add_widget(consumption_info)
+
         # === Ползунок с меткой ===
         slider_container = BoxLayout(
             orientation='horizontal',
@@ -1195,6 +1356,7 @@ class FortressInfoPopup(Popup):
             height=dp(80) if is_mobile else dp(60),
             spacing=dp(15)
         )
+
         slider_label = Label(
             text="Количество: 0",
             font_size=sp(18) if is_mobile else sp(16),
@@ -1204,6 +1366,7 @@ class FortressInfoPopup(Popup):
             valign='middle'
         )
         slider_label.bind(size=slider_label.setter('text_size'))
+
         slider = Slider(
             min=0,
             max=available_count,
@@ -1212,12 +1375,31 @@ class FortressInfoPopup(Popup):
             size_hint_x=0.6,
             background_width=dp(40) if is_mobile else dp(30)
         )
-        def update_slider_label(instance, value):
-            slider_label.text = f"Количество: {int(value)}"
-        slider.bind(value=update_slider_label)
+
+        def update_slider_label_and_consumption(instance, value):
+            """Обновляет метки при изменении значения слайдера"""
+            selected_count = int(value)
+            slider_label.text = f"Количество: {selected_count}"
+
+            # Рассчитываем новое потребление (без округления для точной проверки)
+            new_consumption = current_consumption + (unit_consumption * selected_count)
+
+            # Форматируем для отображения с 1 знаком после запятой
+            formatted_consumption = f"{new_consumption:.1f}"
+
+            # Обновляем цвет в зависимости от превышения лимита
+            if new_consumption > army_limit:
+                new_consumption_label.color = (1, 0, 0, 1)  # Красный
+                new_consumption_label.text = f"Новое потребление: {formatted_consumption} (ПРЕВЫШЕНИЕ!)"
+            else:
+                new_consumption_label.color = (0.3, 0.7, 0.3, 1)  # Зелёный
+                new_consumption_label.text = f"Новое потребление: {formatted_consumption}"
+
+        slider.bind(value=update_slider_label_and_consumption)
         slider_container.add_widget(slider_label)
         slider_container.add_widget(slider)
         layout.add_widget(slider_container)
+
         # === Кнопки подтверждения ===
         button_layout = BoxLayout(
             orientation='horizontal',
@@ -1225,6 +1407,7 @@ class FortressInfoPopup(Popup):
             height=dp(100) if is_mobile else dp(70),
             spacing=dp(25)
         )
+
         confirm_button = Button(
             text="Подтвердить",
             font_size=sp(20) if is_mobile else sp(16),
@@ -1233,6 +1416,7 @@ class FortressInfoPopup(Popup):
             border=[dp(15), dp(15), dp(15), dp(15)],
             size_hint_x=0.5
         )
+
         cancel_button = Button(
             text="Отмена",
             font_size=sp(20) if is_mobile else sp(16),
@@ -1241,22 +1425,33 @@ class FortressInfoPopup(Popup):
             border=[dp(15), dp(15), dp(15), dp(15)],
             size_hint_x=0.5
         )
+
         def confirm_action(btn):
             try:
                 selected_count = int(slider.value)
                 if 0 < selected_count <= available_count:
+                    # Проверяем превышение лимита (используем точные значения!)
+                    new_consumption = current_consumption + (unit_consumption * selected_count)
+                    if new_consumption > army_limit:
+                        show_popup_message(
+                            "Превышение лимита",
+                            f"Новое потребление ({new_consumption:.1f}) превысит лимит армии ({army_limit:.1f})."
+                        )
+                        return
+
                     self.transfer_army_to_garrison(unit_data, selected_count)
                     popup.dismiss()
-                    # name_label.color = (0, 1, 0, 1) # Можно изменить цвет кнопки, если нужно
                 else:
                     show_popup_message("Ошибка", f"Выберите количество от 1 до {available_count}")
             except ValueError:
                 show_popup_message("Ошибка", "Введите корректное число")
+
         confirm_button.bind(on_release=confirm_action)
         cancel_button.bind(on_release=lambda btn: popup.dismiss())
         button_layout.add_widget(confirm_button)
         button_layout.add_widget(cancel_button)
         layout.add_widget(button_layout)
+
         # === Адаптация размера окна при изменении размера экрана ===
         def adapt_popup_size(*args):
             if is_mobile:
@@ -1265,6 +1460,7 @@ class FortressInfoPopup(Popup):
             else:
                 popup.width = Window.width * 0.7
                 popup.height = Window.height * 0.4
+
         Window.bind(on_resize=adapt_popup_size)
         popup.bind(on_dismiss=lambda _: Window.unbind(on_resize=adapt_popup_size))
         popup.content = layout
@@ -1882,7 +2078,7 @@ class FortressInfoPopup(Popup):
 
     def transfer_army_to_garrison(self, selected_unit, taken_count):
         """
-        Переносит юнитов из армии в гарнизон и создает слоты экипировки для героев 3 класса.
+        Переносит юнитов из армии в гарнизон и создаёт слоты экипировки для героев 3 класса.
         """
         try:
             with self.conn:
@@ -1890,10 +2086,9 @@ class FortressInfoPopup(Popup):
                 unit_type = selected_unit.get("unit_type")
                 stats = selected_unit.get("stats", {})
                 unit_image = selected_unit.get("unit_image")
-                faction = self.player_fraction  # Предполагается, что это текущая фракция игрока
-                # unit_class из stats будет числом, если данные берутся из armies
-                unit_class = stats.get("Класс", None)  # Получаем класс из stats
+                faction = self.player_fraction
 
+                unit_class = stats.get("Класс", None)
                 print(f"[DEBUG] transfer_army_to_garrison called with:")
                 print(f"  unit_type: {unit_type}")
                 print(f"  taken_count: {taken_count}")
@@ -1904,12 +2099,12 @@ class FortressInfoPopup(Popup):
                     raise ValueError("Некорректные данные для переноса юнита.")
 
                 # --- ЛОГИКА ДОБАВЛЕНИЯ В ГАРИЗОН ---
-                # Получаем текущее количество юнитов в гарнизоне
                 cursor.execute("""
                     SELECT unit_count FROM garrisons
                     WHERE city_name = ? AND unit_name = ?
                 """, (self.city_name, unit_type))
                 existing_unit = cursor.fetchone()
+
                 if existing_unit:
                     new_count = existing_unit[0] + taken_count
                     cursor.execute("""
@@ -1947,65 +2142,45 @@ class FortressInfoPopup(Popup):
                     ON CONFLICT(faction) DO UPDATE SET Units_Combat = Units_Combat + excluded.Units_Combat
                 """, (faction, taken_count))
                 print(f"[DEBUG] Updated results table for faction {faction} with +{taken_count} Units_Combat")
+
                 # --- КОНЕЦ ЛОГИКИ ДОБАВЛЕНИЯ В ГАРИЗОН ---
 
                 # --- НОВАЯ ЛОГИКА: СОЗДАНИЕ СЛОТОВ ЭКИПИРОВКИ ДЛЯ ГЕРОЕВ 3 КЛАССА ---
-                # Проверяем, является ли юнит героем (класс 3) и был ли он добавлен (taken_count > 0)
-                # Сравниваем с числом, так как unit_class из БД обычно INTEGER
                 if unit_class == "3" and taken_count > 0:
                     print(f"[DEBUG] Detected Hero (Class 3) being added: {unit_type}")
-                    # Формируем имя героя (предполагаем, что оно совпадает с unit_type)
                     hero_name = unit_type
 
-                    # 1. Убедимся, что таблица hero_equipment существует с правильной структурой
                     cursor.execute("""
                         CREATE TABLE IF NOT EXISTS hero_equipment (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             faction_name TEXT NOT NULL,
                             hero_name TEXT NOT NULL,
-                            slot_type INTEGER NOT NULL, -- 0 to 4
+                            slot_type INTEGER NOT NULL,
                             artifact_id INTEGER,
                             UNIQUE(faction_name, hero_name, slot_type)
                         );
                     """)
                     print("[DEBUG] Ensured hero_equipment table exists")
 
-                    # 2. Подготовим запрос для вставки слотов
-                    insert_equipment_query = """
-                        INSERT OR IGNORE INTO hero_equipment (faction_name, hero_name, slot_type, artifact_id)
-                        VALUES (?, ?, ?, ?)
-                    """
-
-                    # 3. Подготавливаем данные для 5 слотов (0-4)
                     equipment_data = [
-                        (faction, hero_name, slot_type, None)  # artifact_id изначально NULL
+                        (faction, hero_name, slot_type, None)
                         for slot_type in range(5)
                     ]
                     print(f"[DEBUG] Prepared equipment data for {hero_name}: {equipment_data}")
 
-                    # 4. Выполняем множественную вставку
-                    cursor.executemany(insert_equipment_query, equipment_data)
+                    cursor.executemany("""
+                        INSERT OR IGNORE INTO hero_equipment (faction_name, hero_name, slot_type, artifact_id)
+                        VALUES (?, ?, ?, ?)
+                    """, equipment_data)
                     print(f"[DEBUG] Attempted to insert 5 equipment slots for hero '{hero_name}'.")
-
-                    # 5. Проверим, были ли вставлены строки
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM hero_equipment 
-                        WHERE faction_name = ? AND hero_name = ?
-                    """, (faction, hero_name))
-                    count_result = cursor.fetchone()
-                    print(
-                        f"[DEBUG] Total equipment slots for {hero_name} after operation: {count_result[0] if count_result else 0}")
-
-                    print(f"Созданы/проверены 5 слотов экипировки для героя '{hero_name}' фракции '{faction}'.")
-                else:
-                    print(
-                        f"[DEBUG] Unit is not a hero (Class 3) or taken_count is 0. unit_class={unit_class}, taken_count={taken_count}")
                 # --- КОНЕЦ НОВОЙ ЛОГИКИ ---
 
-            # Обновляем отображение гарнизона
-            self.update_garrison()
-            # Закрываем текущее popup окно, если оно открыто
-            self.close_current_popup()
+                # === КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ПОТРЕБЛЕНИЯ И ЛИМИТА В БД ===
+                self.recalculate_and_update_army_consumption()
+
+                # Обновляем отображение гарнизона
+                self.update_garrison()
+                self.close_current_popup()
 
         except sqlite3.Error as e:
             error_msg = f"Не удалось перенести юниты или создать слоты экипировки: {e}"
@@ -2015,7 +2190,7 @@ class FortressInfoPopup(Popup):
             error_msg = f"Произошла ошибка: {e}"
             print(f"[ERROR] General Error: {error_msg}")
             import traceback
-            traceback.print_exc()  # Печатаем полный стек вызовов для лучшей отладки
+            traceback.print_exc()
             show_popup_message("Ошибка", error_msg)
 
     def close_current_popup(self):
