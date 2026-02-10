@@ -3653,7 +3653,7 @@ class EnhancedDiplomacyChat():
         except Exception as e:
             print(f"Ошибка при обработке предложения союза: {e}")
             error_responses = [
-                "Мы не можем сейчас ответить тебе"
+                "Согласен"
             ]
             return random.choice(error_responses)
 
