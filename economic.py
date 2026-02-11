@@ -2407,31 +2407,6 @@ def open_development_popup(faction):
         height=dp(45) if is_mobile else dp(55)
     )
 
-    # Изменены цвета: Больницы - зеленый, Фабрики - синий
-    left_btn = Button(
-        text="Больницы",
-        font_size=sp(14) if is_mobile else sp(16),
-        bold=True,
-        background_color=(0.35, 0.75, 0.4, 1),  # Зеленый
-        background_normal='',
-        padding=[dp(6), dp(6)]
-    )
-
-    right_btn = Button(
-        text="Фабрики",
-        font_size=sp(14) if is_mobile else sp(16),
-        bold=True,
-        background_color=(0.3, 0.5, 0.9, 1),  # Синий
-        background_normal='',
-        padding=[dp(6), dp(6)]
-    )
-
-    # Равные размеры кнопок
-    left_btn.size_hint_x = 0.48
-    right_btn.size_hint_x = 0.48
-
-    quick_buttons.add_widget(left_btn)
-    quick_buttons.add_widget(right_btn)
     build_content.add_widget(quick_buttons)
 
     # 4. Основные кнопки действия - КОМПАКТНЫЕ
@@ -2619,36 +2594,12 @@ def open_development_popup(faction):
         # Обновляем описание под названием
         strategy_description.text = RATIO_DESCS[idx]
 
-        # Цветовая индикация кнопок - теперь для зеленого/синего
-        if h > f:
-            # Больше больниц - левая кнопка (зеленая) ярче
-            left_btn.background_color = (0.35, 0.85, 0.45, 1)  # Ярко-зеленый
-            right_btn.background_color = (0.3, 0.5, 0.9, 0.7)  # Бледно-синий
-        elif f > h:
-            # Больше фабрик - правая кнопка (синяя) ярче
-            left_btn.background_color = (0.35, 0.75, 0.4, 0.7)  # Бледно-зеленый
-            right_btn.background_color = (0.3, 0.6, 1, 1)  # Ярко-синий
-        else:
-            # Равные соотношения - обе кнопки нормальные
-            left_btn.background_color = (0.35, 0.75, 0.4, 1)  # Зеленый
-            right_btn.background_color = (0.3, 0.5, 0.9, 1)  # Синий
-
     # Загрузка текущих настроек
     if hasattr(faction, 'auto_build_ratio') and faction.auto_build_ratio in RATIOS:
         slider.value = RATIOS.index(faction.auto_build_ratio)
 
     update_ui(None, slider.value)
     slider.bind(value=update_ui)
-
-    # Управление слайдером кнопками
-    def slide_left(instance):
-        slider.value = max(slider.value - 1, 0)
-
-    def slide_right(instance):
-        slider.value = min(slider.value + 1, 8)
-
-    left_btn.bind(on_release=slide_left)
-    right_btn.bind(on_release=slide_right)
 
     def apply_settings(instance):
         idx = int(slider.value)

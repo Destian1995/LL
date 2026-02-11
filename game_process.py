@@ -546,6 +546,27 @@ class CircularProgressButton(Button):
         self.anim = None
         self.canvas.after.clear()
 
+class TabImageButton(ImageButton):
+    """Кнопка вкладки с поддержкой активного/неактивного состояния"""
+    def __init__(self, normal_source, active_source=None, **kwargs):
+        super().__init__(**kwargs)
+        self.normal_source = normal_source
+        self.active_source = active_source or self._generate_active_path(normal_source)
+        self.source = self.normal_source
+        self.is_active = False
+
+    def _generate_active_path(self, path):
+        """Автоматически генерирует путь к активной иконке (добавляет _tab перед расширением)"""
+        if path.endswith('.png'):
+            return path.replace('.png', '_tab.png')
+        elif path.endswith('.jpg'):
+            return path.replace('.jpg', '_tab.jpg')
+        return path + '_tab'
+
+    def set_active(self, active):
+        self.is_active = active
+        self.source = self.active_source if active else self.normal_source
+
 
 class GameScreen(Screen):
     SEASON_NAMES = ['Зима', 'Весна', 'Лето', 'Осень']
@@ -646,10 +667,6 @@ class GameScreen(Screen):
             size=(dp(120), dp(50)),
             pos_hint={'right': 0.86, 'top': 1}
         )
-        # Фон под «сезон» (скруглённый прямоугольник)
-        with self.season_container.canvas.before:
-            Color(0.15, 0.2, 0.3, 0.9)
-            self._season_bg = RoundedRectangle(radius=[10])
 
         def _upd_bg(instance, value):
             self.season_container.canvas.before.clear()
@@ -766,26 +783,54 @@ class GameScreen(Screen):
             instance.canvas.before.clear()
             with instance.canvas.before:
                 Color(0.15, 0.2, 0.3, 0.9)
-                RoundedRectangle(pos=instance.pos, size=instance.size, radius=[15])
+                self._mode_bg = RoundedRectangle(pos=instance.pos, size=instance.size, radius=[15])
 
         mode_panel_container.bind(pos=update_mode_rect, size=update_mode_rect)
-        btn_advisor = BlinkingImageButton(
-            source=transform_filename(f'files/sov/{self.selected_faction}.jpg'),
+        # Создаем кнопки с поддержкой состояний
+        advisor_normal = transform_filename(f'files/sov/{self.selected_faction}.jpg')
+        advisor_active = transform_filename(f'files/sov/{self.selected_faction}.jpg')
+
+        self.btn_advisor = TabImageButton(
+            normal_source=advisor_normal,
+            active_source=advisor_active if os.path.exists(advisor_active) else advisor_normal,
             size_hint=(1, None),
             height=dp(60),
             on_release=self.show_advisor
         )
-        btn_economy = ImageButton(source='files/status/economy.png', size_hint=(1, None), height=dp(60),
-                                  on_release=self.switch_to_economy)
-        btn_army = ImageButton(source='files/status/army.png', size_hint=(1, None), height=dp(60),
-                               on_release=self.switch_to_army)
-        btn_politics = ImageButton(source='files/status/politic.png', size_hint=(1, None), height=dp(60),
-                                   on_release=self.switch_to_politics)
-        mode_panel_container.add_widget(btn_advisor)
-        mode_panel_container.add_widget(btn_economy)
-        mode_panel_container.add_widget(btn_army)
-        mode_panel_container.add_widget(btn_politics)
-        self.btn_advisor = btn_advisor
+
+        self.btn_economy = TabImageButton(
+            normal_source='files/status/economy.png',
+            size_hint=(1, None),
+            height=dp(60),
+            on_release=self.switch_to_economy
+        )
+
+        self.btn_army = TabImageButton(
+            normal_source='files/status/army.png',
+            size_hint=(1, None),
+            height=dp(60),
+            on_release=self.switch_to_army
+        )
+
+        self.btn_politics = TabImageButton(
+            normal_source='files/status/politic.png',
+            size_hint=(1, None),
+            height=dp(60),
+            on_release=self.switch_to_politics
+        )
+
+        # Сохраняем ссылки для управления состояниями
+        self.tab_buttons = {
+            'advisor': self.btn_advisor,
+            'economy': self.btn_economy,
+            'army': self.btn_army,
+            'politics': self.btn_politics
+        }
+
+        # Добавляем кнопки в панель
+        for btn in self.tab_buttons.values():
+            mode_panel_container.add_widget(btn)
+
         self.root_overlay.add_widget(mode_panel_container)
         self.save_interface_element("ModePanel", "bottom", mode_panel_container)
 
@@ -874,6 +919,24 @@ class GameScreen(Screen):
 
         # --- Привязка к изменению размера окна ---
         Window.bind(on_resize=self.update_resource_box_position)
+
+    def deactivate_all_tabs(self):
+        """Деактивирует все кнопки вкладок"""
+        for btn in self.tab_buttons.values():
+            if hasattr(btn, 'set_active'):
+                btn.set_active(False)
+        # Останавливаем мигание советника при деактивации
+        if hasattr(self.btn_advisor, 'stop_blinking'):
+            self.btn_advisor.stop_blinking()
+
+    def activate_tab(self, tab_name):
+        """Активирует указанную вкладку и деактивирует остальные"""
+        self.deactivate_all_tabs()
+        if tab_name in self.tab_buttons:
+            self.tab_buttons[tab_name].set_active(True)
+            # Для советника останавливаем мигание при активации
+            if tab_name == 'advisor' and hasattr(self.btn_advisor, 'stop_blinking'):
+                self.btn_advisor.stop_blinking()
 
     def process_turn(self, instance=None):
         """
@@ -1984,17 +2047,17 @@ class GameScreen(Screen):
         self.resource_box.update_resources()
 
     def switch_to_economy(self, instance):
-        """Переключение на экономическую вкладку."""
+        self.activate_tab('economy')
         self.clear_game_area()
         economic.start_economy_mode(self.game_state_manager.faction, self.game_area, self.conn, self.season_manager)
 
     def switch_to_army(self, instance):
-        """Переключение на армейскую вкладку."""
+        self.activate_tab('army')
         self.clear_game_area()
         army.start_army_mode(self.selected_faction, self.game_area, self.game_state_manager.faction, self.conn)
 
     def switch_to_politics(self, instance):
-        """Переключение на политическую вкладку."""
+        self.activate_tab('politics')
         self.clear_game_area()
         politic.start_politic_mode(self.selected_faction, self.game_area, self.game_state_manager.faction, self.conn)
 
@@ -2007,16 +2070,10 @@ class GameScreen(Screen):
         self.game_state_manager.close_connection()
 
     def show_advisor(self, instance):
-        """Показать экран советника и остановить мигание."""
-        # Останавливаем мигание при нажатии
-        if hasattr(self, 'btn_advisor'):
-            self.btn_advisor.stop_blinking()
-
+        self.activate_tab('advisor')
         self.clear_game_area()
         advisor_view = AdvisorView(self.selected_faction, self.conn, game_screen_instance=self)
         self.game_area.add_widget(advisor_view)
-
-        # Можно пометить сообщения как прочитанные
         self.mark_messages_as_read()
 
     def mark_messages_as_read(self, conn=None):
