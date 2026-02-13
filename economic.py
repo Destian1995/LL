@@ -534,7 +534,6 @@ class Faction:
         self.resources['Население'] = self.population
         self.resources['Лимит Армии'] = self.max_army_limit
 
-        print('Обновление ресурсов Потребление:', self.resources['Потребление'])
         self.save_resources_to_db()
         return self.resources
 
@@ -691,7 +690,6 @@ class Faction:
             # Обновляем ресурс в словаре
             self.resources['Потребление'] = self.current_consumption
 
-            print(f"[DEBUG] Пересчитано потребление: {self.current_consumption}")
             return self.current_consumption
 
         except sqlite3.Error as e:

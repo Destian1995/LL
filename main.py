@@ -229,7 +229,6 @@ def clear_tables(conn):
         "artifacts_ai",
         "artifact_effects_log",
         "player_allies",
-        "player_choices",
         "negotiation_history",
     ]
 
@@ -1506,7 +1505,66 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         self.settings_content_container.add_widget(self.faction_info_container)
         self.main_container.add_widget(self.settings_panel_container)
+        # ======== ЧЕКБОКС "ОБУЧЕНИЕ" ========
+        tutorial_container = MDBoxLayout(
+            orientation='vertical',
+            spacing=dp(5) if is_android else dp(8),
+            size_hint=(1, None),
+            height=dp(50) if is_android else dp(60),
+        )
 
+        # Заголовок обучения
+        tutorial_label = MDLabel(
+            text="Режим обучения:",
+            font_style="Body1",
+            theme_text_color="Custom",
+            text_color=(1, 1, 1, 1),
+            size_hint_y=None,
+            height=label_height,
+            halign='left',
+            font_size=self.base_font_size * 0.9
+        )
+        tutorial_label.bind(size=tutorial_label.setter('text_size'))
+        tutorial_container.add_widget(tutorial_label)
+
+        # Контейнер для чекбокса и надписи
+        checkbox_row = MDBoxLayoutKivyMD(
+            orientation='horizontal',
+            spacing=dp(10),
+            size_hint=(1, None),
+            height=dp(30) if is_android else dp(35),
+            padding=[dp(5), 0, 0, 0]
+        )
+
+        # Чекбокс
+        self.tutorial_checkbox = MDCheckbox(
+            size_hint=(None, None),
+            size=(dp(30), dp(30)) if is_android else (dp(35), dp(35)),
+            active=False  # Включено по умолчанию
+        )
+
+        # Надпись рядом с чекбоксом
+        tutorial_text = MDLabel(
+            text="ОБУЧЕНИЕ (Рекомендуем выбрать ЭЛЬФОВ, 2 союзников и БОРЬБА)",
+            font_style="Caption",
+            theme_text_color="Custom",
+            text_color=(0.9, 0.9, 0.9, 1),
+            size_hint_y=None,
+            height=dp(30),
+            halign='left',
+            valign='middle',
+            font_size=self.base_font_size * 0.8
+        )
+        tutorial_text.bind(size=tutorial_text.setter('text_size'))
+
+        checkbox_row.add_widget(self.tutorial_checkbox)
+        checkbox_row.add_widget(tutorial_text)
+        tutorial_container.add_widget(checkbox_row)
+        self.settings_content_container.add_widget(tutorial_container)
+
+        # Сохраняем состояние обучения
+        self.tutorial_enabled = False
+        self.tutorial_checkbox.bind(active=self.on_tutorial_toggled)
         # ======== КНОПКИ ВНИЗУ ========
         # Определяем размеры кнопок в зависимости от платформы
         if is_android:
@@ -1567,6 +1625,11 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         # ======== Запускаем анимацию появления ========
         Clock.schedule_once(lambda dt: self.animate_in(), 0.3)
+
+    def on_tutorial_toggled(self, checkbox, value):
+        """Обработка переключения режима обучения"""
+        self.tutorial_enabled = value
+        print(f"Режим обучения: {'ВКЛЮЧЕН' if value else 'ВЫКЛЮЧЕН'}")
 
     def on_ideology_selected(self, spinner, text):
         """Обработка выбора идеологии"""
@@ -1746,8 +1809,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Останавливаем фоновое видео
         if hasattr(self, 'bg_video'):
             self.bg_video.state = 'stop'
-        # Сохраняем выбор игрока в БД
-        self.save_player_choices()
+
         # Создаем оверлей с видео
         overlay = MDFloatLayout(size=Window.size)
         self.overlay = overlay
@@ -1764,41 +1826,6 @@ class KingdomSelectionWidget(MDFloatLayout):
         overlay.add_widget(self.start_video)
         self.start_video.bind(on_eos=self.on_start_video_end)
         Clock.schedule_once(self.force_start_game, 3)
-
-    def save_player_choices(self):
-        """Сохраняет выбор игрока в БД"""
-        cursor = self.conn.cursor()
-        try:
-            # Создаем таблицу если её нет
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS player_choices (
-                    faction TEXT PRIMARY KEY,
-                    ideology TEXT,
-                    allies_count INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            # Получаем выбранную фракцию
-            from kivy.app import App
-            app = App.get_running_app()
-            selected_faction = app.selected_kingdom
-            # Удаляем старые записи
-            cursor.execute("DELETE FROM player_choices WHERE faction = ?", (selected_faction,))
-            # Сохраняем новые значения
-            cursor.execute("""
-                INSERT INTO player_choices (faction, ideology, allies_count) 
-                VALUES (?, ?, ?)
-            """, (
-                selected_faction,
-                self.selected_ideology if self.selected_ideology != 'random' else None,
-                self.selected_allies if self.selected_allies != 'random' else None
-            ))
-            self.conn.commit()
-            print(
-                f"Выбор игрока сохранен: {selected_faction}, идеология={self.selected_ideology}, союзников={self.selected_allies}")
-        except sqlite3.Error as e:
-            print(f"Ошибка при сохранении выбора игрока: {e}")
-            self.conn.rollback()
 
     def on_start_video_end(self, instance, value):
         if value or (self.start_video and self.start_video.state == 'stop'):
@@ -1841,6 +1868,7 @@ class KingdomSelectionWidget(MDFloatLayout):
                     cities,
                     player_ideology=self.selected_ideology,
                     player_allies=self.selected_allies,
+                    tutorial_enabled=self.tutorial_enabled,
                     conn=self.conn
                 )
                 app.root.clear_widgets()

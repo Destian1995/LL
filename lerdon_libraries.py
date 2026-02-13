@@ -92,10 +92,6 @@ from kivy.metrics import dp, sp
 from kivy.utils import get_color_from_hex
 from kivymd.app import MDApp
 from kivy.resources import resource_find
-from kivymd.uix.floatlayout import MDFloatLayout
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.label import MDLabel
-from kivymd.uix.button import MDFlatButton
 from kivy.clock import Clock
 from kivy.animation import Animation
 from kivy.graphics import Color, RoundedRectangle, Line
@@ -107,3 +103,9 @@ from kivy import platform
 from kivy.uix.spinner import Spinner
 
 # kivymd libraries
+from kivymd.uix.floatlayout import MDFloatLayout
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.label import MDLabel
+from kivymd.uix.button import MDFlatButton
+from kivymd.uix.selectioncontrol import MDCheckbox
+from kivymd.uix.boxlayout import MDBoxLayout as MDBoxLayoutKivyMD
