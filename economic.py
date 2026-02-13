@@ -2334,24 +2334,24 @@ def open_development_popup(faction):
 
     build_content = BoxLayout(
         orientation='vertical',
-        spacing=dp(10) if is_mobile else dp(18),
-        padding=[dp(8), dp(10), dp(8), dp(10)] if is_mobile else dp(14),
+        spacing=dp(4) if is_mobile else dp(8),  # Уменьшил spacing
+        padding=[dp(6), dp(6), dp(6), dp(6)],  # Уменьшил padding
         size_hint_y=None
     )
     build_content.bind(minimum_height=build_content.setter('height'))
 
-    # 1. Название стратегии и описание под ним
+    # 1. Название стратегии и описание под ним - сделал компактнее
     strategy_display = BoxLayout(
         orientation='vertical',
         size_hint_y=None,
-        height=dp(90) if is_mobile else dp(120),
-        padding=[dp(6), dp(6), dp(6), dp(4)]
+        height=dp(70) if is_mobile else dp(100),  # Уменьшил высоту
+        padding=[dp(4), dp(2), dp(4), dp(0)]  # Убрал нижний padding
     )
 
     # Название стратегии
     strategy_main_name = Label(
         text="Баланс",
-        font_size=sp(22) if is_mobile else sp(28),
+        font_size=sp(20) if is_mobile else sp(26),  # Чуть меньше
         bold=True,
         color=(1, 0.95, 0.8, 1),
         halign='center',
@@ -2359,15 +2359,15 @@ def open_development_popup(faction):
     )
     strategy_main_name.bind(size=strategy_main_name.setter('text_size'))
 
-    # Описание стратегии под названием
+    # Описание стратегии под названием - сделал компактнее
     strategy_description = Label(
         text="Идеально если не знаете что выбрать",
-        font_size=sp(13) if is_mobile else sp(15),
+        font_size=sp(12) if is_mobile else sp(14),  # Меньше шрифт
         color=(0.85, 0.9, 0.95, 0.9),
         halign='center',
         valign='top',
         size_hint_y=None,
-        height=dp(50) if is_mobile else dp(70)
+        height=dp(30) if is_mobile else dp(45)  # Сильно уменьшил высоту
     )
     strategy_description.bind(size=strategy_description.setter('text_size'))
 
@@ -2375,12 +2375,12 @@ def open_development_popup(faction):
     strategy_display.add_widget(strategy_description)
     build_content.add_widget(strategy_display)
 
-    # 2. Слайдер с компактной индикацией
+    # 2. Слайдер с компактной индикацией - уменьшил высоту
     slider_container = BoxLayout(
         orientation='vertical',
-        spacing=dp(4),
+        spacing=dp(0),  # Убрал spacing
         size_hint_y=None,
-        height=dp(65) if is_mobile else dp(70)
+        height=dp(45) if is_mobile else dp(55)  # Уменьшил высоту
     )
 
     # Сам слайдер
@@ -2389,48 +2389,50 @@ def open_development_popup(faction):
         max=8,
         value=4,
         step=1,
-        cursor_size=(dp(42) if is_mobile else dp(45), dp(42) if is_mobile else dp(45)),
-        background_width=dp(10),
+        cursor_size=(dp(38) if is_mobile else dp(42), dp(38) if is_mobile else dp(42)),  # Чуть меньше курсор
+        background_width=dp(8),
         size_hint_y=None,
-        height=dp(30) if is_mobile else dp(35)
+        height=dp(25) if is_mobile else dp(30)  # Уменьшил высоту слайдера
     )
     slider_container.add_widget(slider)
     build_content.add_widget(slider_container)
 
-    # 3. Быстрые кнопки управления слайдером - КОМПАКТНЫЕ
+    # 3. Быстрые кнопки управления слайдером - ПОДНЯЛ ВПРИТЫК
     quick_buttons = BoxLayout(
         orientation='horizontal',
-        spacing=dp(8) if is_mobile else dp(15),
+        spacing=dp(4) if is_mobile else dp(8),  # Уменьшил spacing
         size_hint_y=None,
-        height=dp(45) if is_mobile else dp(55)
+        height=dp(40) if is_mobile else dp(48),  # Чуть уменьшил высоту
+        padding=[0, 0, 0, 0]  # Убрал padding полностью
     )
 
     build_content.add_widget(quick_buttons)
 
-    # 4. Основные кнопки действия - КОМПАКТНЫЕ
+    # 4. Основные кнопки действия - ПОДНЯЛ ВПРИТЫК к быстрым кнопкам
     action_buttons = BoxLayout(
         orientation='horizontal',
-        spacing=dp(10) if is_mobile else dp(15),
+        spacing=dp(6) if is_mobile else dp(10),  # Уменьшил spacing
         size_hint_y=None,
-        height=dp(50) if is_mobile else dp(65)
+        height=dp(45) if is_mobile else dp(55),  # Немного уменьшил высоту
+        padding=[0, 0, 0, 0]  # Убрал padding
     )
 
     cancel_btn = Button(
         text="Отмена",
-        font_size=sp(16) if is_mobile else sp(18),
+        font_size=sp(15) if is_mobile else sp(17),  # Чуть меньше
         bold=True,
         background_color=(0.65, 0.25, 0.25, 1),
         background_normal='',
-        padding=[dp(8), dp(8)]
+        padding=[dp(4), dp(4)]  # Уменьшил padding
     )
 
     apply_btn = Button(
         text="Применить",
-        font_size=sp(16) if is_mobile else sp(18),
+        font_size=sp(15) if is_mobile else sp(17),  # Чуть меньше
         bold=True,
         background_color=(0.35, 0.75, 0.4, 1),
         background_normal='',
-        padding=[dp(8), dp(8)]
+        padding=[dp(4), dp(4)]  # Уменьшил padding
     )
 
     # Равные размеры кнопок
@@ -2441,14 +2443,13 @@ def open_development_popup(faction):
     action_buttons.add_widget(apply_btn)
     build_content.add_widget(action_buttons)
 
-    # Устанавливаем минимальную высоту контента
+    # Устанавливаем минимальную высоту контента - пересчитал с новыми размерами
     build_content.height = (
             strategy_display.height +
             slider_container.height +
             quick_buttons.height +
             action_buttons.height +
-            (build_content.spacing * 3) +
-            (build_content.padding[1] + build_content.padding[3])
+            (build_content.spacing * 3)  # Учитываем spacing между элементами
     )
 
     build_scroll.add_widget(build_content)
@@ -2491,12 +2492,12 @@ def open_development_popup(faction):
     stats_grid = GridLayout(
         cols=1,
         size_hint_y=None,
-        spacing=dp(6) if is_mobile else dp(10),
-        padding=[dp(6), dp(8), dp(6), dp(8)] if is_mobile else [dp(12), dp(12), dp(12), dp(12)]
+        spacing=dp(4) if is_mobile else dp(8),  # Уменьшил spacing
+        padding=[dp(4), dp(4), dp(4), dp(4)] if is_mobile else [dp(8), dp(8), dp(8), dp(8)]  # Уменьшил padding
     )
     stats_grid.bind(minimum_height=stats_grid.setter('height'))
 
-    # Данные статистики - КОМПАКТНЫЕ
+    # Данные статистики - более компактные
     stats_data = [
         ("Больницы", format_number(faction.hospitals), (0.85, 0.4, 0.4, 1)),
         ("Фабрики", format_number(faction.factories), (0.4, 0.85, 0.5, 1)),
@@ -2515,12 +2516,12 @@ def open_development_popup(faction):
         card = BoxLayout(
             orientation='horizontal',
             size_hint_y=None,
-            height=dp(48) if is_mobile else dp(60),
-            padding=[dp(8), dp(4), dp(8), dp(4)] if is_mobile else [dp(12), dp(6), dp(12), dp(6)]
+            height=dp(40) if is_mobile else dp(50),  # Уменьшил высоту карточек
+            padding=[dp(4), dp(2), dp(4), dp(2)] if is_mobile else [dp(8), dp(4), dp(8), dp(4)]  # Меньше padding
         )
         with card.canvas.before:
             Color(0.18, 0.23, 0.38, 1)
-            card.bg = RoundedRectangle(radius=[dp(8)], size=card.size, pos=card.pos)
+            card.bg = RoundedRectangle(radius=[dp(6)], size=card.size, pos=card.pos)  # Меньше радиус
             card.bind(
                 pos=lambda inst, val, bg=card.bg: setattr(bg, 'pos', val),
                 size=lambda inst, val, bg=card.bg: setattr(bg, 'size', val)
@@ -2529,19 +2530,19 @@ def open_development_popup(faction):
         left_col = BoxLayout(orientation='vertical', size_hint_x=0.7, spacing=dp(0))
         title = Label(
             text=label_text,
-            font_size=sp(13) if is_mobile else sp(15),
+            font_size=sp(12) if is_mobile else sp(14),  # Меньше шрифт
             bold=True,
             color=(0.92, 0.95, 1, 1),
             halign='left',
             valign='middle',
-            text_size=(dp(150) if is_mobile else None, None)
+            text_size=(dp(130) if is_mobile else None, None)
         )
         title.bind(size=title.setter('text_size'))
         left_col.add_widget(title)
 
         value_label = Label(
             text=str(value),
-            font_size=sp(15) if is_mobile else sp(18),
+            font_size=sp(14) if is_mobile else sp(16),  # Меньше шрифт
             bold=True,
             color=color,
             halign='right',

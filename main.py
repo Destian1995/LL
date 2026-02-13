@@ -1169,21 +1169,21 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Увеличиваем размер кнопок для Android
         if is_android:
             if is_landscape:
-                button_height = dp(40)  # Выше для альбомной ориентации
-                spacing_val = dp(4)
-                button_font_size = self.base_font_size * 1.0  # Больше шрифт
+                button_height = dp(38)  # УМЕНЬШИЛ на 2dp
+                spacing_val = dp(3)      # УМЕНЬШИЛ spacing
+                button_font_size = self.base_font_size * 0.95  # УМЕНЬШИЛ шрифт
             else:
-                button_height = dp(42)  # Увеличиваем высоту кнопок
-                spacing_val = dp(4)
-                button_font_size = self.base_font_size * 1.05  # Увеличиваем шрифт
+                button_height = dp(40)   # УМЕНЬШИЛ на 2dp
+                spacing_val = dp(3)      # УМЕНЬШИЛ spacing
+                button_font_size = self.base_font_size * 1.0   # Немного уменьшил шрифт
         else:
-            button_height = dp(45)
-            spacing_val = dp(5)
+            button_height = dp(42)        # УМЕНЬШИЛ на 3dp
+            spacing_val = dp(4)           # УМЕНЬШИЛ spacing
             button_font_size = self.base_font_size
 
         # Рассчитываем общую высоту для панели
         num_factions = len(self.faction_data)
-        total_height = button_height * num_factions + spacing_val * (num_factions - 1) + dp(20)
+        total_height = button_height * num_factions + spacing_val * (num_factions - 1) + dp(15)  # УМЕНЬШИЛ padding
 
         self.kingdom_buttons = MDBoxLayout(
             orientation='vertical',
@@ -1207,7 +1207,7 @@ class KingdomSelectionWidget(MDFloatLayout):
                     background_normal='',
                     color=(1, 1, 1, 1),
                     opacity=1,
-                    padding=[dp(10), 0]  # Добавляем горизонтальные отступы для текста
+                    padding=[dp(8), 0]  # УМЕНЬШИЛ горизонтальные отступы
                 )
                 btn.bind(on_release=self.select_kingdom)
                 self.kingdom_buttons.add_widget(btn)
@@ -1241,29 +1241,28 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         # Рассчитываем высоту для каждого контейнера в настройках
         if is_android:
-            ideology_container_height = dp(100)
-            allies_container_height = dp(100)
-            faction_info_container_height = dp(85)
-            spinner_height = dp(35)
-            bonus_height = dp(30)
-            label_height = dp(20)
-            stat_row_height = dp(18)
+            ideology_container_height = dp(90)   # УМЕНЬШИЛ еще на 5dp
+            allies_container_height = dp(95)      # УМЕНЬШИЛ на 5dp
+            faction_info_container_height = dp(80) # УМЕНЬШИЛ на 5dp
+            spinner_height = dp(32)                # УМЕНЬШИЛ на 3dp
+            bonus_height = dp(28)                   # УМЕНЬШИЛ на 2dp
+            label_height = dp(18)                    # УМЕНЬШИЛ на 2dp
+            stat_row_height = dp(16)                 # УМЕНЬШИЛ на 2dp
         else:
-            ideology_container_height = dp(120)
-            allies_container_height = dp(120)
-            faction_info_container_height = dp(100)
-            spinner_height = dp(40)
-            bonus_height = dp(40)
-            label_height = dp(25)
-            stat_row_height = dp(20)
+            ideology_container_height = dp(115)
+            allies_container_height = dp(115)
+            faction_info_container_height = dp(95)
+            spinner_height = dp(38)
+            bonus_height = dp(38)
+            label_height = dp(23)
+            stat_row_height = dp(18)
 
-        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(
-            30)
+        total_settings_height = ideology_container_height + allies_container_height + faction_info_container_height + dp(25)  # УМЕНЬШИЛ общий отступ
 
         # Основной контейнер для вертикального расположения всех блоков
         self.settings_content_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(10) if is_android else dp(15),
+            spacing=dp(4) if is_android else dp(12),  # ЕЩЕ УМЕНЬШИЛ spacing
             size_hint=(0.85, 0.9),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
@@ -1272,7 +1271,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ВЫБОР ИДЕОЛОГИИ ========
         ideology_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(5) if is_android else dp(8),
+            spacing=dp(2) if is_android else dp(6),  # ЕЩЕ УМЕНЬШИЛ spacing
             size_hint=(1, None),
             height=ideology_container_height,
         )
@@ -1286,7 +1285,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint_y=None,
             height=label_height,
             halign='left',
-            font_size=self.base_font_size * 0.9
+            font_size=self.base_font_size * 0.85  # УМЕНЬШИЛ шрифт
         )
         ideology_label.bind(size=ideology_label.setter('text_size'))
         ideology_container.add_widget(ideology_label)
@@ -1299,7 +1298,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             height=spinner_height,
             background_color=(0.2, 0.3, 0.4, 1),
             color=(1, 1, 1, 1),
-            font_size=self.base_font_size * 0.8
+            font_size=self.base_font_size * 0.75  # УМЕНЬШИЛ шрифт
         )
         self.ideology_spinner.bind(text=self.on_ideology_selected)
         ideology_container.add_widget(self.ideology_spinner)
@@ -1316,7 +1315,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.ideology_bonus_bg = RoundedRectangle(
                 pos=self.ideology_bonus_container.pos,
                 size=self.ideology_bonus_container.size,
-                radius=[6]
+                radius=[4]  # УМЕНЬШИЛ радиус
             )
 
         def update_ideology_bonus_bg(instance, value):
@@ -1328,8 +1327,8 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Иконка и текст бонуса
         ideology_bonus_layout = MDBoxLayout(
             orientation='horizontal',
-            spacing=dp(8),
-            size_hint=(0.95, 0.8),
+            spacing=dp(6),  # УМЕНЬШИЛ spacing
+            size_hint=(0.95, 0.85),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
 
@@ -1337,7 +1336,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         self.ideology_bonus_icon = Image(
             source='files/pict/menu/bonus_icon.png',
             size_hint=(None, None),
-            size=(dp(20) if is_android else dp(25), dp(20) if is_android else dp(25)),
+            size=(dp(18) if is_android else dp(22), dp(18) if is_android else dp(22)),  # УМЕНЬШИЛ размер
             allow_stretch=True,
             keep_ratio=True
         )
@@ -1349,7 +1348,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             text_color=(0.8, 0.9, 1.0, 1),
             halign='left',
             valign='middle',
-            font_size=self.base_font_size * 0.7
+            font_size=self.base_font_size * 0.65  # УМЕНЬШИЛ шрифт
         )
         self.ideology_bonus_label.bind(size=self.ideology_bonus_label.setter('text_size'))
 
@@ -1362,7 +1361,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ВЫБОР КОЛИЧЕСТВА СОЮЗНИКОВ ========
         allies_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(5) if is_android else dp(8),
+            spacing=dp(2) if is_android else dp(6),  # УМЕНЬШИЛ spacing
             size_hint=(1, None),
             height=allies_container_height,
         )
@@ -1376,7 +1375,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint_y=None,
             height=label_height,
             halign='left',
-            font_size=self.base_font_size * 0.9
+            font_size=self.base_font_size * 0.85  # УМЕНЬШИЛ шрифт
         )
         allies_label.bind(size=allies_label.setter('text_size'))
         allies_container.add_widget(allies_label)
@@ -1389,7 +1388,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             height=spinner_height,
             background_color=(0.2, 0.3, 0.4, 1),
             color=(1, 1, 1, 1),
-            font_size=self.base_font_size * 0.8
+            font_size=self.base_font_size * 0.75  # УМЕНЬШИЛ шрифт
         )
         self.allies_spinner.bind(text=self.on_allies_selected)
         allies_container.add_widget(self.allies_spinner)
@@ -1406,7 +1405,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             self.allies_info_bg = RoundedRectangle(
                 pos=self.allies_info_container.pos,
                 size=self.allies_info_container.size,
-                radius=[6]
+                radius=[4]  # УМЕНЬШИЛ радиус
             )
 
         def update_allies_info_bg(instance, value):
@@ -1418,8 +1417,8 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Иконки и текст союзников
         allies_info_layout = MDBoxLayout(
             orientation='horizontal',
-            spacing=dp(10),
-            size_hint=(0.95, 0.8),
+            spacing=dp(8),  # УМЕНЬШИЛ spacing
+            size_hint=(0.95, 0.85),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
 
@@ -1430,7 +1429,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             text_color=(0.8, 0.9, 1.0, 1),
             halign='left',
             valign='middle',
-            font_size=self.base_font_size * 0.7
+            font_size=self.base_font_size * 0.65  # УМЕНЬШИЛ шрифт
         )
         self.allies_count_label.bind(size=self.allies_count_label.setter('text_size'))
 
@@ -1442,7 +1441,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ИНФОРМАЦИЯ О ФРАКЦИИ ========
         self.faction_info_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(3) if is_android else dp(5),
+            spacing=dp(2) if is_android else dp(4),  # УМЕНЬШИЛ spacing
             size_hint=(1, None),
             height=faction_info_container_height,
         )
@@ -1455,7 +1454,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             size_hint_y=None,
             height=label_height,
             halign='left',
-            font_size=self.base_font_size * 0.9
+            font_size=self.base_font_size * 0.85  # УМЕНЬШИЛ шрифт
         )
         info_title.bind(size=info_title.setter('text_size'))
         self.faction_info_container.add_widget(info_title)
@@ -1468,7 +1467,7 @@ class KingdomSelectionWidget(MDFloatLayout):
                 orientation='horizontal',
                 size_hint_y=None,
                 height=stat_row_height,
-                spacing=dp(3)
+                spacing=dp(2)  # УМЕНЬШИЛ spacing
             )
 
             label = MDLabel(
@@ -1478,18 +1477,18 @@ class KingdomSelectionWidget(MDFloatLayout):
                 text_color=(0.9, 0.9, 0.9, 1),
                 size_hint_x=0.6,
                 halign='left',
-                font_size=self.base_font_size * 0.7
+                font_size=self.base_font_size * 0.65  # УМЕНЬШИЛ шрифт
             )
             label.bind(size=label.setter('text_size'))
 
             icons_box = MDBoxLayout(
                 orientation='horizontal',
                 size_hint_x=0.4,
-                spacing=dp(2)
+                spacing=dp(1)  # УМЕНЬШИЛ spacing
             )
 
             # Заполняем серыми иконками по умолчанию
-            icon_size = dp(12) if is_android else dp(14)
+            icon_size = dp(10) if is_android else dp(12)  # УМЕНЬШИЛ размер иконок
             for i in range(3):
                 img = Image(
                     source='files/pict/menu/grey.png',
@@ -1508,52 +1507,38 @@ class KingdomSelectionWidget(MDFloatLayout):
         # ======== ЧЕКБОКС "ОБУЧЕНИЕ" ========
         tutorial_container = MDBoxLayout(
             orientation='vertical',
-            spacing=dp(5) if is_android else dp(8),
+            spacing=dp(3) if is_android else dp(6),  # УМЕНЬШИЛ spacing
             size_hint=(1, None),
-            height=dp(50) if is_android else dp(60),
+            height=dp(45) if is_android else dp(55),  # УМЕНЬШИЛ высоту
         )
-
-        # Заголовок обучения
-        tutorial_label = MDLabel(
-            text="Режим обучения:",
-            font_style="Body1",
-            theme_text_color="Custom",
-            text_color=(1, 1, 1, 1),
-            size_hint_y=None,
-            height=label_height,
-            halign='left',
-            font_size=self.base_font_size * 0.9
-        )
-        tutorial_label.bind(size=tutorial_label.setter('text_size'))
-        tutorial_container.add_widget(tutorial_label)
 
         # Контейнер для чекбокса и надписи
         checkbox_row = MDBoxLayoutKivyMD(
             orientation='horizontal',
-            spacing=dp(10),
+            spacing=dp(6),  # УМЕНЬШИЛ spacing
             size_hint=(1, None),
-            height=dp(30) if is_android else dp(35),
-            padding=[dp(5), 0, 0, 0]
+            height=dp(28) if is_android else dp(32),  # УМЕНЬШИЛ высоту
+            padding=[dp(3), 0, 0, 0]  # УМЕНЬШИЛ padding
         )
 
         # Чекбокс
         self.tutorial_checkbox = MDCheckbox(
             size_hint=(None, None),
-            size=(dp(30), dp(30)) if is_android else (dp(35), dp(35)),
-            active=False  # Включено по умолчанию
+            size=(dp(26), dp(26)) if is_android else (dp(30), dp(30)),  # УМЕНЬШИЛ размер
+            active=False
         )
 
         # Надпись рядом с чекбоксом
         tutorial_text = MDLabel(
-            text="ОБУЧЕНИЕ (Рекомендуем выбрать ЭЛЬФОВ, 2 союзников и БОРЬБА)",
+            text="ОБУЧЕНИЕ(Рекомендуется: Эльфы, Борьба, 2 союзника)",
             font_style="Caption",
             theme_text_color="Custom",
             text_color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
-            height=dp(30),
+            height=dp(28),
             halign='left',
             valign='middle',
-            font_size=self.base_font_size * 0.8
+            font_size=self.base_font_size * 0.7  # УМЕНЬШИЛ шрифт
         )
         tutorial_text.bind(size=tutorial_text.setter('text_size'))
 
@@ -1569,26 +1554,26 @@ class KingdomSelectionWidget(MDFloatLayout):
         # Определяем размеры кнопок в зависимости от платформы
         if is_android:
             button_container_width = 0.4
-            back_btn_width = dp(90)
-            start_btn_width = dp(170)
-            button_height = dp(40)
-            button_font_size = self.base_font_size * 0.9
-            buttons_y_pos = 0.03  # Немного выше для Android
+            back_btn_width = dp(85)   # УМЕНЬШИЛ ширину
+            start_btn_width = dp(160)  # УМЕНЬШИЛ ширину
+            button_height = dp(38)     # УМЕНЬШИЛ высоту
+            button_font_size = self.base_font_size * 0.85  # УМЕНЬШИЛ шрифт
+            buttons_y_pos = 0.02  # Опустил чуть ниже
         else:
             button_container_width = 0.4
-            back_btn_width = dp(100)
-            start_btn_width = dp(190)
-            button_height = dp(45)
-            button_font_size = self.base_font_size * 0.9
+            back_btn_width = dp(95)
+            start_btn_width = dp(180)
+            button_height = dp(42)
+            button_font_size = self.base_font_size * 0.85
             buttons_y_pos = 0.02
 
         # Контейнер для кнопок
         self.bottom_buttons_container = MDBoxLayout(
             orientation='horizontal',
             size_hint=(None, None),
-            size=(Window.width * button_container_width, button_height + dp(5)),
-            spacing=dp(8) if is_android else dp(10),
-            padding=[dp(5), 0, dp(5), 0],
+            size=(Window.width * button_container_width, button_height + dp(3)),  # УМЕНЬШИЛ общую высоту
+            spacing=dp(6) if is_android else dp(8),  # УМЕНЬШИЛ spacing
+            padding=[dp(3), 0, dp(3), 0],  # УМЕНЬШИЛ padding
             pos_hint={'x': 0.05, 'y': buttons_y_pos}
         )
 
@@ -1608,7 +1593,7 @@ class KingdomSelectionWidget(MDFloatLayout):
             text="Начать игру",
             size_hint=(None, None),
             size=(start_btn_width, button_height),
-            font_size=button_font_size * 1.1,
+            font_size=button_font_size * 1.05,  # Немного уменьшил
             bold=True,
             color=(1, 1, 1, 1),
             background_color=(0.2, 0.6, 0.2, 1),
