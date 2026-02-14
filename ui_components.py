@@ -227,13 +227,10 @@ class TutorialHint(FloatLayout):
     def _update_label_text_size(self, instance, width):
         self.label.text_size = (width - dp(56), None)
 
-    def _update_bubble_bg(self, instance, value):
-        self.bubble_bg1.pos = instance.pos
-        self.bubble_bg1.size = instance.size
-        self.bubble_bg2.pos = (instance.x, instance.y + instance.height * 0.7)
-        self.bubble_bg2.size = (instance.width, instance.height * 0.3)
-        self.bubble_shadow.pos = (instance.x + dp(4), instance.y - dp(4))
-        self.bubble_shadow.size = instance.size
+    def _on_window_resize(self, instance, width, height):
+        """Пересчёт позиции при изменении размера окна"""
+        if self.parent:
+            Clock.schedule_once(self._position_elements, 0.1)
 
     def _position_elements(self, dt):
         if not self.target_widget or not self.target_widget.get_parent_window():
@@ -267,11 +264,10 @@ class TutorialHint(FloatLayout):
         bubble_center_x = win_x + target_w / 2
         bubble_center_y = win_y + target_h / 2
 
-        # Расчёт размеров пузыря
-        self.bubble.width = dp(400)
-        # Обновляем text_size метки (принудительно, хотя сработает bind)
+        # Адаптивная ширина пузыря
+        max_bubble_width = window_w - dp(80)  # отступы 40 слева и справа
+        self.bubble.width = min(dp(400), max_bubble_width)
         self._update_label_text_size(self.bubble, self.bubble.width)
-        # Пересчитываем текстуру метки, чтобы получить актуальную высоту
         self.label.texture_update()
         self.bubble.height = self.label.height + self.next_btn.height + dp(68)
 
@@ -290,6 +286,14 @@ class TutorialHint(FloatLayout):
 
         self._ensure_bubble_on_screen()
         self.skip_btn.pos = (window_w / 2 - self.skip_btn.width / 2, dp(30))
+
+    def _update_bubble_bg(self, instance, value):
+        self.bubble_bg1.pos = instance.pos
+        self.bubble_bg1.size = instance.size
+        self.bubble_bg2.pos = (instance.x, instance.y + instance.height * 0.7)
+        self.bubble_bg2.size = (instance.width, instance.height * 0.3)
+        self.bubble_shadow.pos = (instance.x + dp(4), instance.y - dp(4))
+        self.bubble_shadow.size = instance.size
 
     def _ensure_bubble_on_screen(self):
         window_w, window_h = Window.size
