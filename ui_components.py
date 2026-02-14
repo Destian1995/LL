@@ -146,7 +146,7 @@ class TutorialHint(FloatLayout):
         # Текст подсказки
         self.label = Label(
             text=self.message,
-            font_size=sp(18),  # уменьшен размер шрифта
+            font_size=sp(14),  # уменьшен размер шрифта
             color=(1, 1, 1, 1),
             halign='center',
             valign='middle',
