@@ -303,18 +303,6 @@ def workshop(faction, db_conn):
 
     # === Экран 2: Выбор характеристик через слайдеры с системой жетонов Ардании ===
     def screen2(layout):
-        # Заголовок
-        title = Label(
-            text="Настройте характеристики артефакта",
-            font_size=font_normal,
-            color=(0.9, 0.9, 0.9, 1),
-            size_hint_y=None,
-            height=label_height,
-            halign='center',
-            valign='middle'
-        )
-        title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        layout.add_widget(title)
 
         # === Система жетонов Ардании ===
         ardanian_tokens_available = faction.money / 2000.0
