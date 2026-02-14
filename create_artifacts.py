@@ -5,6 +5,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.slider import Slider
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.uix.image import Image
@@ -120,7 +121,7 @@ def workshop(faction, db_conn):
         'attack': 0,
         'defense': 0,
         'season': 'Нет',
-        'slot': 'Руки'  # По умолчанию
+        'slot': 'Оружие'  # По умолчанию
     }
 
     # === Список изображений ===
@@ -152,33 +153,6 @@ def workshop(faction, db_conn):
 
     # === Экран 1: Выбор иконки и названия ===
     def screen1(layout):
-        # Информация о средствах
-        info_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=label_height)
-        money_label = Label(
-            text=f"Баланс: {format_number(faction.money)}",
-            font_size=font_small,
-            color=(0.9, 0.9, 0.9, 1),
-            halign='left',
-            valign='middle',
-            size_hint_y=None,
-            height=label_height
-        )
-        money_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        info_layout.add_widget(money_label)
-
-        cost_label = Label(
-            text="Создание: 35 млн",
-            font_size=font_small,
-            color=(0.7, 0.7, 0.7, 1),  # Светлее
-            halign='right',
-            valign='middle',
-            size_hint_y=None,
-            height=label_height
-        )
-        cost_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        info_layout.add_widget(cost_label)
-        layout.add_widget(info_layout)
-
         # Заголовок
         title = Label(
             text="Выберите иконку и название",
@@ -327,11 +301,11 @@ def workshop(faction, db_conn):
         next_scr_btn.bind(on_release=on_next_screen)
         random_name_btn.bind(on_release=on_random_name)
 
-    # === Экран 2: Выбор характеристик ===
+    # === Экран 2: Выбор характеристик через слайдеры с системой жетонов Ардании ===
     def screen2(layout):
         # Заголовок
         title = Label(
-            text="Выберите характеристики",
+            text="Настройте характеристики артефакта",
             font_size=font_normal,
             color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
@@ -342,75 +316,171 @@ def workshop(faction, db_conn):
         title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
         layout.add_widget(title)
 
-        # Атака
-        attack_label = Label(
-            text="Атака (%):",
+        # === Система жетонов Ардании ===
+        ardanian_tokens_available = faction.money / 2000.0
+        current_attack = current_data.get('attack', 0)
+        current_defense = current_data.get('defense', 0)
+
+        def calculate_tokens(attack, defense):
+            tokens_attack = attack * 0.25
+            tokens_defense = defense * 0.5
+            return tokens_attack + tokens_defense, tokens_attack, tokens_defense
+
+        tokens_used, tokens_attack, tokens_defense = calculate_tokens(current_attack, current_defense)
+
+        # === Отображение баланса жетонов ===
+        tokens_info = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(75))
+
+        balance_label = Label(
+            text=f"Доступно жетонов Ардании: {ardanian_tokens_available:.1f}",
+            font_size=font_small,
+            color=(0.7, 0.9, 0.7, 1) if tokens_used <= ardanian_tokens_available else (0.9, 0.3, 0.3, 1),
+            size_hint_y=None,
+            height=label_height * 1.3,
+            halign='center',
+            valign='middle',
+            bold=True
+        )
+        balance_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width * 0.95, None)))
+        tokens_info.add_widget(balance_label)
+
+        used_label = Label(
+            text=f"Использовано: {tokens_used:.1f} (Атака: {tokens_attack:.1f}, Защита: {tokens_defense:.1f})",
+            font_size=font_small,
+            color=(0.9, 0.9, 0.5, 1),
+            size_hint_y=None,
+            height=label_height,
+            halign='center',
+            valign='middle'
+        )
+        used_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width * 0.95, None)))
+        tokens_info.add_widget(used_label)
+
+        cost_label = Label(
+            text=f"Стоимость: {format_number(int((current_attack * 400) + (current_defense * 600)))} крон",
             font_size=font_small,
             color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
             height=label_height,
-            halign='left',
+            halign='center',
             valign='middle'
         )
-        attack_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        layout.add_widget(attack_label)
+        cost_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width * 0.95, None)))
+        tokens_info.add_widget(cost_label)
 
-        attack_input = TextInput(
-            text=str(current_data['attack']),
-            font_size=font_small,
-            multiline=False,
-            input_filter='int',
-            size_hint_y=None,
-            height=input_height,
-            padding=[dp(5), dp(3)],
-            background_color=(0.15, 0.15, 0.15, 1),
-            foreground_color=(0.9, 0.9, 0.9, 1),
-            cursor_color=(0.9, 0.9, 0.9, 1)
-        )
-        layout.add_widget(attack_input)
+        layout.add_widget(tokens_info)
 
-        # Защита
-        defense_label = Label(
-            text="Защита (%):",
+        # === Слайдер АТАКИ ===
+        attack_section = BoxLayout(orientation='vertical', spacing=dp(2), size_hint_y=None, height=dp(85))
+
+        attack_header = BoxLayout(orientation='horizontal', size_hint_y=None, height=label_height)
+        attack_title = Label(
+            text="Атака:",
             font_size=font_small,
             color=(0.9, 0.9, 0.9, 1),
-            size_hint_y=None,
-            height=label_height,
+            size_hint_x=0.25,
             halign='left',
             valign='middle'
         )
-        defense_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        layout.add_widget(defense_label)
+        attack_title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        attack_header.add_widget(attack_title)
 
-        defense_input = TextInput(
-            text=str(current_data['defense']),
+        attack_value_label = Label(
+            text=f"{current_attack}%",
             font_size=font_small,
-            multiline=False,
-            input_filter='int',
-            size_hint_y=None,
-            height=input_height,
-            padding=[dp(5), dp(3)],
-            background_color=(0.15, 0.15, 0.15, 1),
-            foreground_color=(0.9, 0.9, 0.9, 1),
-            cursor_color=(0.9, 0.9, 0.9, 1)
+            color=(0.7, 0.9, 0.7, 1),
+            size_hint_x=0.2,
+            halign='center',
+            valign='middle',
+            bold=True
         )
-        layout.add_widget(defense_input)
+        attack_value_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        attack_header.add_widget(attack_value_label)
 
-        # Сезон — теперь кнопки с комбинациями
-        season_label = Label(
-            text="Сезон артефакта:",
+        attack_cost_label = Label(
+            text=f"{int(current_attack * 400)} крон",
+            font_size=font_small,
+            color=(0.7, 0.9, 0.7, 1),
+            size_hint_x=0.55,
+            halign='right',
+            valign='middle'
+        )
+        attack_cost_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        attack_header.add_widget(attack_cost_label)
+
+        attack_section.add_widget(attack_header)
+
+        # Динамический максимум без искусственных ограничений
+        max_attack_possible = max(int(ardanian_tokens_available / 0.25 * 1.5), 200)
+        attack_slider = Slider(
+            min=0,
+            max=max_attack_possible,
+            value=current_attack,
+            step=1,
+            size_hint_y=None,
+            height=dp(35),
+            background_width=dp(3),
+            cursor_size=(dp(30), dp(30)) if is_android else (dp(25), dp(25)),
+            cursor_image='atlas://data/images/defaulttheme/slider_cursor'
+        )
+        attack_section.add_widget(attack_slider)
+        layout.add_widget(attack_section)
+
+        # === Слайдер ЗАЩИТЫ ===
+        defense_section = BoxLayout(orientation='vertical', spacing=dp(2), size_hint_y=None, height=dp(85))
+
+        defense_header = BoxLayout(orientation='horizontal', size_hint_y=None, height=label_height)
+        defense_title = Label(
+            text="Защита:",
             font_size=font_small,
             color=(0.9, 0.9, 0.9, 1),
-            size_hint_y=None,
-            height=label_height,
+            size_hint_x=0.25,
             halign='left',
             valign='middle'
         )
-        season_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
-        layout.add_widget(season_label)
+        defense_title.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        defense_header.add_widget(defense_title)
 
-        # Кнопки для выбора сезона
-        season_layout = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint_y=None, height=dp(25))
+        defense_value_label = Label(
+            text=f"{current_defense}%",
+            font_size=font_small,
+            color=(0.7, 0.9, 0.7, 1),
+            size_hint_x=0.2,
+            halign='center',
+            valign='middle',
+            bold=True
+        )
+        defense_value_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        defense_header.add_widget(defense_value_label)
+
+        defense_cost_label = Label(
+            text=f"{int(current_defense * 600)} крон",
+            font_size=font_small,
+            color=(0.7, 0.9, 0.7, 1),
+            size_hint_x=0.55,
+            halign='right',
+            valign='middle'
+        )
+        defense_cost_label.bind(size=lambda inst, val: setattr(inst, 'text_size', (inst.width, inst.height)))
+        defense_header.add_widget(defense_cost_label)
+
+        defense_section.add_widget(defense_header)
+
+        max_defense_possible = max(int(ardanian_tokens_available / 0.5 * 1.5), 200)
+        defense_slider = Slider(
+            min=0,
+            max=max_defense_possible,
+            value=current_defense,
+            step=1,
+            size_hint_y=None,
+            height=dp(35),
+            background_width=dp(3),
+            cursor_size=(dp(30), dp(30)) if is_android else (dp(25), dp(25)),
+            cursor_image='atlas://data/images/defaulttheme/slider_cursor'
+        )
+        defense_section.add_widget(defense_slider)
+        layout.add_widget(defense_section)
+
         prev_season_btn = Button(
             text="<",
             size_hint_x=0.2,
@@ -438,12 +508,7 @@ def workshop(faction, db_conn):
             size_hint_y=None,
             height=dp(25)
         )
-        season_layout.add_widget(prev_season_btn)
-        season_layout.add_widget(current_season_label)
-        season_layout.add_widget(next_season_btn)
-        layout.add_widget(season_layout)
 
-        # Список комбинаций сезонов
         seasons = [
             'Нет', 'Весна', 'Лето', 'Осень', 'Зима',
             'Весна, Лето', 'Весна, Осень', 'Весна, Зима',
@@ -468,7 +533,7 @@ def workshop(faction, db_conn):
         prev_season_btn.bind(on_release=on_prev_season)
         next_season_btn.bind(on_release=on_next_season)
 
-        # Кнопки навигации
+        # === Кнопки навигации (СОЗДАЁМ ДО вызова update_values!) ===
         btn_box = BoxLayout(orientation='horizontal', spacing=dp(3), size_hint=(1, None), height=btn_height)
         back_btn = Button(
             text="Назад",
@@ -484,23 +549,77 @@ def workshop(faction, db_conn):
             background_normal='',
             background_color=(0.2, 0.6, 0.2, 1),
             font_size=font_normal,
-            color=(1, 1, 1, 1)
+            color=(1, 1, 1, 1),
+            disabled=False  # Будет обновлено в update_values
         )
         btn_box.add_widget(back_btn)
         btn_box.add_widget(next_scr_btn)
         layout.add_widget(btn_box)
 
-        # Привязка событий
+        # === Функция обновления значений (теперь имеет доступ к next_scr_btn) ===
+        def update_values(*args):
+            attack_val = int(attack_slider.value)
+            defense_val = int(defense_slider.value)
+
+            # Обновляем отображение
+            attack_value_label.text = f"{attack_val}%"
+            defense_value_label.text = f"{defense_val}%"
+            attack_cost_label.text = f"{int(attack_val * 400)} крон"
+            defense_cost_label.text = f"{int(defense_val * 600)} крон"
+
+            # Расчет жетонов
+            tokens_used, tokens_a, tokens_d = calculate_tokens(attack_val, defense_val)
+            used_label.text = f"Использовано: {tokens_used:.1f} (Атака: {tokens_a:.1f}, Защита: {tokens_d:.1f})"
+
+            # Расчет стоимости
+            total_cost = (attack_val * 400) + (defense_val * 600)
+            cost_label.text = f"Стоимость: {format_number(int(total_cost))} крон"
+
+            # Валидация бюджета
+            if tokens_used > ardanian_tokens_available:
+                balance_label.color = (0.95, 0.3, 0.3, 1)
+                balance_label.text = f"БЮДЖЕТ ПРЕВЫШЕН! Доступно: {ardanian_tokens_available:.1f}, Нужно: {tokens_used:.1f}"
+                next_scr_btn.disabled = True
+                next_scr_btn.background_color = (0.4, 0.4, 0.4, 1)
+            else:
+                balance_label.color = (0.6, 0.95, 0.6, 1)
+                balance_label.text = f"Доступно жетонов: {ardanian_tokens_available:.1f} | Использовано: {tokens_used:.1f}"
+                next_scr_btn.disabled = False
+                next_scr_btn.background_color = (0.2, 0.6, 0.2, 1)
+
+            # Сохраняем текущие значения
+            current_data['attack'] = attack_val
+            current_data['defense'] = defense_val
+
+        # Привязка обновления к слайдерам
+        attack_slider.bind(value=update_values)
+        defense_slider.bind(value=update_values)
+
+        # Инициализация значений (вызываем ПОСЛЕ создания всех виджетов)
+        update_values()
+
+        # === Привязка событий кнопок ===
         def on_back(instance):
+            current_data['attack'] = int(attack_slider.value)
+            current_data['defense'] = int(defense_slider.value)
+            current_data['season'] = seasons[season_index[0]]
             switch_to_screen(screen1)
 
         def on_next_screen(instance):
-            try:
-                current_data['attack'] = int(attack_input.text) if attack_input.text else 0
-                current_data['defense'] = int(defense_input.text) if defense_input.text else 0
-            except ValueError:
-                show_message("Ошибка", "Атака и защита должны быть числами")
+            attack_val = int(attack_slider.value)
+            defense_val = int(defense_slider.value)
+            tokens_used, _, _ = calculate_tokens(attack_val, defense_val)
+
+            if tokens_used > ardanian_tokens_available:
+                show_message("Ошибка бюджета",
+                             f"Недостаточно жетонов Ардании!\n"
+                             f"Доступно: {ardanian_tokens_available:.1f}\n"
+                             f"Требуется: {tokens_used:.1f}\n\n"
+                             f"Уменьшите параметры артефакта.")
                 return
+
+            current_data['attack'] = attack_val
+            current_data['defense'] = defense_val
             current_data['season'] = seasons[season_index[0]]
             switch_to_screen(screen3)
 
@@ -570,7 +689,7 @@ def workshop(faction, db_conn):
         layout.add_widget(slot_layout)
 
         # Список слотов
-        slots = ['Руки', 'Голова', 'Ноги', 'Туловище', 'Аксессуар']
+        slots = ['Оружие', 'Голова', 'Ноги', 'Туловище', 'Аксессуар']
         slot_index = [slots.index(current_data['slot']) if current_data['slot'] in slots else 0]
 
         def update_slot_label():
@@ -639,39 +758,50 @@ def workshop(faction, db_conn):
             seasons_bonus = [s.strip() for s in current_data['season'].split(',')]
 
         # Логика расчета стоимости
-        attack_cost = abs(attack_bonus) * random.uniform(0.4, 1.0) * 1000
-        defense_cost = abs(defense_bonus) * random.uniform(0.6, 1.1) * 1000
+        # === Расчет стоимости БЕЗ случайных множителей ===
+        attack_bonus = current_data['attack']
+        defense_bonus = current_data['defense']
+
+        # Фиксированные коэффициенты как требуется
+        attack_cost = abs(attack_bonus) * 0.4 * 1000  # 400 крон за 1%
+        defense_cost = abs(defense_bonus) * 0.6 * 1000  # 600 крон за 1%
         base_cost = attack_cost + defense_cost
 
-        # === Расчет скидки по сезонам ===
-        season_discount = 0
-        if len(seasons_bonus) == 0:
+        # Сезонные модификаторы (без изменений)
+        if current_data['season'] == 'Нет':
             base_cost *= 1.12  # Нет влияния сезонов + 12%
-        elif len(seasons_bonus) == 1:
-            season_discount = 0.75  # 1 сезон = -75%
-        elif len(seasons_bonus) == 2:
-            # Проверим, идут ли сезоны подряд
-            consecutive_pairs = [
-                ['Весна', 'Лето'],
-                ['Лето', 'Осень'],
-                ['Осень', 'Зима'],
-                ['Зима', 'Весна']
-            ]
-            if sorted(seasons_bonus) in [sorted(p) for p in consecutive_pairs]:
-                season_discount = 0.25  # 2 сезона подряд = -25%
+        elif current_data['season'] == 'Все':
+            season_discount = 0.10
+            base_cost *= (1 - season_discount)
+        else:
+            seasons_bonus = [s.strip() for s in current_data['season'].split(',')]
+            if len(seasons_bonus) == 1:
+                season_discount = 0.75
+            elif len(seasons_bonus) == 2:
+                consecutive_pairs = [
+                    ['Весна', 'Лето'],
+                    ['Лето', 'Осень'],
+                    ['Осень', 'Зима'],
+                    ['Зима', 'Весна']
+                ]
+                if sorted(seasons_bonus) in [sorted(p) for p in consecutive_pairs]:
+                    season_discount = 0.25
+                else:
+                    season_discount = 0.45
+            elif len(seasons_bonus) >= 3:
+                season_discount = 0.10
             else:
-                season_discount = 0.45  # 2 сезона раздельно = -45%
-        elif len(seasons_bonus) == 3:
-            season_discount = 0.10  # 3 сезона = -10%
-        elif len(seasons_bonus) == 4:
-            season_discount = 0.10  # Все 4 сезона = -10%
+                season_discount = 0
 
+            base_cost *= (1 - season_discount)
+
+        # Модификатор негативных значений
         negative_modifier = 1.0
         if attack_bonus < 0 or defense_bonus < 0:
             negative_count = sum(1 for x in [attack_bonus, defense_bonus] if x < 0)
             negative_modifier = 1 - (negative_count * 0.3)
 
-        total_cost = base_cost * (1 - season_discount) * negative_modifier
+        total_cost = base_cost * negative_modifier
         min_cost = 5000
         total_cost = max(min_cost, total_cost)
 
@@ -763,7 +893,7 @@ def workshop(faction, db_conn):
             image_path = os.path.join(artifact_images_path, current_data['icon'])
 
             artifact_type_map = {
-                'Руки': 0,
+                'Оружие': 0,
                 'Голова': 1,
                 'Ноги': 2,
                 'Туловище': 3,

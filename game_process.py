@@ -5,6 +5,7 @@ from economic import *
 import economic
 import army
 import politic
+from db_lerdon_connect import *
 from ii import AIController
 from ai_models import AdvisorView
 from event_manager import EventManager
@@ -12,157 +13,8 @@ from results_game import ResultsGame
 from seasons import SeasonManager
 from nobles_generator import generate_initial_nobles
 from nobles_generator import process_nobles_turn
+from ui_components import TutorialHint
 
-class TutorialHint(FloatLayout):
-    """Виджет подсказки обучения со стрелкой и текстом"""
-    def __init__(self, target_widget, arrow_source, message, arrow_direction='right',
-                 on_complete=None, on_skip=None, **kwargs):
-        super().__init__(**kwargs)
-        self.target_widget = target_widget
-        self.arrow_direction = arrow_direction
-        self.on_complete = on_complete
-        self.on_skip = on_skip
-        self.size_hint = (1, 1)
-        self.pos_hint = {'x': 0, 'y': 0}
-
-        # Полупрозрачный затемняющий фон
-        with self.canvas.before:
-            Color(0, 0, 0, 0.65)
-            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
-        self.bind(pos=self._update_bg, size=self._update_bg)
-
-        # Стрелка-указатель
-        self.arrow = Image(
-            source=arrow_source,
-            size_hint=(None, None),
-            size=(dp(50), dp(50)),
-            allow_stretch=True,
-            keep_ratio=True
-        )
-
-        # Текст подсказки в стиле диалога
-        self.bubble = BoxLayout(
-            orientation='vertical',
-            size_hint=(None, None),
-            size=(dp(280), dp(100)),
-            padding=dp(12),
-            spacing=dp(5)
-        )
-        with self.bubble.canvas.before:
-            Color(0.15, 0.25, 0.45, 0.95)
-            RoundedRectangle(pos=self.bubble.pos, size=self.bubble.size, radius=[15])
-            # Хвостик пузыря
-            Color(0.15, 0.25, 0.45, 0.95)
-            if arrow_direction == 'right':
-                points = [
-                    self.bubble.x + self.bubble.width, self.bubble.y + self.bubble.height * 0.6,
-                    self.bubble.x + self.bubble.width + dp(15), self.bubble.y + self.bubble.height * 0.5,
-                    self.bubble.x + self.bubble.width, self.bubble.y + self.bubble.height * 0.4
-                ]
-            else:  # down
-                points = [
-                    self.bubble.x + self.bubble.width * 0.5 - dp(8), self.bubble.y,
-                    self.bubble.x + self.bubble.width * 0.5, self.bubble.y - dp(12),
-                    self.bubble.x + self.bubble.width * 0.5 + dp(8), self.bubble.y
-                ]
-            Triangle(points=points)
-
-        self.label = Label(
-            text=message,
-            font_size=sp(17),
-            color=(0.95, 1.0, 1.0, 1),
-            halign='center',
-            valign='middle',
-            markup=True
-        )
-        self.label.bind(size=self.label.setter('text_size'))
-
-        # Кнопка "Далее"
-        self.next_btn = Button(
-            text="Далее →",
-            size_hint=(None, None),
-            size=(dp(100), dp(36)),
-            background_color=(0.3, 0.7, 0.3, 1),
-            color=(1, 1, 1, 1),
-            font_size=sp(15),
-            bold=True
-        )
-        self.next_btn.bind(on_release=self._on_next)
-
-        # Кнопка "Пропустить"
-        self.skip_btn = Button(
-            text="Пропустить обучение",
-            size_hint=(None, None),
-            size=(dp(160), dp(32)),
-            background_color=(0.6, 0.2, 0.2, 0.9),
-            color=(1, 1, 1, 1),
-            font_size=sp(13)
-        )
-        self.skip_btn.bind(on_release=self._on_skip)
-
-        self.bubble.add_widget(self.label)
-        self.bubble.add_widget(self.next_btn)
-        self.add_widget(self.arrow)
-        self.add_widget(self.bubble)
-        self.add_widget(self.skip_btn)
-
-        # Запускаем позиционирование с небольшой задержкой для корректных координат
-        Clock.schedule_once(self._position_elements, 0.1)
-        Clock.schedule_once(self._position_elements, 0.3)
-        Clock.schedule_once(self._position_elements, 0.5)
-        # Анимация появления
-        self.opacity = 0
-        Animation(opacity=1, duration=0.3).start(self)
-
-    def _update_bg(self, *args):
-        self.bg_rect.pos = self.pos
-        self.bg_rect.size = self.size
-
-    def _update_position_after_layout(self, dt):
-        """Обновляет позицию после завершения layout"""
-        if self.parent:
-            self._position_elements(0)
-
-    def _position_elements(self, dt):
-        if not self.target_widget or not self.target_widget.parent:
-            return
-
-        # Получаем координаты целевого виджета в глобальной системе
-        target_x, target_y = self.target_widget.to_window(*self.target_widget.pos)
-        target_w, target_h = self.target_widget.size
-
-        win_x, win_y = self.to_widget(target_x, target_y, relative=True)
-
-        # Позиционируем стрелку и пузырь в зависимости от направления
-        if self.arrow_direction == 'right':
-            # Стрелка слева от кнопки, указывающая направо
-            self.arrow.pos = (win_x - dp(70), win_y + target_h / 2 - dp(25))
-            self.bubble.pos = (win_x - dp(350), win_y + target_h / 2 - dp(50))
-        else:  # down
-            # Стрелка сверху кнопки, указывающая вниз
-            self.arrow.pos = (win_x + target_w / 2 - dp(25), win_y - dp(70))
-            self.bubble.pos = (win_x + target_w / 2 - dp(140), win_y - dp(180))
-
-        # Позиционируем кнопку пропуска
-        self.skip_btn.pos = (Window.width / 2 - self.skip_btn.width / 2, dp(20))
-
-    def _on_next(self, instance):
-        anim = Animation(opacity=0, duration=0.2)
-        anim.bind(on_complete=lambda *a: self._cleanup())
-        anim.start(self)
-        if self.on_complete:
-            Clock.schedule_once(lambda dt: self.on_complete(), 0.25)
-
-    def _on_skip(self, instance):
-        anim = Animation(opacity=0, duration=0.2)
-        anim.bind(on_complete=lambda *a: self._cleanup())
-        anim.start(self)
-        if self.on_skip:
-            Clock.schedule_once(lambda dt: self.on_skip(), 0.25)
-
-    def _cleanup(self):
-        if self.parent:
-            self.parent.remove_widget(self)
 
 # Новые кастомные виджеты
 class ModernButton(Button):
@@ -2192,19 +2044,57 @@ class GameScreen(Screen):
         self.resource_box.update_resources()
 
     def switch_to_economy(self, instance):
+        # Блокируем переключение вкладок во время обучения (кроме текущего шага)
+        if self.tutorial_enabled and self.current_tutorial_step != 1:
+            return
+
         self.activate_tab('economy')
         self.clear_game_area()
-        economic.start_economy_mode(self.game_state_manager.faction, self.game_area, self.conn, self.season_manager)
+        economic.start_economy_mode(
+            self.game_state_manager.faction,
+            self.game_area,
+            self.conn,
+            self.season_manager
+        )
 
     def switch_to_army(self, instance):
+        # Блокируем переключение вкладок во время обучения (кроме текущего шага)
+        if self.tutorial_enabled and self.current_tutorial_step != 2:
+            return
+
         self.activate_tab('army')
         self.clear_game_area()
-        army.start_army_mode(self.selected_faction, self.game_area, self.game_state_manager.faction, self.conn)
+        army.start_army_mode(
+            self.selected_faction,
+            self.game_area,
+            self.game_state_manager.faction,
+            self.conn
+        )
 
     def switch_to_politics(self, instance):
+        # Блокируем переключение вкладок во время обучения (кроме текущего шага)
+        if self.tutorial_enabled and self.current_tutorial_step != 3:
+            return
+
         self.activate_tab('politics')
         self.clear_game_area()
-        politic.start_politic_mode(self.selected_faction, self.game_area, self.game_state_manager.faction, self.conn)
+        politic.start_politic_mode(
+            self.selected_faction,
+            self.game_area,
+            self.game_state_manager.faction,
+            self.conn
+        )
+
+    def show_advisor(self, instance):
+        # Блокируем переключение вкладок во время обучения (кроме текущего шага)
+        if self.tutorial_enabled and self.current_tutorial_step != 4:
+            return
+
+        self.activate_tab('advisor')
+        self.clear_game_area()
+        advisor_view = AdvisorView(self.selected_faction, self.conn, game_screen_instance=self)
+        self.game_area.add_widget(advisor_view)
+        self.mark_messages_as_read()
 
     def clear_game_area(self):
         """Очистка центральной области."""
@@ -2213,13 +2103,6 @@ class GameScreen(Screen):
     def on_stop(self):
         Window.unbind(on_resize=self.update_resource_box_position)
         self.game_state_manager.close_connection()
-
-    def show_advisor(self, instance):
-        self.activate_tab('advisor')
-        self.clear_game_area()
-        advisor_view = AdvisorView(self.selected_faction, self.conn, game_screen_instance=self)
-        self.game_area.add_widget(advisor_view)
-        self.mark_messages_as_read()
 
     def mark_messages_as_read(self, conn=None):
         """Помечает входящие сообщения как прочитанные."""
@@ -2882,69 +2765,190 @@ class GameScreen(Screen):
         self.current_tutorial_step = 1
         self.show_tutorial_step_1()
 
-    def skip_tutorial(self):
-        """Пропустить обучение полностью"""
-        print("Обучение пропущено пользователем")
-        if hasattr(self, 'current_hint') and self.current_hint:
-            if self.current_hint.parent:
-                self.current_hint.parent.remove_widget(self.current_hint)
-            self.current_hint = None
-        # Восстанавливаем оригинальные обработчики кнопок
-        self._restore_original_handlers()
-
-    def _restore_original_handlers(self):
-        """Восстанавливает оригинальные обработчики кнопок после завершения обучения"""
-        # Для кнопки экономики
-        if hasattr(self, '_original_economy_handler') and self._original_economy_handler:
-            self.btn_economy.unbind(on_release=self._tutorial_economy_handler)
-            self.btn_economy.bind(on_release=self._original_economy_handler)
-
-        # Для кнопки развития (будет установлено на шаге 2)
-        if hasattr(self, '_original_dev_handler') and self._original_dev_handler:
-            # Поиск кнопки развития будет выполнен в шаге 2
-            pass
-
     def show_tutorial_step_1(self):
         """Шаг 1: Подсказка для кнопки 'Экономика'"""
         hint = TutorialHint(
             target_widget=self.btn_economy,
             arrow_source='files/pict/right_learn.png',
-            message="[b]Добро пожаловать, правитель![/b]\n\nДля управления экономикой вашей фракции перейдите во вкладку «Экономика»",
+            message=(
+                "[b]Экономика[/b]\n\n"
+                "Здесь вы управляете:\n"
+                "• Уровнем налогов(Налоги) - обратите внимание влияет на рост населения, больше населения больше "
+                "налогов и потребления кристаллов\n"
+                "• Выбираете режим строительства(Развитие)\n"
+                "• Покупкой/продажей кристаллов(Рынок) - обязательно продавайте излишки кристаллов на первых ходах "
+                "чтобы заработать денег на постройку армии для захвата городов\n"
+                "• Созданием и покупкой артефактов для героев(Мастерская и Артефакты)\n"
+                "Первое с чего начните на 1-м ходе перейдите в Развитие и нажмите 'Применить' там уже будет выбран "
+                "стандартный режим Баланс, что позволит вести вам сбалансированную экономику. Когда научитесь играть "
+                "можете экспериментировать с другими режимами"
+            ),
             arrow_direction='right',
-            on_complete=self._on_step1_complete,
+            on_next=lambda: self.on_step1_next(),
             on_skip=self.skip_tutorial
         )
         self.root_overlay.add_widget(hint)
         self.current_hint = hint
+        print("Шаг 1 обучения: вкладка 'Экономика'")
 
-        # Сохраняем оригинальный обработчик кнопки
-        self._original_economy_handler = self.switch_to_economy
+    def on_step1_next(self):
+        """Переход к шагу 2 после нажатия 'Далее' на шаге 1"""
+        # Убираем подсказку
+        if self.current_hint and self.current_hint.parent:
+            self.current_hint.parent.remove_widget(self.current_hint)
+        self.current_hint = None
 
-        # Отвязываем оригинальный обработчик и привязываем обработчик обучения
-        self.btn_economy.unbind(on_release=self.switch_to_economy)
+        # НЕ переключаем вкладку автоматически!
+        # Просто показываем следующую подсказку
+        Clock.schedule_once(lambda dt: self.show_tutorial_step_2(), 0.5)
 
-        def tutorial_economy_handler(instance):
-            # Убираем подсказку
-            if self.current_hint and self.current_hint.parent:
+    def show_tutorial_step_2(self):
+        """Шаг 2: Подсказка для кнопки 'Армия'"""
+        hint = TutorialHint(
+            target_widget=self.btn_army,
+            arrow_source='files/pict/right_learn.png',
+            message=(
+                "[b]Армия[/b]\n\n"
+                "Здесь вы можете:\n"
+                "• Нанимать солдат и героев\n"
+                "Всего в игре 4 класса юнитов.\n"
+                "1 - обычные юниты\n"
+                "2 - слабые герои, усиливают обычных юнитов, но не носят артефакты\n"
+                "3 - основные герои, усиливают обычных юнитов могут и должны носить артефакты\n"
+                "4 - сильные герои, сильны сами по себе, никого не усиливают и не носят артефакты\n"
+                "• После того как наняли \n "
+                "не забудьте нажать на карте на один из своих городов\n"
+                " и выбрать кнопку 'Разместить армию'\n"
+                "• Чтобы перемещать войска между городами\n"
+                "Выберите ближайший вражеский или любой из своих\n"
+                "и нажмите 'Ввести войска'\n"
+                "нажмите 'создать группу(1-3 класс)' и 'Отправить группу в город'\n"
+                "если город вражеский и в нем есть гарнизон начнется битва\n"
+                "НЕ ПОСЫЛАЙТЕ НА ВРАЖЕСКИЙ ГАРНИЗОНА АРМИЮ БЕЗ ГЕРОЯ!\n"
+
+
+            ),
+            arrow_direction='right',
+            on_next=lambda: self.on_step2_next(),
+            on_skip=self.skip_tutorial
+        )
+        self.root_overlay.add_widget(hint)
+        self.current_hint = hint
+        print("Шаг 2 обучения: вкладка 'Армия'")
+
+    def on_step2_next(self):
+        """Переход к шагу 3 после нажатия 'Далее' на шаге 2"""
+        # Убираем подсказку
+        if self.current_hint and self.current_hint.parent:
+            self.current_hint.parent.remove_widget(self.current_hint)
+        self.current_hint = None
+
+        # НЕ переключаем вкладку автоматически!
+        Clock.schedule_once(lambda dt: self.show_tutorial_step_3(), 0.5)
+
+    def show_tutorial_step_3(self):
+        """Шаг 3: Подсказка для кнопки 'Политика'"""
+        hint = TutorialHint(
+            target_widget=self.btn_politics,
+            arrow_source='files/pict/right_learn.png',
+            message=(
+                "[b]Политика[/b]\n\n"
+                "Важно следить за тем что происходит в Совете, если Совет будет не лоялен к Вашей персоне, "
+                "то тогда Вас могут свергнуть и игра будет"
+                " проиграна:\n"
+                " Желательно на 10-12 ходах переходить во вкладку 'Совет' и следить что там творится, для этого:\n"
+                "После перехода на вкладку нажмите 'Провести мероприятие', его стоимость может меняться в зависимости"
+                "от сезона\n"
+                "По мере того как вы проводите мероприятия вы видите кто постоянно посещает их, а кто нет\n"
+                "Когда накопите больше 140 тыс. крон, вы сможете открыть вкладку 'Тайная служба', там вам покажут кто "
+                "лоялен к вам и кто каких взглядов придерживается.\n"
+                "Если выхода нет или у вас много денег, вы можете устранить неугодных вам советников, к ним на смену "
+                "придут другие, возможно более лояльные к вам."
+            ),
+            arrow_direction='right',
+            on_next=lambda: self.on_step3_next(),
+            on_skip=self.skip_tutorial
+        )
+        self.root_overlay.add_widget(hint)
+        self.current_hint = hint
+        print("Шаг 3 обучения: вкладка 'Политика'")
+
+    def on_step3_next(self):
+        """Переход к шагу 4 после нажатия 'Далее' на шаге 3"""
+        # Убираем подсказку
+        if self.current_hint and self.current_hint.parent:
+            self.current_hint.parent.remove_widget(self.current_hint)
+        self.current_hint = None
+
+        # НЕ переключаем вкладку автоматически!
+        Clock.schedule_once(lambda dt: self.show_tutorial_step_4(), 0.5)
+
+    def show_tutorial_step_4(self):
+        """Шаг 4: Подсказка для кнопки 'Советник'"""
+        hint = TutorialHint(
+            target_widget=self.btn_advisor,
+            arrow_source='files/pict/right_learn.png',
+            message=(
+                "[b]Дипломатия[/b]\n\n"
+                "Здесь ведутся переговоры в формате переписки:\n"
+                "• Обмен ресурсами с другими фракциями\n"
+                "• Улучшение отношений с теми с кем это еще можно сделать\n"
+                "• Заключение союзов\n"
+                "• Планирование совместных атак на врага \n"
+                "• Объявление войны или заключение мира\n"
+                "\n"
+                "Главное не хамите, если не хотите войны..."
+            ),
+            arrow_direction='right',
+            on_next=lambda: self.complete_tutorial(),
+            on_skip=self.skip_tutorial
+        )
+        self.root_overlay.add_widget(hint)
+        self.current_hint = hint
+        print("Шаг 4 обучения: вкладка 'Советник'")
+
+    def complete_tutorial(self):
+        """Завершение обучения"""
+        # Убираем подсказку
+        if self.current_hint and self.current_hint.parent:
+            self.current_hint.parent.remove_widget(self.current_hint)
+        self.current_hint = None
+
+        # Отключаем режим обучения
+        self.tutorial_enabled = False
+        self.current_tutorial_step = 0
+
+        print("Обучение завершено успешно!")
+        show_message("Обучение завершено!", "Вы познали управление государством! Удачи, Ваше Величество!")
+
+    def skip_tutorial(self):
+        """Пропустить обучение полностью"""
+        print("Обучение пропущено пользователем")
+
+        # Убираем подсказку
+        if hasattr(self, 'current_hint') and self.current_hint:
+            if self.current_hint.parent:
                 self.current_hint.parent.remove_widget(self.current_hint)
             self.current_hint = None
 
-            # Восстанавливаем оригинальный обработчик
-            self.btn_economy.unbind(on_release=tutorial_economy_handler)
-            self.btn_economy.bind(on_release=self._original_economy_handler)
+        # Отключаем режим обучения
+        self.tutorial_enabled = False
+        self.current_tutorial_step = 0
 
-            # Вызываем оригинальный обработчик для переключения вкладки
-            self._original_economy_handler(instance)
-
-            # Переходим к шагу 2 с задержкой (ждем отрисовки экономической панели)
-            Clock.schedule_once(self.show_tutorial_step_2, 0.6)
-
-        self.btn_economy.bind(on_release=tutorial_economy_handler)
-        self._tutorial_economy_handler = tutorial_economy_handler  # Сохраняем для восстановления
+        print("Обучение пропущено")
 
     def _on_step1_complete(self):
-        """Обработчик завершения шага 1 (автоматически вызывается при нажатии 'Далее')"""
-        # Активируем вкладку экономики программно
+        """Обработчик завершения шага 1 — передаём управление обучением в экономический модуль"""
+        # Убираем текущую подсказку
+        if self.current_hint and self.current_hint.parent:
+            self.current_hint.parent.remove_widget(self.current_hint)
+        self.current_hint = None
+
+        # Восстанавливаем оригинальный обработчик кнопки экономики
+        self.btn_economy.unbind(on_release=self._tutorial_economy_handler)
+        self.btn_economy.bind(on_release=self._original_economy_handler)
+
+        # Активируем вкладку и запускаем экономический режим с флагом обучения
         self.activate_tab('economy')
         self.clear_game_area()
         economic.start_economy_mode(
@@ -2953,149 +2957,10 @@ class GameScreen(Screen):
             self.conn,
             self.season_manager
         )
-        # Переходим к шагу 2 с задержкой
-        Clock.schedule_once(self.show_tutorial_step_2, 0.6)
 
-    def show_tutorial_step_2(self, dt):
-        """Шаг 2: Подсказка для кнопки 'Развитие' внутри экономического режима"""
-        # Даем больше времени на отрисовку интерфейса
-        Clock.schedule_once(self._delayed_tutorial_step_2, 0.3)
-
-    def _on_step2_complete(self):
-        """Обработчик завершения шага 2 обучения"""
-        # Убираем текущую подсказку
-        if self.current_hint and self.current_hint.parent:
-            self.current_hint.parent.remove_widget(self.current_hint)
-            self.current_hint = None
-
-        # Восстанавливаем оригинальные обработчики кнопок
-        self._restore_original_handlers()
-
-        # Отключаем режим обучения
+        # Отключаем обучение в основном экране (управление передано)
         self.tutorial_enabled = False
         self.current_tutorial_step = 0
-
-        print("Обучение завершено успешно")
-
-    def _delayed_tutorial_step_2(self, dt):
-        """Отложенный показ шага 2 с проверкой отрисовки"""
-        # Рекурсивный поиск кнопки "Развитие"
-        dev_btn = None
-
-        def find_dev_button(widget):
-            nonlocal dev_btn
-            if dev_btn:
-                return
-            if isinstance(widget, Button) and hasattr(widget, 'text'):
-                # Нормализуем текст для сравнения
-                btn_text = widget.text.strip()
-                if btn_text == "Развитие":
-                    dev_btn = widget
-                    return
-            if hasattr(widget, 'children'):
-                for child in widget.children:
-                    find_dev_button(child)
-
-        find_dev_button(self.game_area)
-
-        if not dev_btn:
-            print("Кнопка 'Развитие' не найдена для обучения. Повторная попытка...")
-            # Пробуем снова через небольшую задержку
-            Clock.schedule_once(self._delayed_tutorial_step_2, 0.5)
-            return
-
-        # Проверяем, что кнопка видима и имеет корректные координаты
-        if dev_btn.pos == [0, 0] or dev_btn.size == [100, 100]:  # Дефолтные значения
-            print("Кнопка 'Развитие' еще не отрисована, ждем...")
-            Clock.schedule_once(self._delayed_tutorial_step_2, 0.5)
-            return
-
-        # Используем корректные пути к файлам стрелок
-        arrow_source_down = 'files/pict/down_learn.png'
-        arrow_source_right = 'files/pict/right_learn.png'
-
-        # Проверяем существование файлов и логируем
-        if not os.path.exists(arrow_source_down):
-            print(f"Файл стрелки вниз НЕ НАЙДЕН: {arrow_source_down}")
-            # Пробуем альтернативные пути
-            alt_paths = [
-                'files/pict/learn/down_learn.png',
-                'files/pict/down_arrow.png',
-                'files/tutorial/down_learn.png'
-            ]
-            for alt_path in alt_paths:
-                if os.path.exists(alt_path):
-                    arrow_source_down = alt_path
-                    print(f"Используем альтернативный путь: {alt_path}")
-                    break
-
-        if not os.path.exists(arrow_source_right):
-            print(f"Файл стрелки вправо НЕ НАЙДЕН: {arrow_source_right}")
-
-        # Определяем, какую стрелку использовать
-        arrow_to_use = arrow_source_down if os.path.exists(arrow_source_down) else arrow_source_right
-
-        message = (
-            "[b]Развитие производства[/b]\n\n"
-            "Здесь вы можете:\n"
-            "• Улучшить добычу кристаллов\n"
-            "• Настроить соотношение фабрик и больниц\n"
-            "• Увеличить лимит армии"
-        )
-
-        hint = TutorialHint(
-            target_widget=dev_btn,
-            arrow_source=arrow_to_use,
-            message=message,
-            arrow_direction='down' if os.path.exists(arrow_source_down) else 'right',
-            on_complete=self._on_step2_complete,
-            on_skip=self.skip_tutorial
-        )
-
-        # Убеждаемся, что root_overlay существует
-        if not hasattr(self, 'root_overlay') or not self.root_overlay:
-            print("ОШИБКА: root_overlay не найден!")
-            return
-
-        # Удаляем старую подсказку если есть
-        if hasattr(self, 'current_hint') and self.current_hint:
-            if self.current_hint.parent:
-                self.current_hint.parent.remove_widget(self.current_hint)
-            self.current_hint = None
-
-        self.root_overlay.add_widget(hint)
-        self.current_hint = hint
-
-        # Принудительно обновляем позиционирование
-        Clock.schedule_once(lambda dt: self._force_hint_position(hint), 0.1)
-
-        print(
-            f"Подсказка шага 2 создана, стрелка: {arrow_to_use}, направление: {arrow_to_use == arrow_source_down and 'down' or 'right'}")
-
-        # Перехватываем нажатие кнопки для обучения
-        def tutorial_dev_handler(instance):
-            print("Кнопка 'Развитие' нажата в режиме обучения")
-            # Убираем подсказку
-            if self.current_hint and self.current_hint.parent:
-                self.current_hint.parent.remove_widget(self.current_hint)
-            self.current_hint = None
-
-            # Отвязываем наш обработчик
-            if hasattr(dev_btn, 'unbind'):
-                dev_btn.unbind(on_release=tutorial_dev_handler)
-
-            # Вызываем оригинальный обработчик через короткую задержку
-            Clock.schedule_once(lambda dt: instance.trigger_action(duration=0.1), 0.1)
-
-        # Привязываем обработчик
-        dev_btn.bind(on_release=tutorial_dev_handler)
-        print("Обработчик нажатия для кнопки 'Развитие' установлен")
-
-    def _force_hint_position(self, hint):
-        """Принудительное обновление позиции подсказки"""
-        if hint and hint.parent:
-            hint._position_elements(0)
-            print(f"Позиция подсказки обновлена: {hint.pos}")
 
     def check_recent_incoming_messages(self, conn):
         """

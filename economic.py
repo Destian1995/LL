@@ -4,6 +4,7 @@ from db_lerdon_connect import *
 from heroes import open_artifacts_popup
 from create_artifacts import workshop
 
+
 def format_number(number):
     """Форматирует число с добавлением приставок (тыс., млн., млрд.) и одним знаком после запятой"""
     if not isinstance(number, (int, float)):
@@ -63,7 +64,6 @@ def save_building_change(faction_name, city, building_type, delta, conn):
         conn.commit()
     except sqlite3.Error as e:
         print(f"Ошибка при сохранении изменений в зданиях: {e}")
-
 
 
 class Faction:
@@ -173,7 +173,6 @@ class Faction:
         ''', (self.faction, int(self.auto_build_enabled),
               self.auto_build_ratio[0], self.auto_build_ratio[1]))
         conn.commit()
-
 
     def city_has_space(self, city_name):
         current = self.cities_buildings.get(city_name, {"Больница": 0, "Фабрика": 0})
@@ -1500,11 +1499,12 @@ class Faction:
         """Возвращает количество доступных для торговли лотов Кристаллы"""
         return self.raw_material // 100
 
+
 def show_message(title, message):
     # === Оценка высоты текста ===
     lines = message.count('\n') + 1
     text_height = max(dp(100), dp(lines * 25))  # минимум 100dp, дальше по строкам
-    popup_height = text_height + dp(110)        # + кнопка и отступы
+    popup_height = text_height + dp(110)  # + кнопка и отступы
 
     # === Стилизованный Label с переносом текста и выравниванием по центру ===
     label = Label(
@@ -1551,6 +1551,7 @@ def show_message(title, message):
     close_btn.bind(on_release=popup.dismiss)
 
     popup.open()
+
 
 # Логика для отображения сообщения об ошибке средств
 def show_error_message(message):
@@ -1621,9 +1622,11 @@ def open_build_popup(faction):
             size=build_card.size,
             radius=[12]
         )
+
     def update_build_rect(instance, val):
         instance.bg_rect.pos = instance.pos
         instance.bg_rect.size = instance.size
+
     build_card.bind(pos=update_build_rect, size=update_build_rect)
 
     # Подпись для больницы
@@ -1683,9 +1686,11 @@ def open_build_popup(faction):
                 size=card.size,
                 radius=[12]
             )
+
         def update_card_rect(instance, val):
             instance.bg_rect.pos = instance.pos
             instance.bg_rect.size = instance.size
+
         card.bind(pos=update_card_rect, size=update_card_rect)
 
         lbl = Label(
@@ -1839,7 +1844,8 @@ def open_trade_popup(game_instance):
 
     # === ТЕКУЩАЯ ЦЕНА (между полем ввода и кнопками) ===
     current_price = game_instance.current_raw_material_price
-    prev_price = game_instance.raw_material_price_history[-2] if len(game_instance.raw_material_price_history) > 1 else current_price
+    prev_price = game_instance.raw_material_price_history[-2] if len(
+        game_instance.raw_material_price_history) > 1 else current_price
     arrow_color = (0, 1, 0, 1) if current_price > prev_price else \
         (1, 0, 0, 1) if current_price < prev_price else (0.8, 0.8, 0.8, 1)
 
@@ -1889,6 +1895,7 @@ def open_trade_popup(game_instance):
     def on_press_wrapper(action):
         def handler(instance):
             handle_trade(game_instance, action, quantity_input.text, popup, sell_all=sell_all_checkbox.active)
+
         return handler
 
     buy_btn.bind(on_release=on_press_wrapper('buy'))
@@ -1938,16 +1945,19 @@ def handle_trade(game_instance, action, quantity, trade_popup, sell_all=False):
 
             if action == 'buy':
                 total_cost = price_per_lot * quantity
-                show_message("Успех", f"Куплено {format_number(quantity)} лотов Кристаллов за {format_number(total_cost)} крон.")
+                show_message("Успех",
+                             f"Куплено {format_number(quantity)} лотов Кристаллов за {format_number(total_cost)} крон.")
             elif action == 'sell':
                 profit = price_per_lot * quantity
-                show_message("Успех", f"Получено: {format_number(profit)} крон\n(Соотношение: {economic_efficiency} крон/ед. Кристалла)")
+                show_message("Успех",
+                             f"Получено: {format_number(profit)} крон\n(Соотношение: {economic_efficiency} крон/ед. Кристалла)")
         else:
             show_message("Ошибка", "Не удалось завершить операцию.")
     except ValueError as e:
         show_message("Ошибка", str(e))
 
     trade_popup.dismiss()
+
 
 # -----------------------------------
 def open_tax_popup(faction):
@@ -2049,9 +2059,11 @@ def open_tax_popup(faction):
             pos=set_tax_button.pos,
             radius=[dp(15)]
         )
+
     def update_rect(instance, value):
         instance.rect.pos = instance.pos
         instance.rect.size = instance.size
+
     set_tax_button.bind(pos=update_rect, size=update_rect)
 
     def set_tax(instance):
@@ -2060,6 +2072,7 @@ def open_tax_popup(faction):
         faction.set_taxes(tax_rate)
         faction.apply_tax_effect(tax_rate)
         tax_popup.dismiss()
+
     set_tax_button.bind(on_release=set_tax)
     main_layout.add_widget(set_tax_button)
 
@@ -2067,6 +2080,7 @@ def open_tax_popup(faction):
     def dismiss_on_outside(instance, touch):
         if not main_layout.collide_point(*touch.pos):
             tax_popup.dismiss()
+
     tax_popup.bind(on_touch_down=dismiss_on_outside)
     tax_popup.content = main_layout
     tax_popup.open()
@@ -2106,7 +2120,8 @@ def open_auto_build_popup(faction):
     with icon_container.canvas:
         Color(0.25, 0.45, 0.85, 1)
         RoundedRectangle(pos=icon_container.pos, size=icon_container.size, radius=[dp(12)])
-    icon_img = Image(source='files/status/icons/building.png', size_hint=(0.6, 0.6), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+    icon_img = Image(source='files/status/icons/building.png', size_hint=(0.6, 0.6),
+                     pos_hint={'center_x': 0.5, 'center_y': 0.5})
     icon_container.add_widget(icon_img)
     header.add_widget(icon_container)
 
@@ -2124,15 +2139,18 @@ def open_auto_build_popup(faction):
     main_layout.add_widget(header)
 
     # Визуальный индикатор соотношения
-    ratio_visual = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(60), padding=[dp(8), 0, dp(8), 0], spacing=dp(6))
+    ratio_visual = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(60), padding=[dp(8), 0, dp(8), 0],
+                             spacing=dp(6))
 
     hospitals_bar = BoxLayout(size_hint=(0.5, 1))
     with hospitals_bar.canvas.before:
         Color(0.85, 0.35, 0.35, 1)
-        hospitals_bar.rect = RoundedRectangle(pos=hospitals_bar.pos, size=hospitals_bar.size, radius=[dp(8), 0, 0, dp(8)])
+        hospitals_bar.rect = RoundedRectangle(pos=hospitals_bar.pos, size=hospitals_bar.size,
+                                              radius=[dp(8), 0, 0, dp(8)])
         hospitals_bar.bind(pos=lambda inst, val: setattr(hospitals_bar.rect, 'pos', val))
         hospitals_bar.bind(size=lambda inst, val: setattr(hospitals_bar.rect, 'size', val))
-    hospitals_label = Label(text="🏥 1", font_size=sp(18), bold=True, color=(1, 1, 1, 1), halign='center', valign='middle')
+    hospitals_label = Label(text="🏥 1", font_size=sp(18), bold=True, color=(1, 1, 1, 1), halign='center',
+                            valign='middle')
     hospitals_label.bind(size=hospitals_label.setter('text_size'))
     hospitals_bar.add_widget(hospitals_label)
     ratio_visual.add_widget(hospitals_bar)
@@ -2140,7 +2158,8 @@ def open_auto_build_popup(faction):
     factories_bar = BoxLayout(size_hint=(0.5, 1))
     with factories_bar.canvas.before:
         Color(0.35, 0.75, 0.45, 1)
-        factories_bar.rect = RoundedRectangle(pos=factories_bar.pos, size=factories_bar.size, radius=[0, dp(8), dp(8), 0])
+        factories_bar.rect = RoundedRectangle(pos=factories_bar.pos, size=factories_bar.size,
+                                              radius=[0, dp(8), dp(8), 0])
         factories_bar.bind(pos=lambda inst, val: setattr(factories_bar.rect, 'pos', val))
         factories_bar.bind(size=lambda inst, val: setattr(factories_bar.rect, 'size', val))
     factories_label = Label(text="1", font_size=sp(18), bold=True, color=(1, 1, 1, 1), halign='center', valign='middle')
@@ -2152,25 +2171,30 @@ def open_auto_build_popup(faction):
 
     # Слайдер
     slider_container = BoxLayout(orientation='vertical', spacing=dp(10), size_hint_y=None, height=dp(100))
-    ratio_display = Label(text="1 : 1", font_size=sp(32), bold=True, color=(1, 0.95, 0.8, 1), halign='center', valign='middle', size_hint_y=None, height=dp(40))
+    ratio_display = Label(text="1 : 1", font_size=sp(32), bold=True, color=(1, 0.95, 0.8, 1), halign='center',
+                          valign='middle', size_hint_y=None, height=dp(40))
     ratio_display.bind(size=ratio_display.setter('text_size'))
     slider_container.add_widget(ratio_display)
 
-    slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(dp(40), dp(40)), background_width=dp(12), size_hint_y=None, height=dp(40))
+    slider = Slider(min=0, max=8, value=4, step=1, cursor_size=(dp(40), dp(40)), background_width=dp(12),
+                    size_hint_y=None, height=dp(40))
     slider_container.add_widget(slider)
     main_layout.add_widget(slider_container)
 
     # Описание стратегии
-    strategy_card = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(95), padding=[dp(15), dp(12), dp(15), dp(12)], spacing=dp(4))
+    strategy_card = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(95),
+                              padding=[dp(15), dp(12), dp(15), dp(12)], spacing=dp(4))
     with strategy_card.canvas.before:
         Color(0.18, 0.22, 0.32, 1)
         strategy_card.bg = RoundedRectangle(radius=[dp(14)], size=strategy_card.size, pos=strategy_card.pos)
         strategy_card.bind(pos=lambda inst, val: setattr(strategy_card.bg, 'pos', val))
         strategy_card.bind(size=lambda inst, val: setattr(strategy_card.bg, 'size', val))
 
-    strategy_name = Label(text="[b]Идеальный баланс[/b]", markup=True, font_size=sp(19), color=(0.65, 0.95, 1, 1), halign='center', valign='top', size_hint_y=None, height=dp(28))
+    strategy_name = Label(text="[b]Идеальный баланс[/b]", markup=True, font_size=sp(19), color=(0.65, 0.95, 1, 1),
+                          halign='center', valign='top', size_hint_y=None, height=dp(28))
     strategy_name.bind(size=strategy_name.setter('text_size'))
-    strategy_desc = Label(text="Равное развитие больниц и фабрик", font_size=sp(15), color=(0.85, 0.85, 0.9, 1), halign='center', valign='top', size_hint_y=None, height=dp(45))
+    strategy_desc = Label(text="Равное развитие больниц и фабрик", font_size=sp(15), color=(0.85, 0.85, 0.9, 1),
+                          halign='center', valign='top', size_hint_y=None, height=dp(45))
     strategy_desc.bind(size=strategy_desc.setter('text_size'))
     strategy_card.add_widget(strategy_name)
     strategy_card.add_widget(strategy_desc)
@@ -2180,7 +2204,8 @@ def open_auto_build_popup(faction):
     buttons_layout = BoxLayout(orientation='horizontal', spacing=dp(15), size_hint_y=None, height=dp(65))
 
     def create_button(text, bg_color):
-        btn = Button(text=text, font_size=sp(19), bold=True, background_color=(0, 0, 0, 0), color=(1, 1, 1, 1), size_hint=(0.5, 1))
+        btn = Button(text=text, font_size=sp(19), bold=True, background_color=(0, 0, 0, 0), color=(1, 1, 1, 1),
+                     size_hint=(0.5, 1))
         with btn.canvas.before:
             Color(*bg_color)
             btn.bg = RoundedRectangle(radius=[dp(16)], size=btn.size, pos=btn.pos)
@@ -2289,7 +2314,6 @@ def open_development_popup(faction):
     )
 
     main_layout = BoxLayout(orientation='vertical', padding=padding, spacing=spacing)
-
 
     # Tabbed Panel - компактный
     tab_panel = TabbedPanel(
@@ -2614,13 +2638,12 @@ def open_development_popup(faction):
     dev_popup.content = main_layout
     dev_popup.open()
 
-#--------------------------
+
+# --------------------------
 def start_economy_mode(faction, game_area, db_conn, season_manager):
     """Инициализация экономического режима для выбранной фракции"""
-
     from kivy.metrics import dp, sp
     from kivy.uix.widget import Widget
-
     is_android = platform == 'android'
 
     economy_layout = BoxLayout(
@@ -2647,7 +2670,6 @@ def start_economy_mode(faction, game_area, db_conn, season_manager):
             font_size=sp(18) if is_android else 16,
             bold=True
         )
-
         with button.canvas.before:
             Color(0.2, 0.8, 0.2, 1)
             button.rect = RoundedRectangle(pos=button.pos, size=button.size, radius=[15])
@@ -2663,8 +2685,10 @@ def start_economy_mode(faction, game_area, db_conn, season_manager):
     dev_btn = create_styled_button("Развитие", lambda x: open_development_popup(faction))
     trade_btn = create_styled_button("Рынок", lambda x: open_trade_popup(faction))
     tax_btn = create_styled_button("Налоги", lambda x: open_tax_popup(faction))
+
     economy_layout.add_widget(create_styled_button("Мастерская", lambda x: workshop(faction, db_conn)))
-    economy_layout.add_widget(create_styled_button("Артефакты", lambda x: open_artifacts_popup(faction, season_manager)))
+    economy_layout.add_widget(
+        create_styled_button("Артефакты", lambda x: open_artifacts_popup(faction, season_manager)))
     economy_layout.add_widget(dev_btn)
     economy_layout.add_widget(trade_btn)
     economy_layout.add_widget(tax_btn)
