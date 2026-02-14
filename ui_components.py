@@ -135,18 +135,18 @@ class TutorialHint(FloatLayout):
             keep_ratio=True
         )
 
-        # Пузырь
+        # Пузырь (контейнер для текста и кнопки)
         self.bubble = BoxLayout(
             orientation='vertical',
             size_hint=(None, None),
-            padding=(dp(28), dp(28), dp(28), dp(20)),
-            spacing=dp(20)
+            padding=(dp(20), dp(20), dp(20), dp(16)),  # увеличены отступы
+            spacing=dp(16)
         )
 
-        # Текст
+        # Текст подсказки
         self.label = Label(
             text=self.message,
-            font_size=sp(20),
+            font_size=sp(18),  # уменьшен размер шрифта
             color=(1, 1, 1, 1),
             halign='center',
             valign='middle',
@@ -156,11 +156,11 @@ class TutorialHint(FloatLayout):
         )
         self.label.bind(texture_size=self._update_label_height)
 
-        # Кнопка "Далее"
+        # Кнопка "Далее" – чуть шире для удобства нажатия
         self.next_btn = ModernButton(
             text='Продолжить',
             size_hint=(None, None),
-            size=(dp(180), dp(48)),
+            size=(dp(400), dp(48)),
             pos_hint={'center_x': 0.5}
         )
         self.next_btn.bind(on_release=self._on_next)
@@ -173,21 +173,24 @@ class TutorialHint(FloatLayout):
         self.bubble.add_widget(self.label)
         self.bubble.add_widget(self.next_btn)
 
-        # Фон пузыря
+        # Фон пузыря с тенью и градиентом
         with self.bubble.canvas.before:
-            Color(0.2, 0.4, 0.8, 0.98)
+            # Тень (чёрная с прозрачностью)
+            Color(0, 0, 0, 0.3)
             self.bubble_shadow = RoundedRectangle(
                 pos=(self.bubble.x + dp(4), self.bubble.y - dp(4)),
                 size=self.bubble.size,
                 radius=[dp(24)]
             )
+            # Основной фон (синий)
             Color(0.2, 0.4, 0.8, 0.98)
             self.bubble_bg1 = RoundedRectangle(
                 pos=self.bubble.pos,
                 size=self.bubble.size,
                 radius=[dp(24)]
             )
-            Color(0.2, 0.4, 0.8, 0.98)
+            # Светлая верхушка для эффекта градиента
+            Color(0.3, 0.5, 0.9, 0.95)
             self.bubble_bg2 = RoundedRectangle(
                 pos=(self.bubble.x, self.bubble.y + self.bubble.height * 0.7),
                 size=(self.bubble.width, self.bubble.height * 0.3),
@@ -202,7 +205,10 @@ class TutorialHint(FloatLayout):
         self.add_widget(self.bubble)
         self.add_widget(self.skip_btn)
 
-        # Позиционирование
+        # Подписка на изменение размера окна (поворот экрана)
+        Window.bind(on_resize=self._on_window_resize)
+
+        # Позиционирование после того как layout готов
         Clock.schedule_once(self._position_elements, 0.1)
 
         # Анимация появления
@@ -225,7 +231,7 @@ class TutorialHint(FloatLayout):
         instance.height = max(texture_size[1], dp(40))
 
     def _update_label_text_size(self, instance, width):
-        self.label.text_size = (width - dp(56), None)
+        self.label.text_size = (width - dp(40), None)  # отступы внутри пузыря
 
     def _on_window_resize(self, instance, width, height):
         """Пересчёт позиции при изменении размера окна"""
@@ -264,12 +270,14 @@ class TutorialHint(FloatLayout):
         bubble_center_x = win_x + target_w / 2
         bubble_center_y = win_y + target_h / 2
 
-        # Адаптивная ширина пузыря
-        max_bubble_width = window_w - dp(80)  # отступы 40 слева и справа
-        self.bubble.width = min(dp(400), max_bubble_width)
+        # Адаптивная ширина пузыря: максимум 500dp, но с отступами от краёв по 20dp
+        max_bubble_width = window_w - dp(40)  # отступы 20 слева и справа
+        self.bubble.width = min(dp(600), max_bubble_width)
+
+        # Обновляем text_size метки и пересчитываем высоту
         self._update_label_text_size(self.bubble, self.bubble.width)
         self.label.texture_update()
-        self.bubble.height = self.label.height + self.next_btn.height + dp(68)
+        self.bubble.height = self.label.height + self.next_btn.height + dp(52)  # padding + spacing
 
         if self.arrow_direction == 'right':
             self.arrow.pos = (win_x - dp(100), bubble_center_y - dp(30))
