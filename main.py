@@ -1825,6 +1825,7 @@ class KingdomSelectionWidget(MDFloatLayout):
 
     def cleanup_and_start_game(self):
         """Очистка и запуск игры"""
+        restore_from_backup(self.conn)
         # Очищаем оверлей
         if hasattr(self, 'overlay') and self.overlay in self.children:
             self.remove_widget(self.overlay)
