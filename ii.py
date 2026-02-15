@@ -2847,11 +2847,11 @@ class AIController:
         """
         system = self.load_political_system()
         if system == "Смирение":
-            crowns_bonus = int(self.money_up * 1.65)
+            crowns_bonus = int(self.money_up * 1.85)
             self.resources['Кроны'] = int(self.resources.get('Кроны', 0)) + crowns_bonus
             print(f"Бонус от смирения: +{crowns_bonus} Крон")
         elif system == "Борьба":
-            raw_material_bonus = int(self.food_info * 2.25)
+            raw_material_bonus = int(self.food_info * 3.25)
             self.resources['Кристаллы'] = int(self.resources.get('Кристаллы', 0)) + raw_material_bonus
             print(f"Бонус от борьбы: +{raw_material_bonus} Кристаллы")
 

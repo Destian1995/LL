@@ -1637,7 +1637,7 @@ class KingdomSelectionWidget(MDFloatLayout):
         elif text == 'Борьба':
             self.selected_ideology = 'Борьба'
             # Обновляем текст, цвет и иконку
-            self.ideology_bonus_label.text = "+600% к добыче кристаллов"
+            self.ideology_bonus_label.text = "+850% к добыче кристаллов"
             self.ideology_bonus_label.color = (1.0, 0.5, 0.5, 1)  # Красноватый цвет
             self.ideology_bonus_icon.source = 'files/status/resource_box/crystal.png'
             # Важно: перезагрузить текстуру изображения

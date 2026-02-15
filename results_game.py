@@ -1,6 +1,83 @@
 from lerdon_libraries import *
 from db_lerdon_connect import *
 
+def restore_from_backup(conn):
+    """
+    Восстанавливает данные из стандартных таблиц в рабочие.
+    :param conn: Активное соединение с базой данных.
+    """
+    cursor = conn.cursor()
+    tables_to_restore = [
+        ("diplomacies_default", "diplomacies"),
+        ("relations_default", "relations"),
+        ("resources_default", "resources"),
+        ("units_default", "units"),
+        ("artifacts_default", "artifacts"),
+        ("artifacts_ai_default", "artifacts_ai")
+    ]
+
+    try:
+        cursor.execute("BEGIN IMMEDIATE")  # Блокируем на время восстановления
+
+        for default_table, working_table in tables_to_restore:
+            cursor.execute(f"DELETE FROM {working_table}")
+            cursor.execute(f"INSERT INTO {working_table} SELECT * FROM {default_table}")
+
+        conn.commit()
+        print("Данные успешно восстановлены из бэкапа.")
+    except sqlite3.Error as e:
+        conn.rollback()
+        print(f"Ошибка восстановления данных: {e}")
+
+
+def clear_tables(conn):
+    """
+    Очищает данные из указанных таблиц базы данных.
+    :param conn: Подключение к базе данных SQLite.
+    """
+    tables_to_clear = [
+        "buildings",
+        "cities",
+        "diplomacies",
+        "garrisons",
+        "resources",
+        "trade_agreements",
+        "turn",
+        "turn_save",
+        "armies",
+        "political_systems",
+        "karma",
+        "user_faction",
+        "units",
+        "results",
+        "auto_build_settings",
+        "interface_coord",
+        "hero_equipment",
+        "ai_hero_equipment",
+        "effects_seasons",
+        "nobles",
+        "noble_events",
+        "coup_attempts",
+        "artifacts",
+        "artifacts_ai",
+        "artifact_effects_log",
+        "player_allies",
+        "negotiation_history",
+    ]
+
+    cursor = conn.cursor()
+
+    try:
+        for table in tables_to_clear:
+            # Используем TRUNCATE или DELETE для очистки таблицы
+            cursor.execute(f"DELETE FROM {table};")
+            print(f"Таблица '{table}' успешно очищена.")
+
+        # Фиксируем изменения
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Ошибка при очистке таблиц: {e}")
+        conn.rollback()  # Откат изменений в случае ошибки
 
 class ResultsGame:
     def __init__(self, game_status, reason, conn):
@@ -502,10 +579,26 @@ class ResultsGame:
     def exit_to_main_menu(self, instance):
         app = App.get_running_app()
 
-        # Закрываем все попапы
+        # Закрываем попап результатов
         if hasattr(self, 'popup') and self.popup:
             self.popup.dismiss()
 
-        # Полная перезагрузка приложения
+        # === КРИТИЧЕСКИ ВАЖНЫЙ БЛОК: очистка и восстановление БД ===
+        try:
+            # 1. Очищаем игровые таблицы (сохраняя статистику в dossier)
+            clear_tables(self.conn)
+
+            # 2. Восстанавливаем дефолтные данные для новых игр
+            restore_from_backup(self.conn)
+
+            print("[DB] Игровые данные успешно сброшены. Готово к новой кампании.")
+        except Exception as e:
+            print(f"[DB ERROR] Ошибка при сбросе данных: {e}")
+            import traceback
+            traceback.print_exc()
+            # Даже при ошибке БД продолжаем перезапуск приложения
+        # =========================================================
+
+        # Полная перезагрузка приложения для корректной инициализации
         app.restart_app()
 

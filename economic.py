@@ -815,7 +815,7 @@ class Faction:
                     self.money += crowns_bonus
                     bonuses["Кроны"] = crowns_bonus
             elif system == "Борьба":
-                raw_material_bonus = int(self.food_info * 6.00)
+                raw_material_bonus = int(self.food_info * 8.50)
                 if raw_material_bonus > 0:
                     self.raw_material += raw_material_bonus
                     bonuses["Кристаллы"] = raw_material_bonus
@@ -1054,10 +1054,10 @@ class Faction:
         # Коэффициенты для каждой фракции
         faction_coefficients = {
             'Север': {'money_loss': 14, 'food_loss': 0.5},
-            'Эльфы': {'money_loss': 17, 'food_loss': 0.18},
+            'Эльфы': {'money_loss': 17, 'food_loss': 0.19},
             'Вампиры': {'money_loss': 20, 'food_loss': 0.1},
-            'Адепты': {'money_loss': 22, 'food_loss': 0.05},
-            'Элины': {'money_loss': 24, 'food_loss': 0.02},
+            'Адепты': {'money_loss': 22, 'food_loss': 0.03},
+            'Элины': {'money_loss': 24, 'food_loss': 0.007},
         }
 
         # Получение коэффициентов для текущей фракции
