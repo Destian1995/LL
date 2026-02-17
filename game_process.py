@@ -316,7 +316,7 @@ class ResourceBox(BoxLayout):
                     "Уровень потребления Кристаллического сырья армией(Кристаллы).\n"
                     "Если превышает лимит армии — армия умирает от голода."
                 ),
-                "Лимит армии": (
+                "Лимит Армии": (
                     "Текущий максимальный лимит,\nпотребления армией Кристаллического сырья.\n"
                     "Зависит от текущего количества городов расы."
                 )
@@ -1657,7 +1657,7 @@ class GameScreen(Screen):
                     stat_pct = (stat_f - 1.0) * 100
                     stat_pct_int = int(abs(round(stat_pct)))
                     sign = '+' if stat_pct > 0 else '-'
-                    parts.append(f"{sign}{stat_pct_int}% к Урону и Защите")
+                    parts.append(f"{sign}{stat_pct_int}% к Урону, Защите и Здоровью")
                 if cost_f != 1.0:
                     cost_pct = (cost_f - 1.0) * 100
                     cost_pct_int = int(abs(round(cost_pct)))

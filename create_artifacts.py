@@ -1,16 +1,15 @@
 import os
-import sqlite3
+
 from kivy.uix.popup import Popup
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
+
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.slider import Slider
 from kivy.uix.textinput import TextInput
-from kivy.uix.spinner import Spinner
+
 from kivy.uix.image import Image
-from kivy.uix.scrollview import ScrollView
-from kivy.graphics import Color, RoundedRectangle
+
 from kivy.metrics import dp, sp
 from kivy.core.window import Window
 import random
@@ -142,14 +141,52 @@ def workshop(faction, db_conn):
         workshop_popup.content = layout
 
     # === Функция генерации случайного названия ===
-    def generate_random_name():
-        prefixes = ["Артефакт", "Амулет", "Сердце", "Душа", "Звезда", "Секира", "Меч", "Клинок", "Винтовка", "Мушкет",
-                    "Броня", "Панцирь", "Шлем", "Шляпа", "Сапоги"]
-        suffixes = ["Силы", "Защиты", "Мудрости", "Света", "Тьмы", "Мощи", "Вампиров", "Эльфов", "Просветления",
-                    "Судьбы", "Веры", "Смерти", "Багровой крови", "Мастеров"]
+    def generate_random_name(filename=None):
+        """
+        Генерирует случайное название артефакта на основе типа,
+        определённого по первому символу имени файла.
+
+        filename: имя файла (например, '0вап.png') или None
+        """
+        # Словари префиксов по типам артефактов
+        prefixes_by_type = {
+            0: ["Секира", "Меч", "Клинок", "Винтовка", "Мушкет", "Дробовик", "Арбалет",
+                "Кинжал", "Скипетр", "Ружье", "Копье", "Посох"],
+            1: ["Шлем", "Шляпа", "Корона", "Венец", "Наголовье"],
+            2: ["Сапоги", "Обувь"],
+            3: ["Броня", "Панцирь", "Кираса", "Доспех", "Мантия",
+                "Кольчуга", "Латы", "Жилет", "Плащ", "Дублет", "Камзол"],
+            4: ["Амулет", "Кольцо", "Серьга", "Браслет", "Талисман", "Артефакт",
+                "Сердце", "Душа", "Звезда", "Камень", "Медальон", "Подвеска", "Чары"]
+        }
+
+        # Общие суффиксы для всех типов
+        suffixes = [
+            "Силы", "Защиты", "Мудрости", "Света", "Тьмы", "Мощи",
+            "Вампиров", "Эльфов", "Просветления", "Судьбы", "Веры",
+            "Смерти", "Багровой крови", "Мастеров", "Дракона", "Феникса"
+        ]
+
+        # Определяем тип артефакта по первому символу имени файла
+        artifact_type = 0  # По умолчанию - оружие
+        if filename:
+            try:
+                # Берём первый символ, убираем расширение и пробелы
+                first_char = filename.strip().lower()[0]
+                if first_char.isdigit():
+                    artifact_type = int(first_char)
+                    if artifact_type not in prefixes_by_type:
+                        artifact_type = 0  # Фолбэк на оружие при неверном типе
+            except (IndexError, ValueError):
+                artifact_type = 0
+
+        # Выбираем префиксы для данного типа
+        prefixes = prefixes_by_type.get(artifact_type, prefixes_by_type[0])
+
+        # Генерируем название
         prefix = random.choice(prefixes)
         suffix = random.choice(suffixes)
-        return f"{prefix} {suffix}"
+        return f"{prefix} {suffix}", artifact_type
 
     # === Экран 1: Выбор иконки и названия ===
     def screen1(layout):
@@ -207,9 +244,21 @@ def workshop(faction, db_conn):
                 selected_image[0] = None
                 return
             idx = current_index[0] % len(image_files)
-            img_path = os.path.join(artifact_images_path, image_files[idx])
+            img_filename = image_files[idx]  # Только имя файла, без пути
+            img_path = os.path.join(artifact_images_path, img_filename)
             current_icon_display.source = img_path
-            selected_image[0] = image_files[idx]
+            selected_image[0] = img_filename
+
+            # === Автоопределение типа артефакта и установка слота ===
+            try:
+                first_char = img_filename.strip().lower()[0]
+                if first_char.isdigit():
+                    artifact_type = int(first_char)
+                    slot_map = {0: 'Оружие', 1: 'Голова', 2: 'Ноги', 3: 'Туловище', 4: 'Аксессуар'}
+                    if artifact_type in slot_map:
+                        current_data['slot'] = slot_map[artifact_type]
+            except (IndexError, ValueError):
+                pass  # Если не удалось определить тип — оставляем текущий слот
 
         def on_prev(instance):
             current_index[0] -= 1
@@ -294,8 +343,14 @@ def workshop(faction, db_conn):
             switch_to_screen(screen2)
 
         def on_random_name(instance):
-            name_input.text = generate_random_name()
-            current_data['name'] = name_input.text
+            # Передаём имя выбранного файла для контекстной генерации
+            name, detected_type = generate_random_name(selected_image[0])
+            name_input.text = name
+            current_data['name'] = name
+            # Автоустановка слота при генерации имени (можно переопределить вручную позже)
+            slot_map = {0: 'Оружие', 1: 'Голова', 2: 'Ноги', 3: 'Туловище', 4: 'Аксессуар'}
+            if detected_type in slot_map:
+                current_data['slot'] = slot_map[detected_type]
 
         close_btn.bind(on_release=lambda x: workshop_popup.dismiss())
         next_scr_btn.bind(on_release=on_next_screen)
@@ -678,8 +733,8 @@ def workshop(faction, db_conn):
 
         # Список слотов
         slots = ['Оружие', 'Голова', 'Ноги', 'Туловище', 'Аксессуар']
-        slot_index = [slots.index(current_data['slot']) if current_data['slot'] in slots else 0]
-
+        slot_index = [0]
+        # === Сначала объявляем функции ===
         def update_slot_label():
             current_slot_label.text = slots[slot_index[0]]
 
@@ -691,6 +746,13 @@ def workshop(faction, db_conn):
             slot_index[0] = (slot_index[0] + 1) % len(slots)
             update_slot_label()
 
+        # === Привязка кнопок ===
+        prev_slot_btn.bind(on_release=on_prev_slot)
+        next_slot_btn.bind(on_release=on_next_slot)
+
+        # === Только теперь синхронизируем и обновляем отображение ===
+        slot_index[0] = slots.index(current_data['slot']) if current_data['slot'] in slots else 0
+        update_slot_label()  # ✅ Теперь функция уже определена
         prev_slot_btn.bind(on_release=on_prev_slot)
         next_slot_btn.bind(on_release=on_next_slot)
 
