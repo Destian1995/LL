@@ -626,14 +626,49 @@ def calculate_army_strength(conn):
     return army_strength, formatted_army_strength
 
 def create_army_rating_table(conn):
-    """Создает таблицу рейтинга армий с улучшенным дизайном."""
-    army_strength, formatted_army_strength = calculate_army_strength(conn)
-    if not army_strength:
+    """Создает таблицу с показателями силы: Мощь отряда героя и Общая мощь фракции."""
+
+    # Получаем список всех активных фракций
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DISTINCT faction 
+        FROM (
+            SELECT faction1 AS faction FROM diplomacies
+            UNION
+            SELECT faction2 AS faction FROM diplomacies
+        ) AS all_factions
+        WHERE faction != 'Мятежники' AND faction IN (
+            SELECT faction1 FROM diplomacies WHERE relationship != 'уничтожена'
+            UNION
+            SELECT faction2 FROM diplomacies WHERE relationship != 'уничтожена'
+        )
+    """)
+    all_factions = [row[0] for row in cursor.fetchall()]
+
+    if not all_factions:
         return GridLayout()
 
-    max_strength = max(army_strength.values(), default=1)
+    # === Расчёт двух показателей для каждой фракции ===
+    faction_ratings = []
 
-    # Макет таблицы
+    for faction in all_factions:
+        # Могущество (локальные бонусы)
+        local_power = calculate_peace_army_points(conn, faction)
+
+        # Общая мощь (глобальные бонусы)
+        global_power = calculate_total_faction_power(conn, faction)
+
+        faction_ratings.append({
+            "faction": faction,
+            "local_power": local_power,
+            "global_power": global_power
+        })
+
+    # Сортируем по общей мощи (убывание) — рейтинг как таковой больше не нужен
+    faction_ratings.sort(key=lambda x: x["global_power"], reverse=True)
+
+    # === Создаём таблицу ===
+    # ИЗМЕНЕНО: cols=3 вместо 4, так как убрали колонку с процентами
     layout = GridLayout(
         cols=3,
         size_hint_y=None,
@@ -645,20 +680,17 @@ def create_army_rating_table(conn):
     layout.bind(minimum_height=layout.setter('height'))
 
     # Цвета
-    header_color = (0.1, 0.5, 0.9, 1)  # Темно-синий
+    header_color = (0.1, 0.5, 0.9, 1)
     row_colors = [
-        (1, 1, 1, 1),       # Белый
-        (0.8, 0.9, 1, 1),   # Светло-голубой
-        (0.6, 0.8, 1, 1),   # Голубой
-        (0.4, 0.7, 1, 1),   # Сине-зеленый
-        (0.2, 0.6, 1, 1)    # Темно-синий
+        (1, 1, 1, 1), (0.8, 0.9, 1, 1), (0.6, 0.8, 1, 1),
+        (0.4, 0.7, 1, 1), (0.2, 0.6, 1, 1)
     ]
 
-    def create_label(text, color, halign="left", valign="middle", bold=False):
+    def create_label(text, color, halign="left", valign="middle", bold=False, font_size=14):
         lbl = Label(
             text=text,
             color=(0, 0, 0, 1),
-            font_size=sp(14),
+            font_size=sp(font_size),
             size_hint_y=None,
             height=dp(50),
             halign=halign,
@@ -675,40 +707,119 @@ def create_army_rating_table(conn):
         )
         return lbl
 
-    # Заголовки
-    layout.add_widget(create_label("Раса", header_color, halign="center", valign="middle", bold=True))
-    layout.add_widget(create_label("Рейтинг", header_color, halign="center", valign="middle", bold=True))
-    layout.add_widget(create_label("Могущество", header_color, halign="center", valign="middle", bold=True))
+    # === Заголовки таблицы (3 колонки) ===
+    layout.add_widget(create_label("Раса", header_color, halign="center", bold=True))
+    layout.add_widget(create_label("Мощь отряда героя", header_color, halign="center", bold=True, font_size=12))
+    layout.add_widget(create_label("Общая мощь фракции", header_color, halign="center", bold=True, font_size=12))
 
-    sorted_factions = sorted(army_strength.items(), key=lambda x: x[1], reverse=True)
+    # === Заполнение данными ===
+    for rank, data in enumerate(faction_ratings):
+        faction = data["faction"]
+        local = data["local_power"]
+        global_p = data["global_power"]
 
-    for rank, (faction, strength) in enumerate(sorted_factions):
-        rating = (strength / max_strength) * 100
+        # УДАЛЕНО: расчет rating = (global_p / max_power) * 100
+
         faction_name = faction_names.get(faction, faction)
         color = row_colors[rank % len(row_colors)]
 
-        # Добавляем ячейки
-        layout.add_widget(create_label(f"  {faction_name}", color, halign="left", valign="middle"))
-        layout.add_widget(create_label(f"{rating:.1f}%", color, halign="center", valign="middle"))
-        layout.add_widget(create_label(formatted_army_strength[faction], color, halign="right", valign="middle"))
+        # Ячейки строки (теперь добавляем только 3 виджета)
+        layout.add_widget(create_label(f"  {faction_name}", color, halign="left"))
+        # УДАЛЕНО: layout.add_widget(create_label(f"{rating:.1f}%", ...))
+        layout.add_widget(create_label(format_number(int(local)), color, halign="right", font_size=12))
+        layout.add_widget(create_label(format_number(int(global_p)), color, halign="right", bold=True, font_size=13))
 
     return layout
+
+def calculate_total_faction_power(conn, faction):
+    """
+    Вычисляет ОБЩУЮ мощь фракции с ГЛОБАЛЬНЫМИ бонусами:
+    - Главный герой фракции (класс 3, или класс 2 если нет класса 3)
+      усиливает ВСЕХ юнитов 1-го класса во ВСЕХ гарнизонах фракции
+    """
+    cursor = conn.cursor()
+
+    try:
+        # === ШАГ 1: Находим главного героя фракции ===
+        # Приоритет: класс 3 > класс 2 > первый попавшийся герой
+        cursor.execute("""
+            SELECT u.attack, u.defense, u.durability, u.unit_class
+            FROM garrisons g
+            JOIN units u ON g.unit_name = u.unit_name
+            WHERE u.faction = ? AND u.unit_class IN ('2', '3')
+            ORDER BY 
+                CASE u.unit_class WHEN '3' THEN 0 WHEN '2' THEN 1 END,
+                (u.attack + u.defense + u.durability) DESC
+            LIMIT 1
+        """, (faction,))
+
+        hero_row = cursor.fetchone()
+
+        if hero_row:
+            hero_attack, hero_defense, hero_durability, hero_class = hero_row
+            hero_total_stats = hero_attack + hero_defense + hero_durability
+        else:
+            # Нет героев — бонус 0
+            hero_total_stats = 0
+
+        # === ШАГ 2: Считаем ВСЕ юниты фракции ===
+        cursor.execute("""
+            SELECT g.unit_name, g.unit_count, u.attack, u.defense, u.durability, u.unit_class 
+            FROM garrisons g
+            JOIN units u ON g.unit_name = u.unit_name
+            WHERE u.faction = ?
+        """, (faction,))
+
+        units_data = cursor.fetchall()
+
+        total_class_1_count = 0      # Общее количество юнитов 1-го класса по всей фракции
+        total_class_1_stats = 0      # Сумма характеристик всех юнитов 1-го класса
+        total_others_stats = 0       # Сумма характеристик юнитов 4+ класса
+
+        for row in units_data:
+            unit_name, unit_count, attack, defense, durability, unit_class = row
+            stats_sum = attack + defense + durability
+
+            if unit_class == "1":
+                total_class_1_count += unit_count
+                total_class_1_stats += stats_sum * unit_count
+            elif unit_class in ("2", "3"):
+                # Герои не учитываются в базе, только как источник бонуса
+                pass
+            else:  # класс 4 и выше
+                total_others_stats += stats_sum * unit_count
+
+        # === ШАГ 3: Применяем ГЛОБАЛЬНЫЙ бонус героя ===
+        # Бонус героя умножается на ОБЩЕЕ количество юнитов 1-го класса фракции
+        global_bonus = hero_total_stats * total_class_1_count
+
+        # Итоговая формула:
+        # Общая мощь = (база юнитов 1-го класса) + (глобальный бонус героя) + (юниты 4+ класса)
+        total_power = total_class_1_stats + global_bonus + total_others_stats
+
+        return total_power
+
+    except Exception as e:
+        print(f"Ошибка при вычислении общей мощи фракции {faction}: {e}")
+        return 0
 
 def show_ratings_popup(conn):
     """Открывает всплывающее окно с рейтингом армий."""
     table_layout = create_army_rating_table(conn)
+    main_layout = BoxLayout(orientation='vertical')
+    main_layout.add_widget(table_layout)
 
     scroll_view = ScrollView(
         size_hint=(1, 1),
         bar_width=dp(6),
         scroll_type=['bars', 'content']
     )
-    scroll_view.add_widget(table_layout)
+    scroll_view.add_widget(main_layout)
 
     popup = Popup(
         title="Рейтинг армий",
         content=scroll_view,
-        size_hint=(0.9, 0.8),
+        size_hint=(0.95, 0.85),  # Чуть шире для 4 колонок
         pos_hint={'center_x': 0.5, 'center_y': 0.5},
         background_color=(0.1, 0.1, 0.1, 0.95),
         separator_color=(0.2, 0.6, 1, 1),
@@ -716,7 +827,6 @@ def show_ratings_popup(conn):
         title_size=sp(20)
     )
     popup.open()
-
 
 # Функция для показа окна дипломатических отношений
 def show_diplomacy_window(faction, conn):
