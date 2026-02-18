@@ -805,27 +805,76 @@ def calculate_total_faction_power(conn, faction):
 
 def show_ratings_popup(conn):
     """Открывает всплывающее окно с рейтингом армий."""
-    table_layout = create_army_rating_table(conn)
-    main_layout = BoxLayout(orientation='vertical')
-    main_layout.add_widget(table_layout)
+    from kivy.core.window import Window
+    from kivy.utils import platform
 
+    is_android = platform == 'android'
+
+    table_layout = create_army_rating_table(conn)
+
+    # === Легенда под таблицей ===
+    legend = BoxLayout(
+        orientation='horizontal',
+        size_hint=(1, None),
+        height=dp(40),
+        spacing=dp(20),
+        padding=[dp(10), 0]
+    )
+
+    legend.add_widget(Label(
+        text="⚔️ Могущество: локальные бонусы",
+        font_size=sp(11),
+        color=(0.7, 0.7, 0.7, 1),
+        halign='left'
+    ))
+    legend.add_widget(Label(
+        text="🌟 Общая мощь: глобальные бонусы",
+        font_size=sp(11),
+        color=(0.9, 0.9, 0.5, 1),
+        halign='right'
+    ))
+
+    # === Основной контейнер — ВАЖНО: size_hint_y=None ===
+    main_layout = BoxLayout(
+        orientation='vertical',
+        size_hint=(1, None),  # ← Ключевое исправление!
+        padding=[dp(5), dp(5), dp(5), dp(10)]
+    )
+    main_layout.add_widget(table_layout)
+    main_layout.add_widget(legend)
+
+    # Привязываем высоту контейнера к сумме высот детей
+    main_layout.bind(minimum_height=main_layout.setter('height'))
+
+    # === ScrollView с улучшенными настройками для Android ===
     scroll_view = ScrollView(
         size_hint=(1, 1),
-        bar_width=dp(6),
-        scroll_type=['bars', 'content']
+        bar_width=dp(12) if is_android else dp(8),      # Шире полоса на Android
+        bar_color=(0.6, 0.6, 0.6, 0.9),                  # Более контрастный цвет
+        bar_inactive_color=(0.4, 0.4, 0.4, 0.5),         # Цвет неактивной полосы
+        scroll_type=['bars', 'content'],                 # Прокрутка и полосой, и контентом
+        effect_cls='ScrollEffect',                       # Плавная прокрутка
+        do_scroll_x=False                                # Отключаем горизонтальную прокрутку
     )
     scroll_view.add_widget(main_layout)
 
+    # === Popup ===
     popup = Popup(
         title="Рейтинг армий",
         content=scroll_view,
-        size_hint=(0.95, 0.85),  # Чуть шире для 4 колонок
+        size_hint=(0.95, 0.85),
         pos_hint={'center_x': 0.5, 'center_y': 0.5},
         background_color=(0.1, 0.1, 0.1, 0.95),
         separator_color=(0.2, 0.6, 1, 1),
         title_color=(1, 1, 1, 1),
         title_size=sp(20)
     )
+
+    # Обновляем полосу прокрутки при изменении размера окна (для Android)
+    def on_popup_open(*args):
+        scroll_view.update_bar_pos()
+
+    popup.bind(on_open=on_popup_open)
     popup.open()
 
 # Функция для показа окна дипломатических отношений
