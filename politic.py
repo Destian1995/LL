@@ -810,72 +810,64 @@ def show_ratings_popup(conn):
 
     is_android = platform == 'android'
 
-    table_layout = create_army_rating_table(conn)
-
-    # === Легенда под таблицей ===
-    legend = BoxLayout(
-        orientation='horizontal',
-        size_hint=(1, None),
-        height=dp(40),
-        spacing=dp(20),
-        padding=[dp(10), 0]
-    )
-
-    legend.add_widget(Label(
-        text="⚔️ Могущество: локальные бонусы",
-        font_size=sp(11),
-        color=(0.7, 0.7, 0.7, 1),
-        halign='left'
-    ))
-    legend.add_widget(Label(
-        text="🌟 Общая мощь: глобальные бонусы",
-        font_size=sp(11),
-        color=(0.9, 0.9, 0.5, 1),
-        halign='right'
-    ))
-
-    # === Основной контейнер — ВАЖНО: size_hint_y=None ===
-    main_layout = BoxLayout(
+    # === Создаем контент для popup (как в diplomacy) ===
+    content = BoxLayout(
         orientation='vertical',
-        size_hint=(1, None),  # ← Ключевое исправление!
-        padding=[dp(5), dp(5), dp(5), dp(10)]
+        spacing=dp(8),
+        padding=dp(10)
     )
-    main_layout.add_widget(table_layout)
-    main_layout.add_widget(legend)
 
-    # Привязываем высоту контейнера к сумме высот детей
-    main_layout.bind(minimum_height=main_layout.setter('height'))
-
-    # === ScrollView с улучшенными настройками для Android ===
-    scroll_view = ScrollView(
-        size_hint=(1, 1),
-        bar_width=dp(12) if is_android else dp(8),      # Шире полоса на Android
-        bar_color=(0.6, 0.6, 0.6, 0.9),                  # Более контрастный цвет
-        bar_inactive_color=(0.4, 0.4, 0.4, 0.5),         # Цвет неактивной полосы
-        scroll_type=['bars', 'content'],                 # Прокрутка и полосой, и контентом
-        effect_cls='ScrollEffect',                       # Плавная прокрутка
-        do_scroll_x=False                                # Отключаем горизонтальную прокрутку
+    # === Заголовок (как в diplomacy) ===
+    title_label = Label(
+        text="Рейтинг армий",
+        font_size='20sp',
+        bold=True,
+        color=(1, 1, 1, 1),
+        halign='center',
+        size_hint_y=None,
+        height=dp(50)
     )
-    scroll_view.add_widget(main_layout)
+    content.add_widget(title_label)
 
-    # === Popup ===
-    popup = Popup(
-        title="Рейтинг армий",
-        content=scroll_view,
+    # === Создаем таблицу ===
+    table = create_army_rating_table(conn)
+
+    # === Добавляем таблицу в ScrollView (КЛЮЧЕВОЕ: size_hint=(1, 0.8) как в diplomacy) ===
+    scroll = ScrollView(
+        size_hint=(1, 0.8),  # ← 80% высоты, как в show_diplomatic_relations
+        bar_width=dp(6),
+        bar_color=(0.5, 0.5, 0.5, 0.6),
+        scroll_type=['bars', 'content']
+    )
+    scroll.add_widget(table)
+    content.add_widget(scroll)
+
+    # === Кнопка закрытия (как в diplomacy) ===
+    close_button = Button(
+        text="Закрыть",
+        size_hint=(1, None),
+        height=dp(50),
+        font_size='18sp',
+        background_color=(0.8, 0.2, 0.2, 1),
+        color=(1, 1, 1, 1)
+    )
+
+    def close_popup(instance):
+        if hasattr(show_ratings_popup, 'popup'):
+            show_ratings_popup.popup.dismiss()
+
+    close_button.bind(on_release=close_popup)
+    content.add_widget(close_button)
+
+    # === Создаем и показываем popup (как в diplomacy) ===
+    show_ratings_popup.popup = Popup(
+        title="",
+        content=content,
         size_hint=(0.95, 0.85),
-        pos_hint={'center_x': 0.5, 'center_y': 0.5},
-        background_color=(0.1, 0.1, 0.1, 0.95),
-        separator_color=(0.2, 0.6, 1, 1),
-        title_color=(1, 1, 1, 1),
-        title_size=sp(20)
+        auto_dismiss=False,
+        background_color=(0.1, 0.1, 0.2, 0.95)
     )
-
-    # Обновляем полосу прокрутки при изменении размера окна (для Android)
-    def on_popup_open(*args):
-        scroll_view.update_bar_pos()
-
-    popup.bind(on_open=on_popup_open)
-    popup.open()
+    show_ratings_popup.popup.open()
 
 # Функция для показа окна дипломатических отношений
 def show_diplomacy_window(faction, conn):
