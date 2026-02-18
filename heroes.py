@@ -1,4 +1,5 @@
 from kivy.graphics import PopMatrix, PushMatrix
+from kivy.uix.checkbox import CheckBox
 
 from db_lerdon_connect import *
 from seasons import SeasonManager
@@ -140,8 +141,8 @@ def load_artifacts_from_db(faction):
         cursor = faction.conn.cursor()
         # Выбираем только нужные столбцы
         cursor.execute('''
-            SELECT id, attack, defense, season_name, image_url, name, cost, artifact_type
-            FROM artifacts
+        SELECT id, attack, defense, season_name, image_url, name, cost, artifact_type, is_created
+        FROM artifacts
         ''')
         rows = cursor.fetchall()
         for row in rows:
@@ -149,11 +150,12 @@ def load_artifacts_from_db(faction):
                 "id": row[0],
                 "attack": row[1] if row[1] is not None else 0,
                 "defense": row[2] if row[2] is not None else 0,
-                "season_name": row[3] if row[3] is not None else "",  # Может быть пустой строкой
+                "season_name": row[3] if row[3] is not None else "",
                 "image_url": row[4] if row[4] is not None else "files/pict/artifacts/default.png",
                 "name": row[5] if row[5] is not None else "",
                 "cost": row[6] if row[6] is not None else 0,
-                "artifact_type": row[7] if row[7] is not None else -1
+                "artifact_type": row[7] if row[7] is not None else -1,
+                "is_created": row[8] if len(row) > 8 and row[8] is not None else 0
             }
             # Проверяем, есть ли какие-то значимые статы (attack или defense > 0)
             if artifact['attack'] != 0 or artifact['defense'] != 0:
@@ -543,7 +545,11 @@ def open_artifacts_popup(faction, season_manager):
     filters_container = BoxLayout(orientation='vertical', size_hint_y=None,
                                   height=filter_height, spacing=filter_spacing)
 
-    filter_states = {'season_influence': 'all', 'artifact_type': 'all', 'cost_sort': 'all'}
+    filter_states = {
+        'artifact_type': 'all',
+        'cost_sort': 'all',
+        'show_created_only': False
+    }
 
     # === ДОБАВЛЯЕМ ЛЕЙБЛ С КРОНАМИ В ПРАВУЮ НИЖНЮЮ ЧАСТЬ ===
     # Замените создание money_info_label на это:
@@ -573,17 +579,20 @@ def open_artifacts_popup(faction, season_manager):
         artifacts_list_layout.clear_widgets()
         filtered_artifacts = []
         for artifact in artifacts_list:
-            season_ok = True
-            if filter_states['season_influence'] == 'has_influence':
-                season_name = artifact.get('season_name')
-                season_ok = season_name is not None and season_name != ""
-            elif filter_states['season_influence'] == 'no_influence':
-                season_name = artifact.get('season_name')
-                season_ok = season_name is None or season_name == ""
+            # === НОВЫЙ ФИЛЬТР: только созданные артефакты ===
+            created_ok = True
+            if filter_states['show_created_only']:
+                # is_created может быть None, если колонка новая — считаем None как 0
+                is_created = artifact.get('is_created', 0)
+                created_ok = (is_created == 1 or is_created is True)
+
+            # Фильтр по типу артефакта
             type_ok = True
             if filter_states['artifact_type'] != 'all':
                 type_ok = artifact.get('artifact_type') == filter_states['artifact_type']
-            if season_ok and type_ok:
+
+            # Применяем оба фильтра (логическое И)
+            if created_ok and type_ok:
                 filtered_artifacts.append(artifact)
         if filter_states['cost_sort'] == 'asc':
             filtered_artifacts.sort(key=lambda art: art.get('cost', 0))
@@ -879,7 +888,43 @@ def open_artifacts_popup(faction, season_manager):
     type_spinner.bind(text=on_type_spinner_select)
     type_filter_layout.add_widget(type_spinner)
     filters_container.add_widget(type_filter_layout)
+    # === ФИЛЬТР "СОЗДАННЫЕ АРТЕФАКТЫ" ===
+    created_filter_layout = BoxLayout(
+        orientation='horizontal',
+        size_hint_y=None,
+        height=dp(25) if is_android else dp(30),
+        spacing=dp(5)
+    )
 
+    # Чекбокс
+    created_checkbox = CheckBox(
+        size_hint=(None, None),
+        size=(dp(20) if is_android else dp(25), dp(20) if is_android else dp(25)),
+        active=False,
+        color=(1, 1, 1, 1)
+    )
+
+    # Лейбл
+    created_label = Label(
+        text="Только созданные",
+        size_hint_x=None,
+        width=dp(120) if is_android else dp(140),
+        halign='left',
+        font_size=font_size_small if is_android else '15sp',
+        color=(0.9, 0.9, 0.9, 1)
+    )
+
+    created_filter_layout.add_widget(created_checkbox)
+    created_filter_layout.add_widget(created_label)
+    created_filter_layout.add_widget(Widget())  # Заполнитель для выравнивания
+    filters_container.add_widget(created_filter_layout)
+
+    # Привязка события
+    def on_created_filter_toggle(instance, value):
+        filter_states['show_created_only'] = value
+        update_artifact_list()
+
+    created_checkbox.bind(active=on_created_filter_toggle)
     cost_filter_layout = BoxLayout(orientation='horizontal', size_hint_y=None,
                                    height=dp(25) if is_android else dp(30))
     cost_filter_layout.add_widget(Label(text="Цена:", size_hint_x=None,
