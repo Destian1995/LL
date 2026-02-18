@@ -734,33 +734,28 @@ def create_army_rating_table(conn):
 def calculate_total_faction_power(conn, faction):
     """
     Вычисляет ОБЩУЮ мощь фракции с ГЛОБАЛЬНЫМИ бонусами:
-    - Главный герой фракции (класс 3, или класс 2 если нет класса 3)
-      усиливает ВСЕХ юнитов 1-го класса во ВСЕХ гарнизонах фракции
+    - ВСЕ герои фракции классов 2 и 3 усиливают ВСЕХ юнитов 1-го класса
+      во ВСЕХ гарнизонах фракции (бонусы суммируются)
     """
     cursor = conn.cursor()
 
     try:
-        # === ШАГ 1: Находим главного героя фракции ===
-        # Приоритет: класс 3 > класс 2 > первый попавшийся герой
+        # === ШАГ 1: Находим ВСЕХ героев фракции классов 2 и 3 ===
+        # Убрали LIMIT 1 — теперь получаем всех героев для суммирования бонусов
         cursor.execute("""
             SELECT u.attack, u.defense, u.durability, u.unit_class
             FROM garrisons g
             JOIN units u ON g.unit_name = u.unit_name
             WHERE u.faction = ? AND u.unit_class IN ('2', '3')
-            ORDER BY 
-                CASE u.unit_class WHEN '3' THEN 0 WHEN '2' THEN 1 END,
-                (u.attack + u.defense + u.durability) DESC
-            LIMIT 1
         """, (faction,))
 
-        hero_row = cursor.fetchone()
+        hero_rows = cursor.fetchall()
 
-        if hero_row:
+        # Суммируем характеристики ВСЕХ героев классов 2 и 3
+        total_hero_stats = 0
+        for hero_row in hero_rows:
             hero_attack, hero_defense, hero_durability, hero_class = hero_row
-            hero_total_stats = hero_attack + hero_defense + hero_durability
-        else:
-            # Нет героев — бонус 0
-            hero_total_stats = 0
+            total_hero_stats += hero_attack + hero_defense + hero_durability
 
         # === ШАГ 2: Считаем ВСЕ юниты фракции ===
         cursor.execute("""
@@ -784,17 +779,17 @@ def calculate_total_faction_power(conn, faction):
                 total_class_1_count += unit_count
                 total_class_1_stats += stats_sum * unit_count
             elif unit_class in ("2", "3"):
-                # Герои не учитываются в базе, только как источник бонуса
+                # Герои не учитываются в базе мощности, только как источник бонуса
                 pass
             else:  # класс 4 и выше
                 total_others_stats += stats_sum * unit_count
 
-        # === ШАГ 3: Применяем ГЛОБАЛЬНЫЙ бонус героя ===
-        # Бонус героя умножается на ОБЩЕЕ количество юнитов 1-го класса фракции
-        global_bonus = hero_total_stats * total_class_1_count
+        # === ШАГ 3: Применяем ГЛОБАЛЬНЫЙ бонус ВСЕХ героев ===
+        # Суммарный бонус всех героев умножается на ОБЩЕЕ количество юнитов 1-го класса фракции
+        global_bonus = total_hero_stats * total_class_1_count
 
         # Итоговая формула:
-        # Общая мощь = (база юнитов 1-го класса) + (глобальный бонус героя) + (юниты 4+ класса)
+        # Общая мощь = (база юнитов 1-го класса) + (глобальный бонус всех героев) + (юниты 4+ класса)
         total_power = total_class_1_stats + global_bonus + total_others_stats
 
         return total_power
