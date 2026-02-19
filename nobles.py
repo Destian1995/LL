@@ -8,6 +8,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
+import json
 
 # --- КОНФИГУРАЦИЯ СТИЛЕЙ (THEME) ---
 class UIStyles:
@@ -67,10 +68,19 @@ class StyledButton(Button):
     def _on_release(self, instance):
         self._bg_color.rgba = self._original_color
 
+
 class NobleCard(BoxLayout):
     """Карточка дворянина"""
+
     def __init__(self, noble_data, conn, cash_player, refresh_callback, **kwargs):
-        super().__init__(orientation='horizontal', size_hint_y=None, height=UIStyles.CARD_HEIGHT, padding=UIStyles.PADDING, spacing=dp(5), **kwargs)
+        super().__init__(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=UIStyles.CARD_HEIGHT,
+            padding=UIStyles.PADDING,
+            spacing=dp(5),
+            **kwargs
+        )
 
         # Фон карточки
         with self.canvas.before:
@@ -80,6 +90,7 @@ class NobleCard(BoxLayout):
 
         # 1. Имя и статус
         info_layout = BoxLayout(orientation='vertical', size_hint_x=0.6)
+
         name_label = Label(
             text=noble_data['name'],
             font_size=sp(UIStyles.get_font_size(16)),
@@ -90,7 +101,6 @@ class NobleCard(BoxLayout):
         )
         name_label.bind(size=name_label.setter('text_size'))
 
-        # Статус (лояльность или внимание)
         status_text = self._get_status_text(noble_data)
         status_label = Label(
             text=status_text,
@@ -118,7 +128,6 @@ class NobleCard(BoxLayout):
         self.rect.size = instance.size
 
     def _get_status_text(self, noble_data):
-        # Логика отображения статуса (упрощенная для примера)
         attendance = noble_data.get('attendance_history', '')
         if attendance:
             try:
@@ -127,23 +136,32 @@ class NobleCard(BoxLayout):
                     percent = int((sum(history) / len(history)) * 100)
                     color = "[color=ff0000]" if percent < 30 else "[color=ffff00]" if percent < 60 else "[color=00ff00]"
                     return f"{color}Внимание: {percent}%[/color]"
-            except: pass
+            except:
+                pass
         return "[color=aaaaaa]Статус неизвестен[/color]"
 
     def _create_action_button(self, noble_data, conn, cash_player, refresh_callback):
+        """Создаёт кнопку действия для дворянина"""
         try:
-            ideology = json.loads(noble_data['ideology']) if isinstance(noble_data['ideology'], str) else noble_data['ideology']
+            ideology_raw = noble_data.get('ideology', '{}')
+            if isinstance(ideology_raw, str):
+                ideology = json.loads(ideology_raw)
+            else:
+                ideology = ideology_raw
+
             if isinstance(ideology, dict) and ideology.get('type') == 'greed':
                 btn = StyledButton(text="Договориться", color=UIStyles.COLOR_GOLD)
                 btn.bind(on_release=lambda inst: self._handle_deal(conn, noble_data, cash_player, refresh_callback))
                 return btn
-        except: pass
+        except Exception as e:
+            print(f"[DEBUG] Ошибка обработки идеологии: {e}")
+            pass
 
-        label = Label(text="Нет действий", color=UIStyles.COLOR_TEXT_DIM, halign='center', valign='middle')
-        label.bind(size=label.setter('text_size'))
-        return label
+        placeholder = Label(text="", color=UIStyles.COLOR_TEXT_DIM, halign='center', valign='middle')
+        return placeholder
 
     def _handle_deal(self, conn, noble_data, cash_player, refresh_callback):
+        """Обработка кнопки договориться"""
         show_deal_popup(conn, noble_data, cash_player)
         Clock.schedule_once(lambda dt: refresh_callback(), 0.5)
 
@@ -260,7 +278,7 @@ def show_deal_popup(conn, noble_data, cash_player):
     def do_pay(*args):
         if cash_player.deduct_resources(demand):
             if pay_greedy_noble(conn, noble_data['id'], demand):
-                show_result_popup("Успех", "Дворянин теперь лоялен вам!", True)
+                show_result_popup("Успех", "Дворянин лоялен вам на ближайшие 3 мероприятия!", True)
                 popup.dismiss()
             else:
                 show_result_popup("Ошибка", "Сбой транзакции", False)
@@ -290,19 +308,16 @@ def show_deal_popup(conn, noble_data, cash_player):
 def show_result_popup(title, message, is_success=True):
     """Универсальное окно результата"""
     content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
-
     color = UIStyles.COLOR_SUCCESS if is_success else UIStyles.COLOR_DANGER
-    icon = "✓" if is_success else "✗"
 
     lbl_title = Label(
-        text=f"[b]{icon} {title}[/b]",
+        text=f"[b]{title}[/b]",  # УБРАНА ИКОНКА
         font_size=sp(20),
         markup=True,
         color=color,
         size_hint_y=None,
         height=dp(40)
     )
-
     lbl_msg = Label(
         text=message,
         font_size=sp(16),
@@ -311,14 +326,11 @@ def show_result_popup(title, message, is_success=True):
         color=UIStyles.COLOR_TEXT
     )
     lbl_msg.bind(size=lbl_msg.setter('text_size'))
-
     btn = StyledButton(text="Принять", color=UIStyles.COLOR_ACTION)
     btn.bind(on_release=lambda *args: popup.dismiss())
-
     content.add_widget(lbl_title)
     content.add_widget(lbl_msg)
     content.add_widget(btn)
-
     popup = Popup(
         title="",
         content=content,
@@ -904,7 +916,6 @@ class SecretServiceCard(BoxLayout):
 
 def show_toast_notification(message, is_success=True, duration=1.5):
     """Показывает всплывающее уведомление без кнопок, которое исчезает автоматически."""
-
     # --- Адаптивные размеры ---
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(20) if not is_android else dp(15)
@@ -912,7 +923,6 @@ def show_toast_notification(message, is_success=True, duration=1.5):
 
     # --- Цвета в зависимости от результата ---
     color = UIStyles.COLOR_SUCCESS if is_success else UIStyles.COLOR_DANGER
-    icon = "✓" if is_success else "✗"
 
     # --- Контент уведомления ---
     content = BoxLayout(
@@ -933,9 +943,9 @@ def show_toast_notification(message, is_success=True, duration=1.5):
 
     content.bind(pos=update_rect, size=update_rect)
 
-    # Текст уведомления
+    # Текст уведомления (БЕЗ ИКОНКИ)
     message_label = Label(
-        text=f"[b]{icon} {message}[/b]",
+        text=f"[b]{message}[/b]",
         font_size=font_message,
         markup=True,
         halign='center',
@@ -953,7 +963,7 @@ def show_toast_notification(message, is_success=True, duration=1.5):
         size_hint=(0.7, None),
         height=dp(80) if not is_android else dp(70),
         pos_hint={'center_x': 0.5, 'center_y': 0.5},
-        background_color=(0, 0, 0, 0),  # Прозрачный фон popup
+        background_color=(0, 0, 0, 0),
         separator_height=0,
         auto_dismiss=False
     )
@@ -961,11 +971,9 @@ def show_toast_notification(message, is_success=True, duration=1.5):
     # --- Автоматическое закрытие через Clock ---
     def close_toast(dt):
         try:
-            # Проверяем через приватный атрибут _is_open
             if toast_popup._is_open:
                 toast_popup.dismiss()
         except:
-            # Если попап уже закрыт - игнорируем ошибку
             pass
 
     toast_popup.open()
