@@ -1,5 +1,3 @@
-
-# nobles.py
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
@@ -7,7 +5,330 @@ from kivy.uix.popup import Popup
 from kivy.metrics import dp, sp
 from kivy.core.window import Window
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.gridlayout import GridLayout # Добавлено для таблиц
+from kivy.uix.gridlayout import GridLayout
+from kivy.graphics import Color, RoundedRectangle
+from kivy.clock import Clock
+
+# --- КОНФИГУРАЦИЯ СТИЛЕЙ (THEME) ---
+class UIStyles:
+    # Цветовая палитра "Королевство"
+    COLOR_BG = (0.05, 0.05, 0.1, 1)       # Темно-синий фон
+    COLOR_CARD = (0.15, 0.15, 0.25, 1)    # Фон карточки
+    COLOR_GOLD = (0.8, 0.65, 0.2, 1)      # Золото
+    COLOR_TEXT = (0.9, 0.9, 0.9, 1)       # Белый текст
+    COLOR_TEXT_DIM = (0.6, 0.6, 0.6, 1)   # Тусклый текст
+    COLOR_SUCCESS = (0.2, 0.8, 0.4, 1)    # Зеленый
+    COLOR_DANGER = (0.8, 0.2, 0.2, 1)     # Красный
+    COLOR_ACTION = (0.3, 0.5, 0.8, 1)     # Синяя кнопка
+
+    # Размеры
+    BTN_HEIGHT = dp(50)
+    CARD_HEIGHT = dp(70)
+    PADDING = dp(10)
+    RADIUS = dp(10)
+
+    @staticmethod
+    def is_android():
+        return hasattr(Window, 'keyboard')
+
+    @staticmethod
+    def get_font_size(base_size):
+        """Адаптивный шрифт"""
+        if UIStyles.is_android():
+            return base_size * 0.9
+        return base_size
+
+# --- КАСТОМНЫЕ ВИДЖЕТЫ ---
+
+class StyledButton(Button):
+    """Кнопка со скругленными углами и эффектом нажатия"""
+    def __init__(self, color=UIStyles.COLOR_ACTION, **kwargs):
+        super().__init__(**kwargs)
+        self.background_color = (0, 0, 0, 0)
+        self.background_normal = ''
+        self.color = UIStyles.COLOR_TEXT
+        self._color = color
+        self._original_color = color
+
+        with self.canvas.before:
+            self._bg_color = Color(*self._color)
+            self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[UIStyles.RADIUS])
+
+        self.bind(pos=self._update_rect, size=self._update_rect)
+        self.bind(on_press=self._on_press, on_release=self._on_release)
+
+    def _update_rect(self, instance, value):
+        self._bg_rect.pos = instance.pos
+        self._bg_rect.size = instance.size
+
+    def _on_press(self, instance):
+        self._bg_color.rgba = (self._color[0]*0.7, self._color[1]*0.7, self._color[2]*0.7, 1)
+
+    def _on_release(self, instance):
+        self._bg_color.rgba = self._original_color
+
+class NobleCard(BoxLayout):
+    """Карточка дворянина"""
+    def __init__(self, noble_data, conn, cash_player, refresh_callback, **kwargs):
+        super().__init__(orientation='horizontal', size_hint_y=None, height=UIStyles.CARD_HEIGHT, padding=UIStyles.PADDING, spacing=dp(5), **kwargs)
+
+        # Фон карточки
+        with self.canvas.before:
+            Color(*UIStyles.COLOR_CARD)
+            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[UIStyles.RADIUS])
+        self.bind(pos=self._update_rect, size=self._update_rect)
+
+        # 1. Имя и статус
+        info_layout = BoxLayout(orientation='vertical', size_hint_x=0.6)
+        name_label = Label(
+            text=noble_data['name'],
+            font_size=sp(UIStyles.get_font_size(16)),
+            halign='left',
+            valign='middle',
+            color=UIStyles.COLOR_TEXT,
+            markup=True
+        )
+        name_label.bind(size=name_label.setter('text_size'))
+
+        # Статус (лояльность или внимание)
+        status_text = self._get_status_text(noble_data)
+        status_label = Label(
+            text=status_text,
+            font_size=sp(UIStyles.get_font_size(12)),
+            halign='left',
+            valign='middle',
+            color=UIStyles.COLOR_TEXT_DIM,
+            markup=True
+        )
+        status_label.bind(size=status_label.setter('text_size'))
+
+        info_layout.add_widget(name_label)
+        info_layout.add_widget(status_label)
+
+        # 2. Кнопка действия
+        btn_layout = BoxLayout(size_hint_x=0.4)
+        action_btn = self._create_action_button(noble_data, conn, cash_player, refresh_callback)
+        btn_layout.add_widget(action_btn)
+
+        self.add_widget(info_layout)
+        self.add_widget(btn_layout)
+
+    def _update_rect(self, instance, value):
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
+
+    def _get_status_text(self, noble_data):
+        # Логика отображения статуса (упрощенная для примера)
+        attendance = noble_data.get('attendance_history', '')
+        if attendance:
+            try:
+                history = [int(x) for x in str(attendance).split(',') if x.isdigit()]
+                if history:
+                    percent = int((sum(history) / len(history)) * 100)
+                    color = "[color=ff0000]" if percent < 30 else "[color=ffff00]" if percent < 60 else "[color=00ff00]"
+                    return f"{color}Внимание: {percent}%[/color]"
+            except: pass
+        return "[color=aaaaaa]Статус неизвестен[/color]"
+
+    def _create_action_button(self, noble_data, conn, cash_player, refresh_callback):
+        try:
+            ideology = json.loads(noble_data['ideology']) if isinstance(noble_data['ideology'], str) else noble_data['ideology']
+            if isinstance(ideology, dict) and ideology.get('type') == 'greed':
+                btn = StyledButton(text="Договориться", color=UIStyles.COLOR_GOLD)
+                btn.bind(on_release=lambda inst: self._handle_deal(conn, noble_data, cash_player, refresh_callback))
+                return btn
+        except: pass
+
+        label = Label(text="Нет действий", color=UIStyles.COLOR_TEXT_DIM, halign='center', valign='middle')
+        label.bind(size=label.setter('text_size'))
+        return label
+
+    def _handle_deal(self, conn, noble_data, cash_player, refresh_callback):
+        show_deal_popup(conn, noble_data, cash_player)
+        Clock.schedule_once(lambda dt: refresh_callback(), 0.5)
+
+# --- ОБНОВЛЕННЫЕ ФУНКЦИИ ИНТЕРФЕЙСА ---
+
+def show_nobles_window(conn, faction, class_faction):
+    """Главное окно списка дворян с новым дизайном"""
+    cash_player = CalculateCash(faction, class_faction)
+    player_faction = get_player_faction(conn)
+    season_index = get_current_season_index(conn)
+
+    # Основной контейнер
+    main_layout = BoxLayout(orientation='vertical', padding=UIStyles.PADDING, spacing=dp(10))
+    main_layout.canvas.before.add(Color(*UIStyles.COLOR_BG))
+    main_layout.canvas.before.add(RoundedRectangle(pos=main_layout.pos, size=main_layout.size, radius=[dp(15)]))
+
+    # Заголовок
+    header = Label(
+        text="[b]Совет Дворян[/b]",
+        font_size=sp(UIStyles.get_font_size(24)),
+        color=UIStyles.COLOR_GOLD,
+        markup=True,
+        size_hint_y=None,
+        height=dp(50)
+    )
+    main_layout.add_widget(header)
+
+    # Список дворян (ScrollView)
+    scroll_view = ScrollView(do_scroll_x=False, size_hint_y=1)
+    nobles_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+    nobles_list.bind(minimum_height=nobles_list.setter('height'))
+    scroll_view.add_widget(nobles_list)
+    main_layout.add_widget(scroll_view)
+
+    # Панель действий внизу
+    actions_layout = BoxLayout(size_hint_y=None, height=UIStyles.BTN_HEIGHT + dp(10), spacing=dp(10))
+
+    btn_secret = StyledButton(text="Тайная служба", color=UIStyles.COLOR_DANGER)
+    btn_secret.bind(on_release=lambda inst: show_secret_service_popup(conn, lambda res: None, cash_player, lambda: refresh_list()))
+
+    btn_event = StyledButton(text="Мероприятие", color=UIStyles.COLOR_ACTION)
+    btn_event.bind(on_release=lambda inst: show_event_popup(conn, player_faction, season_index, lambda: refresh_list(), cash_player))
+
+    actions_layout.add_widget(btn_secret)
+    actions_layout.add_widget(btn_event)
+    main_layout.add_widget(actions_layout)
+
+    # Кнопка закрытия
+    btn_close = StyledButton(text="Закрыть", color=(0.5, 0.5, 0.5, 1), size_hint_y=None, height=UIStyles.BTN_HEIGHT)
+    btn_close.bind(on_release=lambda inst: popup.dismiss())
+    main_layout.add_widget(btn_close)
+
+    # Функция обновления списка
+    def refresh_list():
+        nobles_list.clear_widgets()
+        for noble in get_all_nobles(conn):
+            nobles_list.add_widget(NobleCard(noble, conn, cash_player, refresh_list))
+
+    # Первоначальное заполнение
+    refresh_list()
+
+    # Popup контейнер
+    popup = Popup(
+        title="",
+        content=main_layout,
+        size_hint=(0.95, 0.9) if not UIStyles.is_android() else (1, 1),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        background_color=(0, 0, 0, 0.5), # Затемнение фона
+        separator_height=0
+    )
+    popup.open()
+
+def show_deal_popup(conn, noble_data, cash_player):
+    """Красивое окно сделки"""
+    noble_traits = get_noble_traits(noble_data['ideology'])
+    if noble_traits['type'] != 'greed':
+        return
+
+    demand = noble_traits['demand']
+    cash_player.load_resources()
+    current_money = cash_player.resources.get("Кроны", 0)
+
+    if current_money < demand:
+        # Упрощенный popup ошибки
+        show_result_popup("Ошибка", "Недостаточно золотых крон!", False)
+        return
+
+    content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
+
+    # Заголовок сделки
+    title = Label(
+        text=f"[color={UIStyles.COLOR_GOLD[0]}, {UIStyles.COLOR_GOLD[1]}, {UIStyles.COLOR_GOLD[2]}, 1]{noble_data['name']}[/color]",
+        font_size=sp(20),
+        markup=True,
+        halign='center',
+        size_hint_y=None,
+        height=dp(40)
+    )
+
+    # Сумма
+    cost_label = Label(
+        text=f"Требуется: [b]{format_number(demand)} крон[/b]",
+        font_size=sp(18),
+        markup=True,
+        halign='center',
+        color=UIStyles.COLOR_TEXT
+    )
+
+    # Кнопки
+    btn_layout = BoxLayout(size_hint_y=None, height=UIStyles.BTN_HEIGHT, spacing=dp(15))
+    btn_pay = StyledButton(text="Заплатить", color=UIStyles.COLOR_SUCCESS)
+    btn_cancel = StyledButton(text="Отмена", color=(0.5, 0.5, 0.5, 1))
+
+    def do_pay(*args):
+        if cash_player.deduct_resources(demand):
+            if pay_greedy_noble(conn, noble_data['id'], demand):
+                show_result_popup("Успех", "Дворянин теперь лоялен вам!", True)
+                popup.dismiss()
+            else:
+                show_result_popup("Ошибка", "Сбой транзакции", False)
+        else:
+            show_result_popup("Ошибка", "Недостаточно средств", False)
+
+    btn_pay.bind(on_release=do_pay)
+    btn_cancel.bind(on_release=lambda *args: popup.dismiss())
+
+    btn_layout.add_widget(btn_pay)
+    btn_layout.add_widget(btn_cancel)
+
+    content.add_widget(title)
+    content.add_widget(cost_label)
+    content.add_widget(Label()) # Распорка
+    content.add_widget(btn_layout)
+
+    popup = Popup(
+        title="Предложение",
+        content=content,
+        size_hint=(0.8, 0.5),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        background_color=(0, 0, 0, 0.7)
+    )
+    popup.open()
+
+def show_result_popup(title, message, is_success=True):
+    """Универсальное окно результата"""
+    content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
+
+    color = UIStyles.COLOR_SUCCESS if is_success else UIStyles.COLOR_DANGER
+    icon = "✓" if is_success else "✗"
+
+    lbl_title = Label(
+        text=f"[b]{icon} {title}[/b]",
+        font_size=sp(20),
+        markup=True,
+        color=color,
+        size_hint_y=None,
+        height=dp(40)
+    )
+
+    lbl_msg = Label(
+        text=message,
+        font_size=sp(16),
+        halign='center',
+        valign='middle',
+        color=UIStyles.COLOR_TEXT
+    )
+    lbl_msg.bind(size=lbl_msg.setter('text_size'))
+
+    btn = StyledButton(text="Принять", color=UIStyles.COLOR_ACTION)
+    btn.bind(on_release=lambda *args: popup.dismiss())
+
+    content.add_widget(lbl_title)
+    content.add_widget(lbl_msg)
+    content.add_widget(btn)
+
+    popup = Popup(
+        title="",
+        content=content,
+        size_hint=(0.7, 0.4),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        background_color=(0, 0, 0, 0.5),
+        separator_height=0
+    )
+    popup.open()
+
 from nobles_generator import (
     get_all_nobles,
     update_noble_loyalty_for_event,
@@ -185,102 +506,7 @@ def calculate_event_cost(season_index):
     multiplier = seasonal_multiplier.get(season_index, 1.0)
     return int(base_cost * multiplier)
 
-def show_deal_popup(conn, noble_data, cash_player): # Добавлен cash_player
-    """Показывает всплывающее окно с требованием продажного дворянина."""
-    noble_traits = get_noble_traits(noble_data['ideology'])
-    if noble_traits['type'] != 'greed':
-        return
-    demand = noble_traits['demand']
-    # --- Проверка баланса ---
-    cash_player.load_resources() # Обновляем ресурсы перед проверкой
-    current_money = cash_player.resources.get("Кроны", 0)
-    if current_money < demand:
-        insufficient_funds_popup = Popup(
-            title="Недостаточно средств",
-            content=Label(
-                text=f"Недостаточно Крон для сделки.\nСтоимость: {format_number(demand)}\nУ вас: {format_number(current_money)}",
-                halign='center',
-                valign='middle',
-                text_size=(dp(250), None)
-            ),
-            size_hint=(0.8, 0.4)
-        )
-        insufficient_funds_popup.content.bind(size=insufficient_funds_popup.content.setter('text_size'))
-        insufficient_funds_popup.open()
-        return
-    # -------------------------------------------------------
-    content = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(15))
-    title_label = Label(
-        text=f"{noble_data['name']}",
-        font_size=sp(18),
-        bold=True,
-        size_hint_y=None,
-        height=dp(30)
-    )
-    demand_label = Label(
-        text=f"Моя лояльность стоит:\n{format_number(demand)} крон",
-        font_size=sp(16),
-        halign='center',
-        valign='middle'
-    )
-    demand_label.bind(size=demand_label.setter('text_size'))
-    info_label = Label(
-        text="Если Вы заплатите, я буду продвигать Ваши интересы.",
-        font_size=sp(14),
-        color=(0.8, 0.8, 0.8, 1),
-        halign='center',
-        valign='middle'
-    )
-    info_label.bind(size=info_label.setter('text_size'))
-    btn_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-    confirm_btn = Button(text="Заплатить", background_color=(0.3, 0.7, 0.3, 1))
-    cancel_btn = Button(text="Отмена")
-    popup = Popup(
-        title="Сделка",
-        content=content,
-        size_hint=(0.85, 0.6),
-        auto_dismiss=False
-    )
-    def on_confirm(instance):
-        popup.dismiss()
-        # --- Списание средств ---
-        success = cash_player.deduct_resources(demand)
-        if success:
-            # Списание прошло успешно, теперь оплачиваем дворянина
-            pay_success = pay_greedy_noble(conn, noble_data['id'], demand)
-            if pay_success:
-                success_popup = Popup(
-                    title="Успех",
-                    content=Label(text=f"Вы заплатили {format_number(demand)} крон. {noble_data['name']} теперь лоялен.", halign='center'),
-                    size_hint=(0.8, 0.4)
-                )
-                success_popup.open()
-            else:
-                error_popup = Popup(
-                    title="Ошибка",
-                    content=Label(text="Произошла ошибка при оформлении сделки.", halign='center'),
-                    size_hint=(0.8, 0.4)
-                )
-                error_popup.open()
-        else:
-            error_popup = Popup(
-                title="Ошибка",
-                content=Label(text="Недостаточно средств или ошибка транзакции.", halign='center'),
-                size_hint=(0.8, 0.4)
-            )
-            error_popup.open()
-        # -----------------------------------------------
-    def on_cancel(instance):
-        popup.dismiss()
-    confirm_btn.bind(on_release=on_confirm)
-    cancel_btn.bind(on_release=on_cancel)
-    btn_layout.add_widget(confirm_btn)
-    btn_layout.add_widget(cancel_btn)
-    content.add_widget(title_label)
-    content.add_widget(demand_label)
-    content.add_widget(info_label)
-    content.add_widget(btn_layout)
-    popup.open()
+
 
 def show_event_result_popup(message):
     """Показывает красивое всплывающее окно с результатом мероприятия."""
@@ -297,11 +523,11 @@ def show_event_result_popup(message):
     if "проведено" in message.lower():
         title = "Успех!"
         title_color = (0.2, 0.8, 0.2, 1)  # Зеленый
-        icon = "✓"
+        icon = ""
     else:
         title = "Ошибка"
         title_color = (0.9, 0.2, 0.2, 1)  # Красный
-        icon = "✗"
+        icon = ""
     # Заголовок с иконкой
     title_label = Label(
         text=f"[b]{icon} {title}[/b]",
@@ -372,30 +598,17 @@ def get_events_count_from_history(conn):
     return max(all_lengths) if all_lengths else 0
 
 
+# --- Обновлённая функция show_secret_service_popup ---
 def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_main_list_callback):
-    """Показывает всплывающее окно для Тайной службы с выбором цели (табличный формат)."""
-    COST_SECRET_SERVICE = 140_000  # Константа стоимости
+    """Показывает всплывающее окно для Тайной службы с выбором цели (карточный формат)."""
+    COST_SECRET_SERVICE = 140_000
 
     # --- Проверка баланса ---
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
     if current_money < COST_SECRET_SERVICE:
-        insufficient_funds_popup = Popup(
-            title="Недостаточно средств",
-            content=Label(
-                text=f"Не хватает крон, для доступа к засекреченной информации.\n"
-                     f"Стоимость: {format_number(COST_SECRET_SERVICE)}\n"
-                     f"У вас: {format_number(current_money)}",
-                halign='center',
-                valign='middle',
-                text_size=(dp(250), None)
-            ),
-            size_hint=(0.8, 0.4)
-        )
-        insufficient_funds_popup.content.bind(size=insufficient_funds_popup.content.setter('text_size'))
-        insufficient_funds_popup.open()
+        show_result_popup("Ошибка", f"Недостаточно средств. Нужно {format_number(COST_SECRET_SERVICE)}", False)
         return
-    # ------------------------------------
 
     # --- Получаем количество проведённых мероприятий ---
     events_count = get_events_count_from_history(conn)
@@ -410,7 +623,6 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
             ORDER BY name ASC
         """)
         all_active_nobles = cursor.fetchall()
-
         nobles_data = []
         for row in all_active_nobles:
             noble_dict = {
@@ -421,8 +633,6 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                 'ideology': row[4],
                 'attendance_history': row[5]
             }
-
-            # --- Лояльность и Взгляды открываются только после 3 мероприятий ---
             if events_count >= 3:
                 noble_dict['show_loyalty'] = True
                 noble_dict['show_views'] = True
@@ -431,199 +641,268 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
                 noble_dict['show_loyalty'] = False
                 noble_dict['show_views'] = False
                 noble_dict['calculated_loyalty'] = None
-
             nobles_data.append(noble_dict)
-
     except Exception as e:
         print(f"[ERROR] Ошибка при получении списка активных дворян: {e}")
-        show_secret_service_result_popup({'success': False, 'message': "Ошибка получения списка целей."})
+        show_result_popup("Ошибка", "Ошибка получения списка целей.", False)
         return
 
     if not nobles_data:
-        no_targets_popup = Popup(
-            title="Нет целей",
-            content=Label(
-                text="Нет активных дворян для устранения.",
-                halign='center',
-                valign='middle',
-                text_size=(dp(250), None)
-            ),
-            size_hint=(0.8, 0.4)
-        )
-        no_targets_popup.content.bind(size=no_targets_popup.content.setter('text_size'))
-        no_targets_popup.open()
-        show_secret_service_result_popup({'success': False, 'message': "Нет доступных целей для устранения."})
+        show_result_popup("Ошибка", "Нет доступных целей для устранения.", False)
         return
 
-    # --- Адаптивные размеры ---
-    is_android = hasattr(Window, 'keyboard')
-    padding_main = dp(10) if not is_android else dp(5)
-    spacing_main = dp(10) if not is_android else dp(7)
-    font_title = sp(18) if not is_android else sp(16)
-    font_info = sp(14) if not is_android else sp(12)
-    font_header = sp(13) if not is_android else sp(11)
-    font_noble_name = sp(14) if not is_android else sp(12)
-    font_noble_loyalty = sp(12) if not is_android else sp(10)
-    btn_height = dp(35) if not is_android else dp(30)
-    btn_font_size = sp(11) if not is_android else sp(9)
-    noble_item_height = dp(50) if not is_android else dp(45)
+    # --- Основной контейнер ---
+    main_layout = BoxLayout(orientation='vertical', padding=UIStyles.PADDING, spacing=dp(10))
+    main_layout.canvas.before.add(Color(*UIStyles.COLOR_BG))
+    main_layout.canvas.before.add(RoundedRectangle(pos=main_layout.pos, size=main_layout.size, radius=[dp(15)]))
 
-    # --- Создаем попап ---
-    content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
-    title_label = Label(
-        text="Санкция на физическое устранение (140 тыс. крон)",
-        font_size=font_title,
-        bold=True,
+    # --- Заголовок ---
+    header = Label(
+        text="[b]Тайная служба[/b]",
+        font_size=sp(UIStyles.get_font_size(22)),
+        color=UIStyles.COLOR_DANGER,
+        markup=True,
         size_hint_y=None,
-        height=dp(35) if not is_android else dp(30)
+        height=dp(50),
+        halign='center'
+    )
+    main_layout.add_widget(header)
+
+    # --- Информация о стоимости ---
+    cost_info = Label(
+        text=f"Стоимость санкции: [b]{format_number(COST_SECRET_SERVICE)} крон[/b]",
+        font_size=sp(UIStyles.get_font_size(14)),
+        color=UIStyles.COLOR_TEXT_DIM,
+        markup=True,
+        size_hint_y=None,
+        height=dp(30),
+        halign='center'
+    )
+    main_layout.add_widget(cost_info)
+
+    # --- Список целей (ScrollView) ---
+    scroll_view = ScrollView(do_scroll_x=False, size_hint_y=1)
+    nobles_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+    nobles_list.bind(minimum_height=nobles_list.setter('height'))
+    scroll_view.add_widget(nobles_list)
+    main_layout.add_widget(scroll_view)
+
+    # --- Кнопки внизу ---
+    btn_layout = BoxLayout(size_hint_y=None, height=UIStyles.BTN_HEIGHT + dp(10), spacing=dp(10))
+    btn_cancel = StyledButton(text="Отмена", color=(0.5, 0.5, 0.5, 1))
+    # Кнопка будет привязана после создания popup
+    btn_layout.add_widget(btn_cancel)
+    main_layout.add_widget(btn_layout)
+
+    # --- Popup контейнер (СОЗДАЕМ ЗДЕСЬ, ДО refresh_list) ---
+    popup = Popup(
+        title="",
+        content=main_layout,
+        size_hint=(0.95, 0.9) if not UIStyles.is_android() else (1, 1),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        background_color=(0, 0, 0, 0.7),
+        separator_height=0
     )
 
-    # --- Таблица дворян ---
-    scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
-    table_layout = GridLayout(cols=4, spacing=dp(1) if not is_android else dp(0.5), size_hint_y=None)
-    table_layout.bind(minimum_height=table_layout.setter('height'))
+    # Привязываем кнопку отмены теперь, когда popup существует
+    btn_cancel.bind(on_release=lambda *args: popup.dismiss())
 
-    header_names = ["Имя", "Лояльность", "Взгляды", ""]
-    for header_text in header_names:
-        header_label = Label(
-            text=f"[b]{header_text}[/b]",
-            font_size=font_header,
-            markup=True,
-            halign='center',
-            valign='middle',
+    # --- Функция обновления списка ---
+    def refresh_list():
+        nobles_list.clear_widgets()
+        for noble_data in nobles_data:
+            # Передаем popup в карточку
+            card = SecretServiceCard(noble_data, conn, cash_player, popup, refresh_main_list_callback, events_count)
+            nobles_list.add_widget(card)
+
+    # --- Первоначальное заполнение ---
+    refresh_list()
+
+    popup.open()
+
+
+# --- Карточка цели для Тайной службы ---
+class SecretServiceCard(BoxLayout):
+    """Карточка цели для Тайной службы"""
+
+    def __init__(self, noble_data, conn, cash_player, popup_ref, refresh_callback, events_count, **kwargs):
+        super().__init__(
+            orientation='horizontal',
             size_hint_y=None,
-            height=dp(30) if not is_android else dp(25),
-            color=(0.8, 0.9, 1, 1)
+            height=dp(85),
+            padding=UIStyles.PADDING,
+            spacing=dp(5),
+            **kwargs
         )
-        header_label.bind(size=header_label.setter('text_size'))
-        table_layout.add_widget(header_label)
 
-    # --- Строки дворян ---
-    for noble_data in nobles_data:
-        display_name = get_noble_display_name_with_sympathies(noble_data)
+        self.noble_data = noble_data
+        self.conn = conn
+        self.cash_player = cash_player
+        self.popup_ref = popup_ref  # Ссылка на попап
+        self.refresh_callback = refresh_callback
+        self.events_count = events_count
+        self.COST_SECRET_SERVICE = 140_000
+
+        # Фон карточки
+        with self.canvas.before:
+            Color(*UIStyles.COLOR_CARD)
+            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[UIStyles.RADIUS])
+        self.bind(pos=self._update_rect, size=self._update_rect)
+
+        # 1. Информация о дворянине (левая часть)
+        info_layout = BoxLayout(orientation='vertical', size_hint_x=0.65, spacing=dp(2))
+
+        # Имя
         name_label = Label(
-            text=display_name,
+            text=noble_data['name'],
+            font_size=sp(UIStyles.get_font_size(15)),
             halign='left',
             valign='middle',
-            font_size=font_noble_name,
-            size_hint_y=None,
-            height=noble_item_height
+            color=UIStyles.COLOR_TEXT,
+            markup=True
         )
         name_label.bind(size=name_label.setter('text_size'))
 
-        # Лояльность
-        if noble_data['show_loyalty'] and noble_data['calculated_loyalty'] is not None:
-            loyalty = noble_data['calculated_loyalty']
-            if loyalty < 30:
-                loyalty_color = (1, 0, 0, 1)
-            elif loyalty < 60:
-                loyalty_color = (1, 1, 0, 1)
-            else:
-                loyalty_color = (0, 1, 0, 1)
-            loyalty_text = f"{loyalty}%"
-        else:
-            loyalty_color = (0.7, 0.7, 0.7, 1)
-            loyalty_text = "?"
-
-        loyalty_label = Label(
-            text=loyalty_text,
-            halign='center',
+        # Статус
+        status_text = self._get_status_text()
+        status_label = Label(
+            text=status_text,
+            font_size=sp(UIStyles.get_font_size(11)),
+            halign='left',
             valign='middle',
-            font_size=font_noble_loyalty,
-            size_hint_y=None,
-            height=noble_item_height,
-            color=loyalty_color
+            color=UIStyles.COLOR_TEXT_DIM,
+            markup=True
         )
-        loyalty_label.bind(size=loyalty_label.setter('text_size'))
+        status_label.bind(size=status_label.setter('text_size'))
+
+        info_layout.add_widget(name_label)
+        info_layout.add_widget(status_label)
+
+        # 2. Кнопка устранения (правая часть)
+        btn_layout = BoxLayout(size_hint_x=0.35)
+        action_btn = StyledButton(text="Устранить", color=UIStyles.COLOR_DANGER)
+        action_btn.bind(on_release=lambda inst: self._handle_elimination())
+        btn_layout.add_widget(action_btn)
+
+        self.add_widget(info_layout)
+        self.add_widget(btn_layout)
+
+    def _update_rect(self, instance, value):
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
+
+    def _get_status_text(self):
+        """Формирует строку статуса с лояльностью и взглядами"""
+        parts = []
+
+        # Лояльность
+        if self.noble_data['show_loyalty'] and self.noble_data['calculated_loyalty'] is not None:
+            loyalty = self.noble_data['calculated_loyalty']
+            if loyalty < 30:
+                color = "ff0000"
+            elif loyalty < 60:
+                color = "ffff00"
+            else:
+                color = "00ff00"
+            parts.append(f"[color={color}]Лояльность: {loyalty}%[/color]")
+        else:
+            parts.append("[color=aaaaaa]Лояльность: ?[/color]")
 
         # Взгляды
-        if noble_data['show_views']:
-            noble_traits = get_noble_traits(noble_data['ideology'])
-            ideology_to_text = {
-                'Борьба': "Борьба",
-                'Смирение': "Смирение",
-                'Любит Эльфы': "Любит Эльфов",
-                'Любит Элины': "Любит Элинов",
-                'Любит Север': "Любит Людей",
-                'Любит Вампиры': "Любит Вампиров",
-                'Любит Адепты': "Любит Адептов",
-            }
-            if noble_traits['type'] == 'greed':
-                views_text = "Продажный"
-            else:
-                views_text = ideology_to_text.get(noble_traits['value'], noble_traits['value'])
-        else:
-            views_text = "?"
-
-        views_label = Label(
-            text=views_text,
-            halign='center',
-            valign='middle',
-            font_size=font_noble_loyalty,
-            size_hint_y=None,
-            height=noble_item_height,
-            color=(0.9, 0.9, 0.9, 1)
-        )
-        views_label.bind(size=views_label.setter('text_size'))
-
-        # Кнопка устранения
-        select_btn = Button(
-            text="Устранить",
-            size_hint_y=None,
-            height=btn_height,
-            font_size=btn_font_size,
-            background_color=(0.8, 0.2, 0.2, 1)
-        )
-
-        def make_select_handler(n_id, n_name, n_loyalty):
-            def on_select(instance):
-                target_selection_popup.dismiss()
-                deduction_success = cash_player.deduct_resources(COST_SECRET_SERVICE)
-                if deduction_success:
-                    result = attempt_secret_service_action(conn, get_player_faction(conn), target_noble_id=n_id)
-                    show_secret_service_result_popup(result)
-                    if callable(refresh_main_list_callback):
-                        refresh_main_list_callback()
+        if self.noble_data['show_views']:
+            try:
+                noble_traits = get_noble_traits(self.noble_data['ideology'])
+                ideology_to_text = {
+                    'Борьба': "Борьба",
+                    'Смирение': "Смирение",
+                    'Любит Эльфы': "Эльфы",
+                    'Любит Элины': "Элины",
+                    'Любит Север': "Люди",
+                    'Любит Вампиры': "Вампиры",
+                    'Любит Адепты': "Адепты",
+                }
+                if noble_traits['type'] == 'greed':
+                    views = "Продажный"
                 else:
-                    show_secret_service_result_popup({'success': False, 'message': "Ошибка списания средств."})
-            return on_select
+                    views = ideology_to_text.get(noble_traits['value'], noble_traits['value'])
+                parts.append(f"[color=cccccc]{views}[/color]")
+            except:
+                parts.append("[color=aaaaaa]Взгляды: ?[/color]")
+        else:
+            parts.append("[color=aaaaaa]Взгляды: скрыто[/color]")
 
-        select_btn.bind(on_release=make_select_handler(noble_data['id'], noble_data['name'], noble_data['loyalty']))
+        return "  |  ".join(parts)
 
-        # Добавляем в таблицу
-        table_layout.add_widget(name_label)
-        table_layout.add_widget(loyalty_label)
-        table_layout.add_widget(views_label)
-        table_layout.add_widget(select_btn)
+    def _handle_elimination(self):
+        """Обработка кнопки устранения"""
+        self.cash_player.load_resources()
+        current_money = self.cash_player.resources.get("Кроны", 0)
 
-    scroll_view.add_widget(table_layout)
+        if current_money < self.COST_SECRET_SERVICE:
+            show_result_popup("Ошибка", "Недостаточно средств.", False)
+            return
 
-    # Кнопка отмены
-    cancel_btn_layout = BoxLayout(size_hint_y=None, height=dp(50) if not is_android else dp(45))
-    cancel_btn = Button(
-        text="Отмена",
-        size_hint_x=0.5,
-        height=dp(45) if not is_android else dp(40),
-        font_size=sp(14) if not is_android else sp(12)
-    )
-    cancel_btn_layout.add_widget(Label())
-    cancel_btn_layout.add_widget(cancel_btn)
-    cancel_btn_layout.add_widget(Label())
+        # Подтверждение
+        confirm_content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
+        confirm_popup = Popup(
+            title="Подтверждение",
+            content=confirm_content,
+            size_hint=(0.8, 0.4),
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            background_color=(0, 0, 0, 0.7),
+            separator_height=0
+        )
 
-    content.add_widget(title_label)
-    content.add_widget(scroll_view)
-    content.add_widget(cancel_btn_layout)
+        title = Label(
+            text=f"[b]Устранить {self.noble_data['name']}?[/b]",
+            font_size=sp(UIStyles.get_font_size(16)),
+            markup=True,
+            color=UIStyles.COLOR_DANGER,
+            size_hint_y=None,
+            height=dp(40),
+            halign='center'
+        )
+        cost = Label(
+            text=f"Стоимость: {format_number(self.COST_SECRET_SERVICE)} крон",
+            font_size=sp(UIStyles.get_font_size(13)),
+            color=UIStyles.COLOR_TEXT,
+            halign='center'
+        )
+        btn_layout = BoxLayout(size_hint_y=None, height=UIStyles.BTN_HEIGHT, spacing=dp(10))
 
-    target_selection_popup = Popup(
-        title="Выбор цели",
-        content=content,
-        size_hint=(0.95, 0.85) if not is_android else (1, 1),
-        pos_hint={} if not is_android else {'center_x': 0.5, 'center_y': 0.5},
-        auto_dismiss=False
-    )
+        def do_eliminate(*args):
+            confirm_popup.dismiss()
+            deduction_success = self.cash_player.deduct_resources(self.COST_SECRET_SERVICE)
+            if deduction_success:
+                result = attempt_secret_service_action(
+                    self.conn,
+                    get_player_faction(self.conn),
+                    target_noble_id=self.noble_data['id']
+                )
+                show_secret_service_result_popup(result)
+                if callable(self.refresh_callback):
+                    Clock.schedule_once(lambda dt: self.refresh_callback(), 0.5)
+                # Закрываем главное окно тайной службы
+                if self.popup_ref:
+                    self.popup_ref.dismiss()
+            else:
+                show_result_popup("Ошибка", "Ошибка списания средств.", False)
 
-    cancel_btn.bind(on_release=target_selection_popup.dismiss)
-    target_selection_popup.open()
+        btn_confirm = StyledButton(text="Подтвердить", color=UIStyles.COLOR_DANGER)
+        btn_confirm.bind(on_release=do_eliminate)
+
+        btn_cancel = StyledButton(text="Отмена", color=(0.5, 0.5, 0.5, 1))
+        btn_cancel.bind(on_release=lambda *args: confirm_popup.dismiss())
+
+        btn_layout.add_widget(btn_confirm)
+        btn_layout.add_widget(btn_cancel)
+
+        confirm_content.add_widget(title)
+        confirm_content.add_widget(cost)
+        confirm_content.add_widget(Label())
+        confirm_content.add_widget(btn_layout)
+
+        confirm_popup.open()
 
 def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_player):
     """Показывает всплывающее окно для выбора и проведения мероприятия."""
@@ -747,8 +1026,8 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
                     update_noble_loyalty_for_event(conn, noble_id, player_faction, event_type, event_season)
                 # Отображаем красивый результат
                 show_result_popup(
-                    title="Успех!",
-                    message="Мероприятие прошло",
+                    title="Проведено!",
+                    message="Мероприятие прошло...",
                     is_success=True
                 )
                 if callable(refresh_callback):
@@ -779,171 +1058,6 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
     content.add_widget(btn_layout)
     popup.open()
 
-def show_nobles_window(conn, faction, class_faction):
-    """Открытие окна с дворянами"""
-    cash_player = CalculateCash(faction, class_faction)
-    player_faction = get_player_faction(conn)
-    season_index = get_current_season_index(conn)
-
-    # --- Главный layout ---
-    is_android = hasattr(Window, 'keyboard')
-    padding_outer = dp(10) if not is_android else dp(5)
-    spacing_outer = dp(10) if not is_android else dp(7)
-    font_title = sp(20) if not is_android else sp(18)
-    font_info = sp(12) if not is_android else sp(10)
-    font_header = sp(14) if not is_android else sp(12)
-
-    layout = BoxLayout(orientation='vertical', padding=padding_outer, spacing=spacing_outer)
-
-    # --- Заголовки таблицы ---
-    headers_layout = GridLayout(cols=3, size_hint_y=None, height=dp(35) if not is_android else dp(30))
-
-    name_header = Label(
-        text="[b]Имя[/b]",
-        font_size=font_header,
-        markup=True,
-        halign='left',
-        valign='middle',
-        color=(0.8, 0.9, 1, 1)  # Светло-голубой
-    )
-    name_header.bind(size=name_header.setter('text_size'))
-
-    attention_header = Label(
-        text="[b]Уровень внимания[/b]",
-        font_size=font_header,
-        markup=True,
-        halign='center',
-        valign='middle',
-        color=(0.8, 0.9, 1, 1)  # Светло-голубой
-    )
-    attention_header.bind(size=attention_header.setter('text_size'))
-
-    action_header = Label(
-        text="[b]Действия[/b]",
-        font_size=font_header,
-        markup=True,
-        halign='center',
-        valign='middle',
-        color=(0.8, 0.9, 1, 1)  # Светло-голубой
-    )
-    action_header.bind(size=action_header.setter('text_size'))
-
-    headers_layout.add_widget(name_header)
-    headers_layout.add_widget(attention_header)
-    headers_layout.add_widget(action_header)
-    layout.add_widget(headers_layout)
-
-    # --- Контейнер для списка дворян ---
-    nobles_container = BoxLayout(orientation='vertical', size_hint_y=1)
-    layout.add_widget(nobles_container)
-
-    # --- Функция обновления списка ---
-    def refresh_nobles_list():
-        # Очищаем только контейнер с дворянами
-        nobles_container.clear_widgets()
-
-        # Добавляем дворян заново в контейнер
-        nobles_data = get_all_nobles(conn)
-        for noble_data in nobles_data:  # Убран reversed, чтобы сохранить порядок
-            widget = create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_nobles_list)
-            nobles_container.add_widget(widget)
-
-    # --- Callbacks ---
-    def on_secret_service_result(result):
-        message_popup = Popup(
-            title="Результат" if result['success'] else "Ошибка",
-            content=Label(text=result['message'], halign='center', text_size=(dp(250), None)),
-            size_hint=(0.85, 0.5)
-        )
-        message_popup.content.bind(size=message_popup.content.setter('text_size'))
-        message_popup.open()
-        if result['success']:
-            refresh_nobles_list()
-
-    def on_event_result(message):
-        message_popup = Popup(
-            title="Результат",
-            content=Label(text=message, halign='center', text_size=(dp(250), None)),
-            size_hint=(0.85, 0.4)
-        )
-        message_popup.content.bind(size=message_popup.content.setter('text_size'))
-        message_popup.open()
-        if "проведено" in message:
-            refresh_nobles_list()
-
-    # --- Первичное заполнение дворянами ---
-    nobles_data = get_all_nobles(conn)
-    for noble_data in nobles_data:
-        widget = create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_nobles_list)
-        nobles_container.add_widget(widget)
-
-    # --- Кнопка с мягким стилем ---
-    def styled_btn(text, on_release_callback, bg_color=(0.6, 0.2, 0.2, 1)):
-        btn = Button(
-            text=text,
-            font_size=sp(14),
-            size_hint_y=None,
-            height=dp(50),
-            background_normal='',
-            background_color=(0, 0, 0, 0),
-            color=(1, 1, 1, 1)
-        )
-        with btn.canvas.before:
-            from kivy.graphics import Color, RoundedRectangle
-            Color(*bg_color)
-            btn.bg = RoundedRectangle(radius=[dp(12)])
-        def update_bg(instance, value):
-            btn.bg.pos = instance.pos
-            btn.bg.size = instance.size
-        btn.bind(pos=update_bg, size=update_bg)
-        btn.bind(on_release=on_release_callback)
-        return btn
-
-    # --- Кнопки действий ---
-    buttons_layout = BoxLayout(
-        size_hint_y=None,
-        height=dp(55),
-        spacing=dp(10)
-    )
-
-    secret_service_btn = styled_btn(
-        "Тайная служба\n(140 тыс.)",
-        lambda btn: show_secret_service_popup(conn, on_secret_service_result, cash_player, refresh_nobles_list),
-        bg_color=(0.8, 0.5, 0.5, 1)
-    )
-
-    organize_event_btn = styled_btn(
-        f'Провести мероприятие: ' f'\n"{get_event_type_by_season(season_index)}"',
-        lambda btn: show_event_popup(conn, player_faction, season_index, refresh_nobles_list, cash_player),
-        bg_color=(0.5, 0.7, 0.9, 1)
-    )
-
-    buttons_layout.add_widget(secret_service_btn)
-    buttons_layout.add_widget(organize_event_btn)
-    layout.add_widget(buttons_layout)
-    layout._buttons_layout = buttons_layout
-
-    # --- Кнопка закрытия ---
-    close_btn = styled_btn(
-        "Закрыть",
-        lambda btn: popup.dismiss(),
-        bg_color=(0.5, 0.5, 0.5, 1)
-    )
-    layout.add_widget(close_btn)
-    layout._close_btn = close_btn
-
-    scroll_view = ScrollView(do_scroll_x=False, size_hint=(1, 1))
-    scroll_view.add_widget(layout)
-
-    popup_pos_hint = {'center_x': 0.5, 'center_y': 0.5} if is_android else {}
-    popup = Popup(
-        title="Парламент",
-        content=scroll_view,
-        size_hint=(0.96, 0.96) if not is_android else (1, 1),
-        pos_hint=popup_pos_hint
-    )
-
-    popup.open()
 
 def create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_callback):
     """Создание виджета для отображения одного дворянина с кнопкой 'Договориться'"""
@@ -1052,44 +1166,5 @@ def create_noble_widget_with_deal(noble_data, conn, cash_player, refresh_callbac
 
     return layout
 
-def show_result_popup(title, message, is_success=True):
-    """Отображает красивый popup с результатом действия."""
-    is_android = hasattr(Window, 'keyboard')
-    # Адаптивные размеры
-    font_title = sp(18) if not is_android else sp(16)
-    font_message = sp(15) if not is_android else sp(13)
-    padding_main = dp(20) if not is_android else dp(15)
-    spacing_main = dp(10) if not is_android else dp(8)
-    content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
-    title_label = Label(
-        text=f"[b]{title}[/b]",
-        font_size=font_title,
-        markup=True,
-        halign='center',
-        valign='middle',
-        size_hint_y=None,
-        height=dp(40) if not is_android else dp(35),
-        color=(0.2, 0.8, 0.2, 1) if is_success else (0.9, 0.2, 0.2, 1)
-    )
-    title_label.bind(size=title_label.setter('text_size'))
-    message_label = Label(
-        text=message,
-        font_size=font_message,
-        halign='center',
-        valign='middle',
-        markup=True,
-        color=(0.9, 0.9, 0.9, 1)
-    )
-    message_label.bind(size=message_label.setter('text_size'))
-    content.add_widget(title_label)
-    content.add_widget(message_label)
-    popup = Popup(
-        title="",
-        content=content,
-        size_hint=(0.85, 0.4) if not is_android else (0.9, 0.45),
-        pos_hint={'center_x': 0.5, 'center_y': 0.5},
-        auto_dismiss=True
-    )
-    popup.open()
 
 # -------------------------------------------------------------------------
