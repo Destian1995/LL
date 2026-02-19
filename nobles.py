@@ -228,7 +228,7 @@ def show_deal_popup(conn, noble_data, cash_player):
 
     if current_money < demand:
         # Упрощенный popup ошибки
-        show_result_popup("Ошибка", "Недостаточно золотых крон!", False)
+        show_result_popup("Ошибка", "Недостаточно крон!", False)
         return
 
     content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
@@ -523,14 +523,12 @@ def show_event_result_popup(message):
     if "проведено" in message.lower():
         title = "Успех!"
         title_color = (0.2, 0.8, 0.2, 1)  # Зеленый
-        icon = ""
     else:
         title = "Ошибка"
         title_color = (0.9, 0.2, 0.2, 1)  # Красный
-        icon = ""
     # Заголовок с иконкой
     title_label = Label(
-        text=f"[b]{icon} {title}[/b]",
+        text=f"[b]{title}[/b]",
         font_size=font_title,
         markup=True,
         halign='center',
@@ -904,11 +902,82 @@ class SecretServiceCard(BoxLayout):
 
         confirm_popup.open()
 
+def show_toast_notification(message, is_success=True, duration=1.5):
+    """Показывает всплывающее уведомление без кнопок, которое исчезает автоматически."""
+
+    # --- Адаптивные размеры ---
+    is_android = hasattr(Window, 'keyboard')
+    padding_main = dp(20) if not is_android else dp(15)
+    font_message = sp(16) if not is_android else sp(14)
+
+    # --- Цвета в зависимости от результата ---
+    color = UIStyles.COLOR_SUCCESS if is_success else UIStyles.COLOR_DANGER
+    icon = "✓" if is_success else "✗"
+
+    # --- Контент уведомления ---
+    content = BoxLayout(
+        orientation='vertical',
+        padding=padding_main,
+        size_hint_y=None,
+        height=dp(80) if not is_android else dp(70)
+    )
+
+    # Добавляем фон карточки
+    with content.canvas.before:
+        Color(*UIStyles.COLOR_CARD)
+        content.rect = RoundedRectangle(pos=content.pos, size=content.size, radius=[UIStyles.RADIUS])
+
+    def update_rect(instance, value):
+        content.rect.pos = instance.pos
+        content.rect.size = instance.size
+
+    content.bind(pos=update_rect, size=update_rect)
+
+    # Текст уведомления
+    message_label = Label(
+        text=f"[b]{icon} {message}[/b]",
+        font_size=font_message,
+        markup=True,
+        halign='center',
+        valign='middle',
+        color=UIStyles.COLOR_TEXT
+    )
+    message_label.bind(size=message_label.setter('text_size'))
+
+    content.add_widget(message_label)
+
+    # --- Popup без кнопок ---
+    toast_popup = Popup(
+        title="",
+        content=content,
+        size_hint=(0.7, None),
+        height=dp(80) if not is_android else dp(70),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        background_color=(0, 0, 0, 0),  # Прозрачный фон popup
+        separator_height=0,
+        auto_dismiss=False
+    )
+
+    # --- Автоматическое закрытие через Clock ---
+    def close_toast(dt):
+        try:
+            # Проверяем через приватный атрибут _is_open
+            if toast_popup._is_open:
+                toast_popup.dismiss()
+        except:
+            # Если попап уже закрыт - игнорируем ошибку
+            pass
+
+    toast_popup.open()
+    Clock.schedule_once(close_toast, duration)
+
+
 def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_player):
     """Показывает всплывающее окно для выбора и проведения мероприятия."""
     event_type = get_event_type_by_season(season_index)
     event_season = get_season_name_by_index(season_index)
     cost = calculate_event_cost(season_index)
+
     # --- Адаптивные размеры ---
     is_android = hasattr(Window, 'keyboard')
     padding_main = dp(15) if not is_android else dp(10)
@@ -918,9 +987,9 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
     font_info = sp(15) if not is_android else sp(13)
     font_btn = sp(14) if not is_android else sp(12)
     btn_height = dp(50) if not is_android else dp(45)
-    title_height = dp(60) if not is_android else dp(55)
     info_height = dp(80) if not is_android else dp(70)
     btn_layout_height = dp(50) if not is_android else dp(45)
+
     # --- Проверка баланса ---
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
@@ -939,9 +1008,10 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
         insufficient_funds_popup.content.bind(size=insufficient_funds_popup.content.setter('text_size'))
         insufficient_funds_popup.open()
         return
+
     # ------------------------------------
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
-    # --- Улучшенный заголовок с визуальным оформлением ---
+
     # --- Тип мероприятия с акцентом ---
     event_type_label = Label(
         text=f"[b]{event_type}[/b]",
@@ -951,10 +1021,11 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
         size_hint_y=None,
         height=dp(30) if not is_android else dp(25),
         markup=True,
-        color=(0.7, 0.9, 1, 1)  # Голубой цвет
+        color=(0.7, 0.9, 1, 1)
     )
     event_type_label.bind(size=event_type_label.setter('text_size'))
-    # --- Информационная панель с красивым оформлением ---
+
+    # --- Информационная панель ---
     info_box = BoxLayout(orientation='vertical', size_hint_y=None, height=info_height, spacing=dp(5))
     season_label = Label(
         text=f"Сезон: [b]{event_season}[/b]",
@@ -962,60 +1033,57 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
         halign='center',
         valign='middle',
         markup=True,
-        color=(0.8, 0.8, 1, 1)  # Светло-синий
+        color=(0.8, 0.8, 1, 1)
     )
     season_label.bind(size=season_label.setter('text_size'))
+
     guests_label = Label(
         text="Вся знать будет приглашена",
         font_size=font_info - sp(1),
         halign='center',
         valign='middle',
-        color=(0.7, 0.9, 0.7, 1)  # Светло-зеленый
+        color=(0.7, 0.9, 0.7, 1)
     )
     guests_label.bind(size=guests_label.setter('text_size'))
+
     cost_label = Label(
         text=f"Стоимость: [b]{format_number(cost)}[/b] крон",
         font_size=font_info,
         halign='center',
         valign='middle',
         markup=True,
-        color=(1, 0.8, 0.6, 1)  # Персиковый
+        color=(1, 0.8, 0.6, 1)
     )
     cost_label.bind(size=cost_label.setter('text_size'))
+
     info_box.add_widget(season_label)
     info_box.add_widget(guests_label)
     info_box.add_widget(cost_label)
+
     # --- Кнопки с улучшенным дизайном ---
     btn_layout = BoxLayout(size_hint_y=None, height=btn_layout_height, spacing=dp(15) if not is_android else dp(10))
-    confirm_btn = Button(
-        text="Провести",
-        font_size=font_btn,
-        size_hint_y=None,
-        height=btn_height,
-        background_color=(0.2, 0.7, 0.4, 1),  # Зеленоватый
-        background_normal=''
-    )
-    cancel_btn = Button(
-        text="Отмена",
-        font_size=font_btn,
-        size_hint_y=None,
-        height=btn_height,
-        background_color=(0.6, 0.6, 0.6, 1),  # Серый
-        background_normal=''
-    )
+
+    confirm_btn = StyledButton(text="Провести", color=UIStyles.COLOR_SUCCESS)
+    cancel_btn = StyledButton(text="Отмена", color=(0.5, 0.5, 0.5, 1))
+
     # Адаптивные размеры попапа
     popup_size_hint = (0.85, 0.7) if not is_android else (0.95, 0.75)
     popup_pos_hint = {} if not is_android else {'center_x': 0.5, 'center_y': 0.5}
+
     popup = Popup(
         title="Мероприятие",
         content=content,
         size_hint=popup_size_hint,
         pos_hint=popup_pos_hint,
-        auto_dismiss=False
+        auto_dismiss=False,
+        background_color=(0, 0, 0, 0.7),
+        separator_height=0
     )
+
     def on_confirm(instance):
         popup.dismiss()
         success = cash_player.deduct_resources(cost)
+
         if success:
             try:
                 cursor = conn.cursor()
@@ -1024,38 +1092,32 @@ def show_event_popup(conn, player_faction, season_index, refresh_callback, cash_
                 for noble_row in active_nobles:
                     noble_id = noble_row[0]
                     update_noble_loyalty_for_event(conn, noble_id, player_faction, event_type, event_season)
-                # Отображаем красивый результат
-                show_result_popup(
-                    title="Проведено!",
-                    message="Мероприятие прошло...",
-                    is_success=True
-                )
+
+                #  Показываем тост-уведомление вместо обычного popup
+                show_toast_notification("Мероприятие проведено!", is_success=True, duration=1.5)
+
                 if callable(refresh_callback):
-                    refresh_callback()
+                    Clock.schedule_once(lambda dt: refresh_callback(), 0.5)
+
             except Exception as e:
                 print(f"Ошибка при проведении мероприятия: {e}")
-                show_result_popup(
-                    title="Ошибка",
-                    message="Произошла ошибка при проведении мероприятия.",
-                    is_success=False
-                )
+                show_toast_notification("Ошибка проведения мероприятия", is_success=False, duration=2)
         else:
-            show_result_popup(
-                title="Ошибка",
-                message="Недостаточно средств для проведения мероприятия.",
-                is_success=False
-            )
-        # -----------------------------------------------
+            show_toast_notification("Недостаточно средств", is_success=False, duration=2)
+
     def on_cancel(instance):
         popup.dismiss()
+
     confirm_btn.bind(on_release=on_confirm)
     cancel_btn.bind(on_release=on_cancel)
+
     btn_layout.add_widget(confirm_btn)
     btn_layout.add_widget(cancel_btn)
-    # Добавляем все элементы в контент
+
     content.add_widget(event_type_label)
     content.add_widget(info_box)
     content.add_widget(btn_layout)
+
     popup.open()
 
 
