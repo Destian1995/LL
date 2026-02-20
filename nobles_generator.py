@@ -767,10 +767,10 @@ def show_secret_service_result_popup(result_dict):
     is_android = hasattr(Window, 'keyboard')
 
     # Адаптивные размеры
-    font_title = sp(18) if not is_android else sp(16)
-    font_message = sp(15) if not is_android else sp(13)
-    padding_main = dp(20) if not is_android else dp(15)
-    spacing_main = dp(10) if not is_android else dp(8)
+    font_title = sp(18) if not is_android else sp(14)
+    font_message = sp(15) if not is_android else sp(11)
+    padding_main = dp(20) if not is_android else dp(13)
+    spacing_main = dp(10) if not is_android else dp(6)
 
     content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
 
