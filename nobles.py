@@ -195,17 +195,6 @@ def show_nobles_window(conn, faction, class_faction):
     main_layout.canvas.before.add(Color(*UIStyles.COLOR_BG))
     main_layout.canvas.before.add(RoundedRectangle(pos=main_layout.pos, size=main_layout.size, radius=[dp(15)]))
 
-    # Заголовок
-    header = Label(
-        text="[b]Совет Дворян[/b]",
-        font_size=sp(UIStyles.get_font_size(22, is_label=True)),
-        color=UIStyles.COLOR_GOLD,
-        markup=True,
-        size_hint_y=None,
-        height=dp(40)
-    )
-    main_layout.add_widget(header)
-
     # Список дворян (ScrollView)
     scroll_view = ScrollView(do_scroll_x=False, size_hint_y=1)
     nobles_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(4))
@@ -576,30 +565,6 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     main_layout = BoxLayout(orientation='vertical', padding=UIStyles.PADDING, spacing=dp(8))
     main_layout.canvas.before.add(Color(*UIStyles.COLOR_BG))
     main_layout.canvas.before.add(RoundedRectangle(pos=main_layout.pos, size=main_layout.size, radius=[dp(15)]))
-
-    # Заголовок
-    header = Label(
-        text="[b]Тайная служба[/b]",
-        font_size=sp(UIStyles.get_font_size(20, is_label=True)),
-        color=UIStyles.COLOR_DANGER,
-        markup=True,
-        size_hint_y=None,
-        height=dp(40),
-        halign='center'
-    )
-    main_layout.add_widget(header)
-
-    # Информация о стоимости
-    cost_info = Label(
-        text=f"Цена: [b]{format_number(COST_SECRET_SERVICE)} крон[/b]",
-        font_size=sp(UIStyles.get_font_size(13, is_label=True)),
-        color=UIStyles.COLOR_TEXT_DIM,
-        markup=True,
-        size_hint_y=None,
-        height=dp(25),
-        halign='center'
-    )
-    main_layout.add_widget(cost_info)
 
     # Список целей
     scroll_view = ScrollView(do_scroll_x=False, size_hint_y=1)
