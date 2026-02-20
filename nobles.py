@@ -239,7 +239,7 @@ def show_nobles_window(conn, faction, class_faction):
     popup.open()
 
 def show_deal_popup(conn, noble_data, cash_player):
-    """Красивое окно сделки"""
+    """Красивое окно сделки с улучшенной проверкой баланса"""
     noble_traits = get_noble_traits(noble_data['ideology'])
     if noble_traits['type'] != 'greed':
         return
@@ -248,9 +248,12 @@ def show_deal_popup(conn, noble_data, cash_player):
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
 
+    # --- УЛУЧШЕННАЯ ПРОВЕРКА БАЛАНСА ---
     if current_money < demand:
-        show_result_popup("Ошибка", "Недостаточно крон!", False)
+        shortage = demand - current_money
+        show_insufficient_funds_popup(demand, current_money, shortage)
         return
+    # -----------------------------------
 
     content = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(10))
 
@@ -307,6 +310,76 @@ def show_deal_popup(conn, noble_data, cash_player):
         background_color=(0, 0, 0, 0.7)
     )
     popup.open()
+
+def show_insufficient_funds_popup(required, current, shortage):
+    """
+    Красивое окно с информацией о недостатке средств.
+    Показывает сколько есть, сколько нужно и сколько не хватает (красным).
+    Авто-закрытие через 1.5 секунды.
+    """
+    is_android = UIStyles.is_android()
+    padding_main = dp(15) if not is_android else dp(10)
+    spacing_main = dp(8) if not is_android else dp(5)
+    font_title = sp(UIStyles.get_font_size(16, is_label=True))
+    font_info = sp(UIStyles.get_font_size(13, is_label=True))
+
+    content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
+
+    # Фон карточки
+    with content.canvas.before:
+        Color(*UIStyles.COLOR_CARD)
+        content.rect = RoundedRectangle(pos=content.pos, size=content.size, radius=[UIStyles.RADIUS])
+
+    def update_rect(instance, value):
+        content.rect.pos = instance.pos
+        content.rect.size = instance.size
+    content.bind(pos=update_rect, size=update_rect)
+
+    # Заголовок
+    title_label = Label(
+        text="[b]⚠ Недостаточно средств[/b]",
+        font_size=font_title,
+        markup=True,
+        halign='center',
+        valign='middle',
+        size_hint_y=None,
+        height=dp(35) if is_android else dp(40),
+        color=UIStyles.COLOR_DANGER
+    )
+
+    # Информация о финансах
+    info_text = (
+        f"[color=aaaaaa]У вас:[/color] [b]{format_number(current)} крон[/b]\n"
+        f"[color=aaaaaa]Нужно:[/color] [b]{format_number(required)} крон[/b]\n"
+        f"[color=ff0000]Не хватает:[/color] [b][color=ff0000]{format_number(shortage)} крон[/color][/b]"
+    )
+
+    info_label = Label(
+        text=info_text,
+        font_size=font_info,
+        markup=True,
+        halign='center',
+        valign='middle',
+        color=UIStyles.COLOR_TEXT
+    )
+    info_label.bind(size=info_label.setter('text_size'))
+
+    content.add_widget(title_label)
+    content.add_widget(info_label)
+
+    popup = Popup(
+        title="",
+        content=content,
+        size_hint=(0.85, 0.35) if not is_android else (0.9, 0.3),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        auto_dismiss=False,
+        background_color=(0, 0, 0, 0.7),
+        separator_height=0
+    )
+
+    popup.open()
+    # Авто-закрытие через 1.0 секунды (без кнопки)
+    Clock.schedule_once(lambda dt: popup.dismiss() if popup._is_open else None, 1.0)
 
 def show_result_popup(title, message, is_success=True):
     """Универсальное окно результата (БЕЗ КНОПОК, авто-скрытие)"""
@@ -413,7 +486,6 @@ def show_event_result_popup(message):
     # Авто-закрытие
     Clock.schedule_once(lambda dt: popup.dismiss() if popup._is_open else None, 2.0)
 
-# ... (Остальные импорты и классы без изменений, кроме CalculateCash и функций ниже)
 
 from nobles_generator import (
     get_all_nobles,
@@ -522,9 +594,13 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
 
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
+
+    # --- УЛУЧШЕННАЯ ПРОВЕРКА БАЛАНСА ---
     if current_money < COST_SECRET_SERVICE:
-        show_result_popup("Ошибка", f"Нужно {format_number(COST_SECRET_SERVICE)}", False)
+        shortage = COST_SECRET_SERVICE - current_money
+        show_insufficient_funds_popup(COST_SECRET_SERVICE, current_money, shortage)
         return
+    # -----------------------------------
 
     events_count = get_events_count_from_history(conn)
 
@@ -566,6 +642,30 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
     main_layout.canvas.before.add(Color(*UIStyles.COLOR_BG))
     main_layout.canvas.before.add(RoundedRectangle(pos=main_layout.pos, size=main_layout.size, radius=[dp(15)]))
 
+    # Заголовок
+    header = Label(
+        text="[b]Тайная служба[/b]",
+        font_size=sp(UIStyles.get_font_size(20, is_label=True)),
+        color=UIStyles.COLOR_DANGER,
+        markup=True,
+        size_hint_y=None,
+        height=dp(40),
+        halign='center'
+    )
+    main_layout.add_widget(header)
+
+    # Информация о стоимости
+    cost_info = Label(
+        text=f"Цена санкции: [b]{format_number(COST_SECRET_SERVICE)} крон[/b]",
+        font_size=sp(UIStyles.get_font_size(13, is_label=True)),
+        color=UIStyles.COLOR_TEXT_DIM,
+        markup=True,
+        size_hint_y=None,
+        height=dp(25),
+        halign='center'
+    )
+    main_layout.add_widget(cost_info)
+
     # Список целей
     scroll_view = ScrollView(do_scroll_x=False, size_hint_y=1)
     nobles_list = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(4))
@@ -598,6 +698,75 @@ def show_secret_service_popup(conn, on_result_callback, cash_player, refresh_mai
 
     refresh_list()
     popup.open()
+
+def show_insufficient_funds_popup(required, current, shortage):
+    """
+    Красивое окно с информацией о недостатке средств.
+    Показывает сколько есть, сколько нужно и сколько не хватает (красным).
+    """
+    is_android = UIStyles.is_android()
+    padding_main = dp(15) if not is_android else dp(10)
+    spacing_main = dp(8) if not is_android else dp(5)
+    font_title = sp(UIStyles.get_font_size(16, is_label=True))
+    font_info = sp(UIStyles.get_font_size(13, is_label=True))
+
+    content = BoxLayout(orientation='vertical', padding=padding_main, spacing=spacing_main)
+
+    # Фон карточки
+    with content.canvas.before:
+        Color(*UIStyles.COLOR_CARD)
+        content.rect = RoundedRectangle(pos=content.pos, size=content.size, radius=[UIStyles.RADIUS])
+
+    def update_rect(instance, value):
+        content.rect.pos = instance.pos
+        content.rect.size = instance.size
+    content.bind(pos=update_rect, size=update_rect)
+
+    # Заголовок
+    title_label = Label(
+        text="[b]Недостаточно средств[/b]",
+        font_size=font_title,
+        markup=True,
+        halign='center',
+        valign='middle',
+        size_hint_y=None,
+        height=dp(35) if is_android else dp(40),
+        color=UIStyles.COLOR_DANGER
+    )
+
+    # Информация о финансах
+    info_text = (
+        f"[color=aaaaaa]У вас:[/color] [b]{format_number(current)} крон[/b]\n"
+        f"[color=aaaaaa]Нужно:[/color] [b]{format_number(required)} крон[/b]\n"
+        f"[color=ff0000]Не хватает:[/color] [b][color=ff0000]{format_number(shortage)} крон[/color][/b]"
+    )
+
+    info_label = Label(
+        text=info_text,
+        font_size=font_info,
+        markup=True,
+        halign='center',
+        valign='middle',
+        color=UIStyles.COLOR_TEXT
+    )
+    info_label.bind(size=info_label.setter('text_size'))
+
+    content.add_widget(title_label)
+    content.add_widget(info_label)
+
+    popup = Popup(
+        title="",
+        content=content,
+        size_hint=(0.85, 0.35) if not is_android else (0.9, 0.3),
+        pos_hint={'center_x': 0.5, 'center_y': 0.5},
+        auto_dismiss=False,
+        background_color=(0, 0, 0, 0.7),
+        separator_height=0
+    )
+
+    popup.open()
+    # Авто-закрытие через 1.5 секунды
+    Clock.schedule_once(lambda dt: popup.dismiss() if popup._is_open else None, 1.5)
 
 class SecretServiceCard(BoxLayout):
     """Карточка цели для Тайной службы (Адаптивная)"""
