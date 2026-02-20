@@ -392,8 +392,8 @@ def check_coup_attempts(conn):
                     generate_new_noble(conn, faction_race)
 
                 conn.commit()
-                message = (f"Переворот! Они прорвались! Уничтожены дворяне: {', '.join(eliminated_names)}.\n "
-                           f"Но оставшиеся прорвались, придется отречься от престола....мы проиграли...")
+                message = (f"Они прорвались! Уничтожены дворяне: {', '.join(eliminated_names)}.\n "
+                           f"Но оставшиеся прорвались, нас заставили отречься от престола....мы ПРОИГРАЛИ...")
                 show_coup_attempt_popup(successful=True, message_override=message)
             else: # Попытка переворота провалилась
                 # Уничтожаем ВСЕХ нелояльных (loyalty < 30) как в случае провала
@@ -412,7 +412,7 @@ def check_coup_attempts(conn):
                 outcome = random.choice(['fear', 'indifferent', 'weakness'])
                 if outcome == 'fear':
                     increase_all_loyalty(conn, 8.0)
-                    message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Оперативность службы вызвала шок, лояльность повысилась на 8%."
+                    message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Оперативность службы вызвала шок, лояльность повысилась на 8%. Кому еще не имется?"
                 elif outcome == 'indifferent':
                     message = f"Попытка переворота провалилась. Уничтожены дворяне: {', '.join(eliminated_names)}. Ну и земля стекловатой, лояльность не изменилась."
                 elif outcome == 'weakness':
@@ -470,7 +470,7 @@ def handle_failed_coup(conn, all_nobles):
 
     if outcome == 'fear':
         increase_all_loyalty(conn, 8.0)
-        message = f"Попытка переворота провалилась. {target_name} убит. Оперативность службы вызвала шок, лояльность повысилась на 8%."
+        message = f"Попытка переворота провалилась. {target_name} убит. Оперативность службы вызвала шок, лояльность повысилась на 8%. Кому еще не имется?"
     elif outcome == 'indifferent':
         message = f"Попытка переворота провалилась. {target_name} убит. Ну и земля стекловатой, лояльность не изменилась."
     elif outcome == 'weakness':
