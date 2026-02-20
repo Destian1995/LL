@@ -281,12 +281,12 @@ def show_deal_popup(conn, noble_data, cash_player):
     def do_pay(*args):
         if cash_player.deduct_resources(demand):
             if pay_greedy_noble(conn, noble_data['id'], demand):
-                show_result_popup("Успех", "Дворянин лоялен вам!...на ближайшие 3 хода..", True)
+                show_result_popup("Успех", "Дворянин лоялен вам...ближайшие 3 мероприятия..", True)
                 popup.dismiss()
             else:
                 show_result_popup("Ошибка", "Сбой транзакции", False)
         else:
-            show_result_popup("Ошибка", "Недостаточно средств", False)
+            show_result_popup("Ошибка", "А где деньги?", False)
 
     btn_pay.bind(on_release=do_pay)
     btn_cancel.bind(on_release=lambda *args: popup.dismiss())
