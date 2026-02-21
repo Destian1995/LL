@@ -243,12 +243,11 @@ def show_deal_popup(conn, noble_data, cash_player):
     noble_traits = get_noble_traits(noble_data['ideology'])
     if noble_traits['type'] != 'greed':
         return
-
     demand = noble_traits['demand']
     cash_player.load_resources()
     current_money = cash_player.resources.get("Кроны", 0)
 
-    # --- УЛУЧШЕННАЯ ПРОВЕРКА БАЛАНСА ---
+    # --- ПРОВЕРКА БАЛАНСА ПЕРЕД ОТКРЫТИЕМ ---
     if current_money < demand:
         shortage = demand - current_money
         show_insufficient_funds_popup(demand, current_money, shortage)
@@ -284,12 +283,15 @@ def show_deal_popup(conn, noble_data, cash_player):
     def do_pay(*args):
         if cash_player.deduct_resources(demand):
             if pay_greedy_noble(conn, noble_data['id'], demand):
-                show_result_popup("Успех", "Дворянин лоялен вам...ближайшие 3 мероприятия..", True)
+                # ИЗМЕНЕНО: Используем тост вместо попапа с заголовком
+                show_toast_notification("Ближайшие 3 мероприятия моя лояльность к Вам будет расти!", is_success=True, duration=1.0)
                 popup.dismiss()
             else:
-                show_result_popup("Ошибка", "Сбой транзакции", False)
+                # ИЗМЕНЕНО: Тост об ошибке
+                show_toast_notification("Опять они мне банк операцию отклонил...", is_success=False, duration=1.5)
         else:
-            show_result_popup("Ошибка", "А где деньги?", False)
+            # ИЗМЕНЕНО: Тост о недостатке средств (вторичная проверка)
+            show_toast_notification("Кажется мой счет заблокировали, попробуйте позже...", is_success=False, duration=1.5)
 
     btn_pay.bind(on_release=do_pay)
     btn_cancel.bind(on_release=lambda *args: popup.dismiss())
