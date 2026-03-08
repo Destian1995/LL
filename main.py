@@ -221,7 +221,7 @@ def clear_tables(conn):
         "interface_coord",
         "hero_equipment",
         "ai_hero_equipment",
-        "effects_seasons",
+        "season",
         "nobles",
         "noble_events",
         "coup_attempts",
@@ -591,20 +591,18 @@ class LoadingScreen(FloatLayout):
 class MapWidget(Widget):
     def __init__(self, selected_kingdom=None, player_kingdom=None, conn=None, **kwargs):
         super(MapWidget, self).__init__(**kwargs)
+        self.previous_city_factions = {}  # ← Добавлено для отслеживания изменений
         self.conn = conn
-        # Храним пары (имя_города, фракция) для отрисовки на canvas
         self.fortress_data_for_canvas = []
-        # Храним виджеты иконок отдельно
         self.fortress_icon_widgets = {}
         self.current_player_kingdom = player_kingdom
         self.player_city_icon_widget = None
-        # Флаг для однократного запуска мигания
         self.has_blinked = False
-
-        # Хранение идентификатора запланированной задачи
         self.update_cities_event = None
+        # === Сезонный оверлей ===
+        self.season_overlay = None
+        self.add_season_overlay()
 
-        # Настройки карты
         self.base_map_width = 1200
         self.base_map_height = 800
         self.map_scale = self.calculate_scale()
@@ -613,35 +611,56 @@ class MapWidget(Widget):
         generate_map_and_cities(self.conn)
         self.random_map_source = self.get_random_map_source()
 
-        # Инициализируем один раз отрисовку
         self.initialize_map()
-
-        # Обновление раз в секунду — как в старом варианте
-        # Сохраняем идентификатор задачи
         self.update_cities_event = Clock.schedule_interval(self.update_cities, 1.0)
 
+    def add_season_overlay(self):
+        """Добавляет сезонный оверлей"""
+        try:
+            self.season_overlay = SeasonalOverlay(self.conn)
+            self.season_overlay.size_hint = (1, 1)
+            self.season_overlay.pos_hint = {'x': 0, 'y': 0}
+            # НЕ добавляем сейчас - сделаем это в on_parent
+            print("[SEASON] Сезонный оверлей создан")
+        except Exception as e:
+            print(f"[ERROR] Не удалось создать сезонный оверлей: {e}")
+            import traceback
+            traceback.print_exc()
+
     def on_parent(self, widget, parent):
-        """
-        Вызывается Kivy при изменении родительского элемента виджета.
-        Используется для отмены задач Clock при удалении виджета.
-        """
-        # Если виджет удаляется (parent становится None)
+        """Обработка удаления/добавления виджета"""
         if parent is None:
-            from kivy.clock import Clock
-            # Отменяем задачу update_cities, если она была запланирована
             if self.update_cities_event:
                 Clock.unschedule(self.update_cities_event)
-            # Сброс ссылки на задачу
-            self.update_cities_event = None
+            if self.season_overlay:
+                self.season_overlay.stop_season_animation()
+        else:
+            # Добавляем оверлей только когда есть parent
+            if self.season_overlay and self.season_overlay.parent is None:
+                parent.add_widget(self.season_overlay)
+                print("[SEASON] Сезонный оверлей добавлен в parent")
 
-    def initialize_map(self, schedule_blink=True):
-        """Первоначальная отрисовка карты, дорог и иконок.
-        Если schedule_blink=False — не планируем мигание (для повторных перерисовок)."""
-        # Пересчёт масштаба/позиции на случай изменения окна
+    # 3. Измените update_cities - НЕ очищайте canvas.after:
+    def update_cities(self, dt=None):
         self.map_scale = self.calculate_scale()
         self.map_pos = self.calculate_centered_position()
+        self.canvas.clear()
+        # УДАЛИТЕ или закомментируйте эту строку:
+        # self.canvas.after.clear()  # ← Это удаляет сезонную анимацию!
 
-        # Полная очистка canvas — будем заново рисовать всё (включая map_image)
+        with self.canvas:
+            Color(1, 1, 1, 1)
+            self.map_image = Rectangle(
+                source=self.random_map_source,
+                pos=self.map_pos,
+                size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
+            )
+        self.draw_roads()
+        self.draw_fortresses()
+
+    def initialize_map(self, schedule_blink=True):
+        self.map_scale = self.calculate_scale()
+        self.map_pos = self.calculate_centered_position()
         self.canvas.clear()
 
         with self.canvas:
@@ -652,44 +671,17 @@ class MapWidget(Widget):
                 size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
             )
 
-        # Рисуем дороги и иконки
         self.draw_roads()
         self.draw_fortresses()
 
-        # Планируем мигание только при первом запуске (или когда явно разрешено)
         if schedule_blink:
             Clock.schedule_once(self._schedule_blink, 0.2)
 
-    def update_cities(self, dt=None):
-        """Полная перерисовка карты раз в секунду (как раньше)."""
-        # На случай изменения окна — пересчёт масштаба и позиции
-        self.map_scale = self.calculate_scale()
-        self.map_pos = self.calculate_centered_position()
-
-        # Полностью чистим canvas и слой after (дороги), но НЕ меняем random_map_source
-        self.canvas.clear()
-        self.canvas.after.clear()
-
-        # Рисуем фон (map_image) заново
-        with self.canvas:
-            Color(1, 1, 1, 1)
-            self.map_image = Rectangle(
-                source=self.random_map_source,
-                pos=self.map_pos,
-                size=(self.base_map_width * self.map_scale, self.base_map_height * self.map_scale)
-            )
-
-        # Рисуем дороги и крепости
-        self.draw_roads()
-        self.draw_fortresses()
-
     def draw_fortresses(self):
-        """Рисует крепости на карте, создавая виджеты Image для каждой иконки."""
-
-        # Очищаем предыдущие виджеты и данные
+        """Рисует крепости на карте с анимацией при смене фракции."""
         self.clear_widgets()
         self.fortress_icon_widgets.clear()
-        self.fortress_data_for_canvas.clear()  # теперь будет хранить и оригинальные координаты
+        self.fortress_data_for_canvas.clear()
 
         faction_images = {
             'Вампиры': 'files/buildings/giperion.png',
@@ -714,6 +706,9 @@ class MapWidget(Widget):
             print("[DEBUG] Нет данных о крепостях в базе данных.")
             return
 
+        # ← Список изменённых городов (ВНЕ основного цикла)
+        changed_cities = []
+
         for row in fortresses_data:
             fortress_name, kingdom, coords_str = row
             try:
@@ -724,18 +719,30 @@ class MapWidget(Widget):
                 print(f"[ERROR] Ошибка разбора координат для '{fortress_name}': {e}")
                 continue
 
-            # Оригинальные (исходные) координаты в пикселях карты (не масштабированные)
             fort_x, fort_y = coords
-
-            # Координаты для рисования (масштаб + смещение)
             drawn_x = fort_x * self.map_scale + self.map_pos[0]
             drawn_y = fort_y * self.map_scale + self.map_pos[1]
 
-            # --- Создание виджета иконки ---
+            # --- Проверка изменения фракции ---
+            previous_faction = self.previous_city_factions.get(fortress_name)
             image_path = faction_images.get(kingdom, 'files/buildings/default.png')
+
             if not os.path.exists(image_path):
                 image_path = 'files/buildings/default.png'
 
+            # ← Если фракция изменилась — добавляем в список
+            if previous_faction is not None and previous_faction != kingdom:
+                changed_cities.append({
+                    'name': fortress_name,
+                    'new_image': image_path,
+                    'pos': (drawn_x, drawn_y),
+                    'old_faction': previous_faction,
+                    'new_faction': kingdom
+                })
+
+            self.previous_city_factions[fortress_name] = kingdom
+
+            # --- Создание виджета иконки ---
             icon_widget = Image(
                 source=image_path,
                 size=(77, 77),
@@ -747,40 +754,34 @@ class MapWidget(Widget):
             self.fortress_icon_widgets[fortress_name] = icon_widget
 
             # --- Сохраняем данные для кликов ---
-            self.fortress_data_for_canvas.append((fortress_name, kingdom, fort_x, fort_y, drawn_x, drawn_y))
+            self.fortress_data_for_canvas.append((fortress_name, kingdom, fort_x, fort_y, drawn_x, drawn_y))  # ← Исправлена скобка
 
             # --- Рисуем название города с обводкой ---
             display_name = f"{fortress_name}({kingdom})"
 
-            # Создаем CoreLabel для основного текста
-            label = CoreLabel(text=display_name, font_size=25, color=(1, 1, 1, 1))  # Черный цвет текста
+            label = CoreLabel(text=display_name, font_size=25, color=(1, 1, 1, 1))
             label.refresh()
             text_texture = label.texture
             text_width, text_height = text_texture.size
 
-            # Позиционирование текста
             text_x = drawn_x + (40 - text_width) / 2
             text_y = drawn_y - text_height - 5
 
-            # Толщина обводки (в пикселях)
             outline_width = 2
 
-            with self.canvas:
-                # 1. Рисуем обводку (контур) - 8 направлений
-                Color(1, 1, 1, 1)  # Белый цвет обводки
-                # Смещения для создания эффекта обводки
+            with self.canvas:  # ← Исправлены отступы
+                Color(1, 1, 1, 1)
                 offsets = [
-                    (-outline_width, -outline_width),  # нижний левый
-                    (-outline_width, 0),  # левый
-                    (-outline_width, outline_width),  # верхний левый
-                    (0, outline_width),  # верхний
-                    (outline_width, outline_width),  # верхний правый
-                    (outline_width, 0),  # правый
-                    (outline_width, -outline_width),  # нижний правый
-                    (0, -outline_width)  # нижний
+                    (-outline_width, -outline_width),
+                    (-outline_width, 0),
+                    (-outline_width, outline_width),
+                    (0, outline_width),
+                    (outline_width, outline_width),
+                    (outline_width, 0),
+                    (outline_width, -outline_width),
+                    (0, -outline_width)
                 ]
 
-                # Рисуем обводку в 8 направлениях
                 for offset_x, offset_y in offsets:
                     Rectangle(
                         texture=text_texture,
@@ -788,26 +789,61 @@ class MapWidget(Widget):
                         size=(text_width, text_height)
                     )
 
-                # 2. Рисуем основной текст поверх обводки
-                Color(0, 0, 0, 1)  # Черный цвет основного текста
+                Color(0, 0, 0, 1)
                 Rectangle(
                     texture=text_texture,
                     pos=(text_x, text_y),
                     size=(text_width, text_height)
                 )
 
-            # --- Обновляем icon_coordinates в БД ---
-            try:
-                cursor2 = self.conn.cursor()
+        # ← Запуск анимаций (ВНЕ цикла по городам)
+        for city_data in changed_cities:
+            Clock.schedule_once(
+                lambda dt, data=city_data: self.animate_city_capture(data),
+                0.05
+            )
+
+        # --- Обновляем icon_coordinates в БД ---
+        try:
+            cursor2 = self.conn.cursor()
+            for fortress_name, _, _, _, drawn_x, drawn_y in self.fortress_data_for_canvas:
                 cursor2.execute(
                     "UPDATE cities SET icon_coordinates = ? WHERE name = ?",
                     (str([drawn_x, drawn_y]), fortress_name)
                 )
-                self.conn.commit()
-            except sqlite3.Error as e:
-                print(f"[DB ERROR] Не удалось обновить icon_coordinates для {fortress_name}: {e}")
-            finally:
-                cursor2.close()
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"[DB ERROR] Не удалось обновить icon_coordinates: {e}")
+        finally:
+            cursor2.close()
+
+    def animate_city_capture(self, city_data):
+        """Анимация вспышки при захвате города."""
+        icon_widget = self.fortress_icon_widgets.get(city_data['name'])
+        if not icon_widget:
+            return
+
+        print(f"[ANIMATION] Запуск вспышки для города {city_data['name']} "
+              f"({city_data['old_faction']} → {city_data['new_faction']})")
+
+        # ← Исправлено: opacity + scale для эффекта "вспышки"
+        anim = Animation(
+            opacity=0.4,
+            duration=0.1
+        ) & Animation(
+            size=(90, 90),  # Увеличение иконки
+            duration=0.1
+        )
+
+        anim += Animation(
+            opacity=1.0,
+            duration=0.15
+        ) & Animation(
+            size=(77, 77),  # Возврат к норме
+            duration=0.15
+        )
+
+        anim.start(icon_widget)
 
     def find_and_set_player_city_icon(self):
         """Ищет и устанавливает ссылку на виджет иконки города игрока."""
@@ -1530,7 +1566,7 @@ class KingdomSelectionWidget(MDFloatLayout):
 
         # Надпись рядом с чекбоксом
         tutorial_text = MDLabel(
-            text="ОБУЧЕНИЕ(Рекомендуется: Эльфы, Борьба, 2 союзника)",
+            text="ОБУЧЕНИЕ(Рекомендуется: 2 союзника)",
             font_style="Caption",
             theme_text_color="Custom",
             text_color=(0.9, 0.9, 0.9, 1),
@@ -1915,9 +1951,6 @@ class RoundedButton(Button):
 
 
 from kivy.graphics import Color, RoundedRectangle, Line, Ellipse, Rectangle
-from kivy.graphics.context_instructions import PushMatrix, PopMatrix
-from kivy.animation import Animation
-from kivy.clock import Clock
 from kivy.properties import ListProperty, NumericProperty, BooleanProperty
 import math
 import random
@@ -3396,6 +3429,289 @@ class Lor(Screen):
         app.root.clear_widgets()
         app.root.add_widget(MenuWidget(self.conn))
 
+
+from kivy.animation import Animation
+from kivy.clock import Clock
+from kivy.graphics import Color, Rectangle, Rotate, Scale
+from kivy.graphics.context_instructions import PushMatrix, PopMatrix
+import random
+import math
+
+
+class SeasonalOverlay(FloatLayout):
+    """Оверлей для сезонных анимаций"""
+
+    SEASON_NAMES = ['Зима', 'Весна', 'Лето', 'Осень']
+    SEASON_ICONS = {
+        'Зима': 'files/status/icons/icon_for_animate/season 1.png',
+        'Весна': 'files/status/icons/icon_for_animate/season 2.png',
+        'Лето': None,  # Генерируем лучи
+        'Осень': 'files/status/icons/icon_for_animate/season 4.png'
+    }
+
+    def __init__(self, conn, **kwargs):
+        super(SeasonalOverlay, self).__init__(**kwargs)
+        self.conn = conn
+        self.current_season = None
+        self.particles = []
+        self.sun_rays = []
+        self.animation_event = None
+        self.season_update_event = None
+
+        # Настройки частиц
+        self.max_particles = {
+            'Зима': 30,  # Редкий снег
+            'Весна': 25,  # Листья слева направо
+            'Лето': 0,  # Лучи света
+            'Осень': 40  # Падающие листья
+        }
+
+        # Инициализация
+        self.load_current_season()
+        self.start_season_animation()
+
+    def load_current_season(self):
+        """Загружает текущий сезон из БД"""
+        season_data = self.get_current_season_from_db(self.conn)
+        if season_data:
+            old_season = self.current_season
+            self.current_season = season_data['name']
+
+            if old_season != self.current_season:
+                print(f"[SEASON] Смена сезона: {old_season} → {self.current_season}")
+                self.recreate_particles()
+        else:
+            # ← Если сезон не определён — отключаем анимацию
+            print("[SEASON] Сезон не определён в БД — анимация отключена")
+            self.current_season = None
+            self.clear_season_animation()
+
+    def clear_season_animation(self):
+        """Очищает все частицы и лучи"""
+        self.particles.clear()
+        self.sun_rays.clear()
+        self.canvas.after.clear()
+
+    def recreate_particles(self):
+        """Пересоздаёт частицы для текущего сезона"""
+        self.particles.clear()
+        self.sun_rays.clear()
+
+        # ← Если сезона нет — ничего не создаём
+        if not self.current_season:
+            self.canvas.after.clear()
+            return
+
+        if self.current_season == 'Лето':
+            self.create_sun_rays()
+        else:
+            self.create_season_particles()
+
+    def update_animation(self, dt):
+        """Обновляет анимацию каждый кадр"""
+        self.canvas.after.clear()
+
+        # ← Если сезона нет — пропускаем отрисовку
+        if not self.current_season:
+            return
+
+        if self.current_season == 'Лето':
+            self.update_sun_rays()
+        else:
+            self.update_particles()
+
+    def get_current_season_from_db(self, conn):
+        """Получает текущий сезон из БД"""
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT current_season, season_index FROM season WHERE id = 1")
+            result = cursor.fetchone()
+            if result:
+                return {'name': result[0], 'index': result[1]}
+            return None
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при получении сезона из БД: {e}")
+            return None
+
+    def start_season_animation(self):
+        """Запускает анимацию сезона"""
+        self.recreate_particles()
+        # Обновление каждые 0.03 секунды (30 FPS)
+        self.animation_event = Clock.schedule_interval(self.update_animation, 0.03)
+        # Проверка смены сезона каждые 5 секунд
+        self.season_update_event = Clock.schedule_interval(
+            lambda dt: self.load_current_season(), 5.0
+        )
+
+    def stop_season_animation(self):
+        """Останавливает анимацию"""
+        if self.animation_event:
+            Clock.unschedule(self.animation_event)
+            self.animation_event = None
+        if self.season_update_event:
+            Clock.unschedule(self.season_update_event)
+            self.season_update_event = None
+
+    def create_season_particles(self):
+        """Создаёт частицы для Зимы/Весны/Осени"""
+        max_count = self.max_particles.get(self.current_season, 20)
+
+        for i in range(max_count):
+            particle = self.create_particle(i)
+            self.particles.append(particle)
+
+    def create_particle(self, index):
+        """Создаёт одну частицу"""
+        if self.current_season == 'Зима':
+            return {
+                'x': random.uniform(0, Window.width),
+                'y': random.uniform(0, Window.height),
+                'speed_y': random.uniform(-20, -5),  # Падает вниз
+                'speed_x': random.uniform(-5, 5),  # Лёгкий ветер
+                'size': random.uniform(23, 36),
+                'opacity': random.uniform(0.4, 0.8),
+                'rotation': 0,
+                'rotation_speed': random.uniform(-10, 10),
+                'image': self.SEASON_ICONS['Зима']
+            }
+
+        elif self.current_season == 'Весна':
+            return {
+                'x': random.uniform(-50, 0),  # Начинают слева
+                'y': random.uniform(0, Window.height),
+                'speed_x': random.uniform(30, 60),  # Летят вправо
+                'speed_y': random.uniform(-10, 10),
+                'size': random.uniform(25, 35),
+                'opacity': random.uniform(0.5, 0.9),
+                'rotation': random.uniform(0, 360),
+                'rotation_speed': random.uniform(-30, 30),
+                'image': self.SEASON_ICONS['Весна']
+            }
+
+        elif self.current_season == 'Осень':
+            return {
+                'x': random.uniform(0, Window.width),
+                'y': random.uniform(Window.height, Window.height + 50),  # Начинают сверху
+                'speed_y': random.uniform(-40, -20),  # Быстрее падают
+                'speed_x': random.uniform(-15, 15),  # Сильный ветер
+                'size': random.uniform(30, 35),
+                'opacity': random.uniform(0.6, 0.95),
+                'rotation': random.uniform(0, 360),
+                'rotation_speed': random.uniform(-50, 50),
+                'image': self.SEASON_ICONS['Осень']
+            }
+
+        return {}
+
+    def create_sun_rays(self):
+        """Создаёт лучи света для Лета — много тонких лучей"""
+        num_rays = 80  # Огромное количество
+        center_x = Window.width  # Правый край
+        center_y = Window.height  # Верхний край
+
+        for i in range(num_rays):
+            # Базовый угол в диапазоне 180-270 градусов (правый верхний квадрант)
+            base_angle = random.uniform(190, 260)  # Чуть уже чем 180-270 для запаса
+            length = random.uniform(300, 600)
+            width = random.uniform(1, 3)  # Очень тонкие
+
+            self.sun_rays.append({
+                'center_x': center_x,
+                'center_y': center_y,
+                'base_angle': base_angle,  # Базовый угол
+                'current_angle': base_angle,  # Текущий угол
+                'length': length,
+                'width': width,
+                'opacity': random.uniform(0.08, 0.20),
+                'oscillation_speed': random.uniform(0.09, 0.2),  # Скорость колебания
+                'oscillation_amplitude': random.uniform(15, 35),  # Амплитуда качания (градусы)
+                'pulse_phase': random.uniform(0, math.pi * 2),
+                'oscillation_phase': random.uniform(0, math.pi * 2)  # Фаза колебания
+            })
+
+    def update_sun_rays(self):
+        """Обновляет и рисует солнечные лучи с колебанием туда-обратно"""
+        time = Clock.get_time()
+
+        with self.canvas.after:
+            for ray in self.sun_rays:
+                # Пульсация яркости
+                pulse = math.sin(time * 2 + ray['pulse_phase']) * 0.1 + 0.2
+                ray['opacity'] = pulse
+
+                # Колебание угла туда-обратно (синусоида)
+                # Лучи качаются в пределах base_angle ± amplitude
+                oscillation = math.sin(time * ray['oscillation_speed'] + ray['oscillation_phase'])
+                ray['current_angle'] = ray['base_angle'] + (oscillation * ray['oscillation_amplitude'])
+
+                # Ограничиваем угол в пределах 180-270 градусов (чтобы не уходили за экран)
+                ray['current_angle'] = max(180, min(270, ray['current_angle']))
+
+                # Вычисление конца луча
+                rad = math.radians(ray['current_angle'])
+                end_x = ray['center_x'] + math.cos(rad) * ray['length']
+                end_y = ray['center_y'] + math.sin(rad) * ray['length']
+
+                # Отрисовка луча
+                Color(1, 0.9, 0.3, ray['opacity'])  # Золотистый цвет
+
+                PushMatrix()
+                Rotate(angle=ray['current_angle'], origin=(ray['center_x'], ray['center_y']))
+                Rectangle(
+                    pos=(ray['center_x'], ray['center_y'] - ray['width'] / 2),
+                    size=(ray['length'], ray['width'])
+                )
+                PopMatrix()
+
+    def update_particles(self):
+        """Обновляет и рисует частицы"""
+        with self.canvas.after:
+            for particle in self.particles:
+                # Обновление позиции
+                particle['x'] += particle.get('speed_x', 0) * 0.03
+                particle['y'] += particle.get('speed_y', 0) * 0.03
+                particle['rotation'] += particle.get('rotation_speed', 0) * 0.03
+
+                # Респаун частиц
+                self.respawn_particle(particle)
+
+                # Отрисовка
+                Color(1, 1, 1, particle['opacity'])
+
+                # Загрузка текстуры
+                texture = CoreImage(particle['image']).texture
+
+                PushMatrix()
+                Rotate(angle=particle['rotation'], origin=(particle['x'], particle['y']))
+                Rectangle(
+                    texture=texture,
+                    pos=(particle['x'] - particle['size'] / 2,
+                         particle['y'] - particle['size'] / 2),
+                    size=(particle['size'], particle['size'])
+                )
+                PopMatrix()
+
+    def respawn_particle(self, particle):
+        """Возвращает частицу в начало пути при выходе за границы"""
+        if self.current_season == 'Зима':
+            if particle['y'] < -10:
+                particle['y'] = Window.height + 10
+                particle['x'] = random.uniform(0, Window.width)
+
+        elif self.current_season == 'Весна':
+            if particle['x'] > Window.width + 50:
+                particle['x'] = -50
+                particle['y'] = random.uniform(0, Window.height)
+
+        elif self.current_season == 'Осень':
+            if particle['y'] < -50:
+                particle['y'] = Window.height + 50
+                particle['x'] = random.uniform(0, Window.width)
+
+    def on_parent(self, instance, parent):
+        """Очистка при удалении"""
+        if parent is None:
+            self.stop_season_animation()
 
 class Lerdon(MDApp):
     def __init__(self, **kwargs):

@@ -480,7 +480,7 @@ def workshop(faction, db_conn):
         tokens_info.add_widget(used_label)
 
         cost_label = Label(
-            text=f"Стоимость: {format_number(int((current_attack * 400) + (current_defense * 600)))} крон",
+            text=f"Стоимость: {format_number(int((current_attack * 600) + (current_defense * 800)))} крон",
             font_size=font_small,
             color=(0.9, 0.9, 0.9, 1),
             size_hint_y=None,
@@ -521,7 +521,7 @@ def workshop(faction, db_conn):
         attack_header.add_widget(attack_value_label)
 
         attack_cost_label = Label(
-            text=f"{int(current_attack * 400)} крон",
+            text=f"{int(current_attack * 600)} крон",
             font_size=font_small,
             color=(0.7, 0.9, 0.7, 1),
             size_hint_x=0.55,
@@ -577,7 +577,7 @@ def workshop(faction, db_conn):
         defense_header.add_widget(defense_value_label)
 
         defense_cost_label = Label(
-            text=f"{int(current_defense * 600)} крон",
+            text=f"{int(current_defense * 800)} крон",
             font_size=font_small,
             color=(0.7, 0.9, 0.7, 1),
             size_hint_x=0.55,
@@ -687,15 +687,15 @@ def workshop(faction, db_conn):
             # Обновляем отображение
             attack_value_label.text = f"{attack_val}%"
             defense_value_label.text = f"{defense_val}%"
-            attack_cost_label.text = f"{int(attack_val * 400)} крон"
-            defense_cost_label.text = f"{int(defense_val * 600)} крон"
+            attack_cost_label.text = f"{int(attack_val * 600)} крон"
+            defense_cost_label.text = f"{int(defense_val * 800)} крон"
 
             # Расчет жетонов
             tokens_used, tokens_a, tokens_d = calculate_tokens(attack_val, defense_val)
             used_label.text = f"Использовано: {tokens_used:.1f} (Атака: {tokens_a:.1f}, Защита: {tokens_d:.1f})"
 
             # Расчет стоимости
-            total_cost = (attack_val * 400) + (defense_val * 600)
+            total_cost = (attack_val * 600) + (defense_val * 800)
             cost_label.text = f"Стоимость: {format_number(int(total_cost))} крон"
 
             # Валидация бюджета
@@ -893,8 +893,8 @@ def workshop(faction, db_conn):
         defense_bonus = current_data['defense']
 
         # Фиксированные коэффициенты как требуется
-        attack_cost = abs(attack_bonus) * 0.4 * 1000  # 400 крон за 1%
-        defense_cost = abs(defense_bonus) * 0.6 * 1000  # 600 крон за 1%
+        attack_cost = abs(attack_bonus) * 0.6 * 1000  # 600 крон за 1%
+        defense_cost = abs(defense_bonus) * 0.8 * 1000  # 800 крон за 1%
         base_cost = attack_cost + defense_cost
 
         # Сезонные модификаторы (без изменений)

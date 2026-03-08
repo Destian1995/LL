@@ -82,6 +82,16 @@ def transform_filename(file_path):
 class ImageButton(ButtonBehavior, Image):
     pass
 
+
+from kivy.animation import Animation
+from kivy.uix.popup import Popup
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.graphics import Color, Rectangle, RoundedRectangle, Line
+from kivy.metrics import dp, sp
+
+
 class BlinkingImageButton(ImageButton):
     """ImageButton с поддержкой мигания."""
 
@@ -651,11 +661,61 @@ class GameScreen(Screen):
         self.scheduled_events['update_army_rating'] = Clock.schedule_interval(self.update_army_rating, 1)
         self.diplomacy_ai_factory = None  # Фабрика ИИ дипломатии
 
+        # === Отслеживание дипломатии ===
+        self.prev_diplomacy_state = {}  # Храним предыдущее состояние отношений
+        self.war_notification_shown = False  # Флаг чтобы не показывать дважды
+
     def init_ai_controllers(self):
         """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
         for faction in FACTIONS:
             if faction != self.selected_faction:
                 self.ai_controllers[faction] = AIController(faction, self.conn, self.season_manager)
+
+    def check_diplomacy_changes(self):
+        """
+        Проверяет изменения в дипломатических отношениях.
+        Если обнаружено новое объявление войны - показывает уведомление.
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT faction1, faction2, relationship 
+                FROM diplomacies 
+                WHERE faction1 = ? OR faction2 = ?
+            """, (self.selected_faction, self.selected_faction))
+
+            current_state = {}
+            new_wars = []
+
+            for row in cursor.fetchall():
+                faction1, faction2, relationship = row
+                # Определяем кто является другой фракцией
+                other_faction = faction2 if faction1 == self.selected_faction else faction1
+                key = f"{self.selected_faction}_{other_faction}"
+
+                current_state[key] = relationship
+
+                # Проверяем не появилось ли новое состояние "война"
+                if relationship == 'война':
+                    prev_state = self.prev_diplomacy_state.get(key)
+                    # Если раньше не было войны или было другое отношение
+                    if prev_state != 'война':
+                        new_wars.append(other_faction)
+
+            # Если есть новые войны - показываем уведомление
+            if new_wars and not self.war_notification_shown:
+                self.show_war_declaration_popup(new_wars)
+                self.war_notification_shown = True
+
+            # Сохраняем текущее состояние для следующего сравнения
+            self.prev_diplomacy_state = current_state
+
+        except sqlite3.Error as e:
+            print(f"[ERROR] Ошибка при проверке дипломатии: {e}")
+
+    def reset_war_notification_flag(self):
+        """Сбрасывает флаг уведомления (вызывать при начале нового хода)"""
+        self.war_notification_shown = False
 
     def save_selected_faction_to_db(self):
         conn = self.conn
@@ -955,6 +1015,8 @@ class GameScreen(Screen):
         """
         Обработка хода игрока и ИИ.
         """
+        # === ПРОВЕРКА НОВЫХ ОБЪЯВЛЕНИЙ ВОЙНЫ ===
+        self.check_diplomacy_changes()
         # Увеличиваем счетчик ходов
         self.turn_counter += 1
         # Обновляем метку с текущим ходом
@@ -1042,6 +1104,8 @@ class GameScreen(Screen):
             print("Генерация события...")
             self.event_manager.generate_event(self.turn_counter)
 
+        # Сбрасываем флаг уведомления для следующего хода
+        self.reset_war_notification_flag()
         print(f"Ход {self.turn_counter} завершён")
 
     def ensure_rebellion_ai_controller(self):
@@ -1053,6 +1117,7 @@ class GameScreen(Screen):
         if rebellion_exists and 'Мятежники' not in self.ai_controllers:
             print("Фракция 'Мятежники' обнаружена в городах. Создаём AIController.")
             self.ai_controllers['Мятежники'] = AIController('Мятежники', self.conn)
+
 
     def get_city_data(self):
         """Получает стратегически важные данные о городах для ИИ"""
@@ -1823,6 +1888,143 @@ class GameScreen(Screen):
         btn_no.bind(on_release=popup.dismiss)
 
         popup.open()
+
+    def show_war_declaration_popup(self, enemy_factions):
+        """
+        Показывает красивое уведомление об объявлении войны.
+        :param enemy_factions: Список фракций, объявивших войну
+        """
+        from kivy.animation import Animation
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from kivy.uix.button import Button
+        from kivy.graphics import Color, RoundedRectangle, Line
+        from kivy.metrics import dp, sp
+
+        print(f"[WAR] Объявлена война от: {', '.join(enemy_factions)}")
+        title_text = f"[color=#FF4444]ВОЙНА![/color]"
+        message_text = f"[b]{enemy_factions[0]}[/b] объявили вам войну!\nГотовьтесь к битве, Ваше Величество!"
+
+        # === Создаём основной контейнер ===
+        content = BoxLayout(
+            orientation='vertical',
+            padding=[dp(20), dp(20), dp(20), dp(20)],
+            spacing=dp(15),
+            size_hint=(1, 1)
+        )
+
+        # === Заголовок с анимацией ===
+        title_label = Label(
+            text=title_text,
+            font_size=sp(32),
+            markup=True,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(60)
+        )
+        title_label.bind(size=title_label.setter('text_size'))
+        content.add_widget(title_label)
+
+        # === Иконка войны (мечи) ===
+        war_icon = Label(
+            text="!!!",
+            font_size=sp(80),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(100)
+        )
+        content.add_widget(war_icon)
+
+        # === Текст сообщения ===
+        message_label = Label(
+            text=message_text,
+            font_size=sp(20),
+            markup=True,
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(80)
+        )
+        message_label.bind(size=message_label.setter('text_size'))
+        content.add_widget(message_label)
+
+        # === Кнопка подтверждения ===
+        ok_button = Button(
+            text="[b]Сейчас они получат...[/b]",
+            font_size=sp(18),
+            markup=True,
+            size_hint=(1, None),
+            height=dp(50),
+            background_normal='',
+            background_color=(0.6, 0.1, 0.1, 1),
+            color=(1, 1, 1, 1)
+        )
+
+        # === Создаём Popup ===
+        popup = Popup(
+            title='',
+            content=content,
+            size_hint=(0.7, 0.6),
+            auto_dismiss=False,
+            background_color=(0.2, 0.05, 0.05, 0.95),
+            separator_height=0
+        )
+
+        # === Анимация появления ===
+        def start_popup_animation():
+            # Пульсация заголовка
+            title_anim = Animation(color=(1, 0.3, 0.3, 1), duration=0.5) + \
+                         Animation(color=(1, 1, 1, 1), duration=0.5)
+            title_anim.repeat = True
+            title_anim.start(title_label)
+
+            # Тряска иконки
+            shake_anim = Animation(x=5, duration=0.1) + \
+                         Animation(x=-5, duration=0.1) + \
+                         Animation(x=5, duration=0.1) + \
+                         Animation(x=-5, duration=0.1) + \
+                         Animation(x=0, duration=0.1)
+            shake_anim.repeat = True
+            shake_anim.start(war_icon)
+
+        # === Закрытие popup ===
+        def on_ok_pressed(instance):
+            popup.dismiss()
+            print("[WAR] Уведомление о войне закрыто")
+
+        ok_button.bind(on_press=on_ok_pressed)
+        content.add_widget(ok_button)
+
+        # === Отрисовка рамки с эффектом свечения ===
+        def draw_glow_border(instance, value):
+            instance.canvas.before.clear()
+            with instance.canvas.before:
+                # Внешнее свечение
+                Color(1, 0.2, 0.2, 0.3)
+                RoundedRectangle(
+                    pos=(instance.x - 3, instance.y - 3),
+                    size=(instance.width + 6, instance.height + 6),
+                    radius=[15]
+                )
+                # Основная рамка
+                Color(0.8, 0.1, 0.1, 0.9)
+                RoundedRectangle(
+                    pos=instance.pos,
+                    size=instance.size,
+                    radius=[12]
+                )
+
+        popup.bind(pos=draw_glow_border, size=draw_glow_border)
+
+        # === Показываем popup ===
+        popup.open()
+
+        # === Запускаем анимации ===
+        from kivy.clock import Clock
+        Clock.schedule_once(lambda dt: start_popup_animation(), 0.1)
 
     def initialize_political_data(self):
         """
@@ -2773,16 +2975,10 @@ class GameScreen(Screen):
             message=(
                 "[b]Экономика[/b]\n\n"
                 "Здесь вы управляете:\n"
-                "• Уровнем налогов(Налоги) - обратите внимание влияет на рост населения, больше населения больше "
-                "налогов и потребления кристаллов\n"
+                "• Уровнем налогов(Налоги)\n"
                 "• Выбираете режим строительства(Развитие)\n"
-                "• Покупкой/продажей кристаллов(Рынок) - обязательно продавайте излишки кристаллов на первых ходах "
-                "чтобы заработать денег на постройку армии для захвата городов\n"
-                "• Созданием и покупкой артефактов для героев(Мастерская и Артефакты)\n"
-                "Первое с чего начните на 1-м ходе перейдите в Развитие и сразу нажмите 'Применить' там уже будет "
-                "выбран "
-                "стандартный режим Баланс, что позволит вести вам сбалансированную экономику. Когда научитесь играть "
-                "можете экспериментировать с другими режимами"
+                "• Покупкой/продажей кристаллов(Рынок)\n"
+                "• Созданием и покупкой артефактов для героев(Мастерская и Артефакты)"
             ),
             arrow_direction='right',
             on_next=lambda: self.on_step1_next(),
@@ -2816,18 +3012,7 @@ class GameScreen(Screen):
                 "1 - обычные юниты\n"
                 "2 - слабые герои, усиливают обычных юнитов, но не носят артефакты\n"
                 "3 - основные герои, усиливают обычных юнитов могут и должны носить артефакты\n"
-                "4 - сильные герои, сильны сами по себе, никого не усиливают и не носят артефакты\n"
-                "После того как наняли "
-                "не забудьте нажать на карте на один из своих городов "
-                " и выбрать кнопку 'Разместить армию' "
-                "А чтобы перемещать войска между городами "
-                "Выберите ближайший вражеский или любой из своих "
-                "и нажмите 'Ввести войска' "
-                "нажмите 'создать группу(1-3 класс)' и 'Отправить группу в город' "
-                "если город вражеский и в нем есть гарнизон начнется битва "
-                "НЕ ПОСЫЛАЙТЕ НА ВРАЖЕСКИЙ ГАРНИЗОН АРМИЮ БЕЗ ГЕРОЯ!"
-
-
+                "4 - сильные герои, сильны сами по себе, никого не усиливают и не носят артефакты"
             ),
             arrow_direction='right',
             on_next=lambda: self.on_step2_next(),
@@ -2855,16 +3040,8 @@ class GameScreen(Screen):
             message=(
                 "[b]Политика[/b]\n\n"
                 "Важно следить за тем что происходит в Совете, если Совет будет не лоялен к Вашей персоне, "
-                "то тогда Вас могут свергнуть и игра будет"
-                " проиграна:\n"
-                " Желательно на 10-12 ходах переходить во вкладку 'Совет' и следить что там творится, для этого:\n"
-                "После перехода на вкладку нажмите 'Провести мероприятие', его стоимость может меняться в зависимости"
-                " от сезона\n"
-                "По мере того как вы проводите мероприятия вы видите кто постоянно посещает их, а кто нет\n"
-                "Когда накопите больше 140 тыс. крон, вы сможете открыть вкладку 'Тайная служба', там вам покажут кто "
-                "лоялен к вам и кто каких взглядов придерживается.\n"
-                "Если выхода нет или у вас много денег, вы можете устранить неугодных вам советников, к ним на смену "
-                "придут другие, возможно более лояльные к вам."
+                "то тогда Вас могут свергнуть.\n"
+                "Проводите мероприятия и отслеживайте лояльность дворян во вкладке тайная служба"
             ),
             arrow_direction='right',
             on_next=lambda: self.on_step3_next(),
