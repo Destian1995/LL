@@ -595,7 +595,9 @@ class GameScreen(Screen):
             'different': 'files/status/ideology/un_red.png'     # Другая (Смирение)
         }
     }
-    def __init__(self, selected_faction, cities, conn=None, player_ideology=None, player_allies=None, tutorial_enabled=False, **kwargs):
+
+    def __init__(self, selected_faction, cities, conn=None, player_ideology=None,
+                 player_allies=None, tutorial_enabled=False, **kwargs):
         super(GameScreen, self).__init__(**kwargs)
         self.selected_faction = selected_faction
         self.cities = cities
@@ -606,11 +608,14 @@ class GameScreen(Screen):
         self.tutorial_enabled = tutorial_enabled
         self.current_tutorial_step = 0
         self.current_hint = None
+
         # --- Словарь для хранения таймеров ---
         self.scheduled_events = {}
+
         # Инициализация GameStateManager
         self.game_state_manager = GameStateManager(self.conn)
         self.game_state_manager.initialize(selected_faction)
+
         # Доступ к объектам через менеджер состояния
         self.faction = self.game_state_manager.faction
         self.conn = self.game_state_manager.conn
@@ -619,51 +624,62 @@ class GameScreen(Screen):
 
         # Сохраняем текущую фракцию игрока
         self.save_selected_faction_to_db()
+
         # Инициализация политических данных
         self.initialize_political_data()
         self.prev_diplomacy_state = {}
+
         # Инициализируем таблицу season
         self.season_manager = SeasonManager()
-        self.initialize_season_table(self.conn)
-        # Инициализация AI-контроллеров
-        self.ai_controllers = {}
-        # === Инициализация ИИ ===
-        self.init_ai_controllers()
-        # Инициализация EventManager
-        self.event_manager = EventManager(self.selected_faction, self, self.game_state_manager.faction, self.conn)
 
-        # Получаем текущий сезон из БД или устанавливаем случайный
+        # 1. СНАЧАЛА инициализируем таблицу (создаёт случайный сезон если нет)
+        self.initialize_season_table(self.conn)
+
+        # 2. ПОТОМ получаем сезон из БД
         current_season_data = self.get_current_season_from_db(self.conn)
         if current_season_data:
             self.current_idx = current_season_data['index']
+            print(f"[SEASON] Загружен сезон из БД: {current_season_data['name']} (индекс: {self.current_idx})")
         else:
+            # Если вдруг всё ещё нет (ошибка) — генерируем случайный
             self.current_idx = random.randint(0, 3)
-            # Сохраняем начальный сезон в БД
             self.update_season_in_db(
                 self.conn,
                 self.SEASON_NAMES[self.current_idx],
                 self.current_idx
             )
-        # Инициализация UI
-        self.is_android = platform == 'android'
-        self.current_idx = random.randint(0, 3)
+            print(f"[SEASON] Создан новый случайный сезон: {self.SEASON_NAMES[self.current_idx]}")
+
+        # 3. Инициализируем ИИ
+        self.ai_controllers = {}
+        self.init_ai_controllers()
+
+        # 4. Инициализация EventManager
+        self.event_manager = EventManager(self.selected_faction, self, self.game_state_manager.faction, self.conn)
+
+        # 5. Формируем данные для UI на основе сезона из БД
         current_season = {
             'name': self.SEASON_NAMES[self.current_idx],
             'icon': self.SEASON_ICONS[self.current_idx]
         }
+
+        # 6. Инициализация UI
+        self.is_android = platform == 'android'
         self.init_ui()
         self._update_season_display(current_season)
         self.season_manager.update(self.current_idx, self.conn)
+
         # Инициализация дворян
         self.initialize_nobles()
+
         # --- Сохраняем объекты таймеров ---
         self.scheduled_events['update_cash'] = Clock.schedule_interval(self.update_cash, 1)
         self.scheduled_events['update_army_rating'] = Clock.schedule_interval(self.update_army_rating, 1)
-        self.diplomacy_ai_factory = None  # Фабрика ИИ дипломатии
+        self.diplomacy_ai_factory = None
 
         # === Отслеживание дипломатии ===
-        self.prev_diplomacy_state = {}  # Храним предыдущее состояние отношений
-        self.war_notification_shown = False  # Флаг чтобы не показывать дважды
+        self.prev_diplomacy_state = {}
+        self.war_notification_shown = False
 
     def init_ai_controllers(self):
         """Создание контроллеров ИИ для каждой фракции кроме выбранной"""
@@ -1015,8 +1031,6 @@ class GameScreen(Screen):
         """
         Обработка хода игрока и ИИ.
         """
-        # === ПРОВЕРКА НОВЫХ ОБЪЯВЛЕНИЙ ВОЙНЫ ===
-        self.check_diplomacy_changes()
         # Увеличиваем счетчик ходов
         self.turn_counter += 1
         # Обновляем метку с текущим ходом
@@ -1068,7 +1082,7 @@ class GameScreen(Screen):
         # Проверяем, есть ли Мятежники в городах, и создаём ИИ для них
         self.ensure_rebellion_ai_controller()
 
-        # Обновляем данные перед выполнением ходов ИИ
+        # Ход ИИ
         for faction_name, ai_controller in self.ai_controllers.items():
             ai_controller.make_turn()
 
@@ -1103,7 +1117,8 @@ class GameScreen(Screen):
         if self.turn_counter % self.event_now == 0:
             print("Генерация события...")
             self.event_manager.generate_event(self.turn_counter)
-
+        # === ПРОВЕРКА НОВЫХ ОБЪЯВЛЕНИЙ ВОЙНЫ ===
+        self.check_diplomacy_changes()
         # Сбрасываем флаг уведомления для следующего хода
         self.reset_war_notification_flag()
         print(f"Ход {self.turn_counter} завершён")
@@ -1637,19 +1652,32 @@ class GameScreen(Screen):
     def initialize_season_table(self, conn):
         """
         Создает таблицу season для хранения текущего сезона.
+        Если таблица пуста — инициализирует СЛУЧАЙНЫМ сезоном.
         """
         try:
             cursor = conn.cursor()
-            # Если таблица пуста, вставляем начальные данные
-            cursor.execute("SELECT COUNT(*) FROM season")
-            if cursor.fetchone()[0] == 0:
-                cursor.execute("""
-                    INSERT INTO season (id, current_season, season_index) 
-                    VALUES (1, ?, 0)
-                """, (self.SEASON_NAMES[0],))
 
-            conn.commit()
-            print("[SEASON] Таблица season инициализирована.")
+            # Проверяем, есть ли запись о сезоне
+            cursor.execute("SELECT COUNT(*) FROM season WHERE id = 1")
+            count = cursor.fetchone()[0]
+
+            if count == 0:
+                # ← СЛУЧАЙНЫЙ СЕЗОН (не по реальному времени!)
+                import random
+                season_index = random.randint(0, 3)  # 0=Зима, 1=Весна, 2=Лето, 3=Осень
+                season_name = self.SEASON_NAMES[season_index]
+
+                cursor.execute("""
+                INSERT INTO season (id, current_season, season_index)
+                VALUES (1, ?, ?)
+                """, (season_name, season_index))
+                conn.commit()
+                print(f"[SEASON] Таблица season инициализирована. Случайный сезон: {season_name}")
+            else:
+                # Сезон уже есть в БД — получаем его
+                cursor.execute("SELECT current_season, season_index FROM season WHERE id = 1")
+                result = cursor.fetchone()
+                print(f"[SEASON] Сезон загружен из БД: {result[0]} (индекс: {result[1]})")
 
         except sqlite3.Error as e:
             print(f"[ERROR] Ошибка при инициализации таблицы season: {e}")
@@ -1894,12 +1922,11 @@ class GameScreen(Screen):
         Показывает красивое уведомление об объявлении войны.
         :param enemy_factions: Список фракций, объявивших войну
         """
-        from kivy.animation import Animation
         from kivy.uix.popup import Popup
         from kivy.uix.boxlayout import BoxLayout
         from kivy.uix.label import Label
         from kivy.uix.button import Button
-        from kivy.graphics import Color, RoundedRectangle, Line
+        from kivy.graphics import Color, RoundedRectangle
         from kivy.metrics import dp, sp
 
         print(f"[WAR] Объявлена война от: {', '.join(enemy_factions)}")
@@ -1926,17 +1953,6 @@ class GameScreen(Screen):
         )
         title_label.bind(size=title_label.setter('text_size'))
         content.add_widget(title_label)
-
-        # === Иконка войны (мечи) ===
-        war_icon = Label(
-            text="!!!",
-            font_size=sp(80),
-            halign='center',
-            valign='middle',
-            size_hint_y=None,
-            height=dp(100)
-        )
-        content.add_widget(war_icon)
 
         # === Текст сообщения ===
         message_label = Label(
@@ -1972,24 +1988,6 @@ class GameScreen(Screen):
             background_color=(0.2, 0.05, 0.05, 0.95),
             separator_height=0
         )
-
-        # === Анимация появления ===
-        def start_popup_animation():
-            # Пульсация заголовка
-            title_anim = Animation(color=(1, 0.3, 0.3, 1), duration=0.5) + \
-                         Animation(color=(1, 1, 1, 1), duration=0.5)
-            title_anim.repeat = True
-            title_anim.start(title_label)
-
-            # Тряска иконки
-            shake_anim = Animation(x=5, duration=0.1) + \
-                         Animation(x=-5, duration=0.1) + \
-                         Animation(x=5, duration=0.1) + \
-                         Animation(x=-5, duration=0.1) + \
-                         Animation(x=0, duration=0.1)
-            shake_anim.repeat = True
-            shake_anim.start(war_icon)
-
         # === Закрытие popup ===
         def on_ok_pressed(instance):
             popup.dismiss()
@@ -2022,9 +2020,7 @@ class GameScreen(Screen):
         # === Показываем popup ===
         popup.open()
 
-        # === Запускаем анимации ===
-        from kivy.clock import Clock
-        Clock.schedule_once(lambda dt: start_popup_animation(), 0.1)
+
 
     def initialize_political_data(self):
         """
@@ -2686,11 +2682,11 @@ class GameScreen(Screen):
                 crystal_icon_count = 0  # По умолчанию - 0 иконок
                 if kf_crystal_val is not None:
                     kf_val = float(kf_crystal_val)
-                    if 1.0 <= kf_val < 1.1:
+                    if 1.0 <= kf_val < 1.2:
                         crystal_icon_count = 1
-                    elif 1.1 <= kf_val < 2.3:
+                    elif 1.8 <= kf_val < 3.0:
                         crystal_icon_count = 2
-                    elif kf_val >= 2.3:
+                    elif kf_val >= 3.0:
                         crystal_icon_count = 3
                 else:
                     print(f"Предупреждение: kf_crystal для города {city_name} равен NULL.")
