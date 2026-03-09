@@ -1062,23 +1062,6 @@ class GameScreen(Screen):
         self.resource_box.update_resources(delta=delta_resources)
         self.faction.save_resources_to_db()
 
-        # Проверяем условие завершения игры
-        game_continues, reason = self.faction.end_game()  # Получаем статус и причину завершения
-        if not game_continues:
-            print("Условия завершения игры выполнены.")
-
-            # Определяем статус завершения (win или lose)
-            if "Мир во всем мире" in reason or "Все фракции были уничтожены" in reason:
-                status = "win"  # Условия победы
-            else:
-                status = "lose"  # Условия поражения
-
-            # Запускаем модуль results_game для обработки результатов
-            results_game_instance = ResultsGame(status, reason, self.conn)
-            results_game_instance.show_results(self.selected_faction, status, reason)
-            App.get_running_app().restart_app()
-            return  # Прерываем выполнение дальнейших действий
-
         # Проверяем, есть ли Мятежники в городах, и создаём ИИ для них
         self.ensure_rebellion_ai_controller()
 
@@ -1121,6 +1104,22 @@ class GameScreen(Screen):
         self.check_diplomacy_changes()
         # Сбрасываем флаг уведомления для следующего хода
         self.reset_war_notification_flag()
+        # Проверяем условие завершения игры
+        game_continues, reason = self.faction.end_game()  # Получаем статус и причину завершения
+        if not game_continues:
+            print("Условия завершения игры выполнены.")
+
+            # Определяем статус завершения (win или lose)
+            if "Мир во всем мире" in reason or "Все фракции были уничтожены" in reason:
+                status = "win"  # Условия победы
+            else:
+                status = "lose"  # Условия поражения
+
+            # Запускаем модуль results_game для обработки результатов
+            results_game_instance = ResultsGame(status, reason, self.conn)
+            results_game_instance.show_results(self.selected_faction, status, reason)
+            App.get_running_app().restart_app()
+            return  # Прерываем выполнение дальнейших действий
         print(f"Ход {self.turn_counter} завершён")
 
     def ensure_rebellion_ai_controller(self):
