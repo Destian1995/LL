@@ -1760,16 +1760,10 @@ def open_build_popup(faction):
 
 
 def open_trade_popup(game_instance):
+
     game_instance.get_resources()
     game_instance.generate_raw_material_price()
 
-    root = BoxLayout(
-        orientation='vertical',
-        padding=dp(20),
-        spacing=dp(15)
-    )
-
-    # === РАСЧЕТ ЛИМИТОВ ===
     current_price = game_instance.current_raw_material_price
     crowns = game_instance.resources.get("Кроны", 0)
 
@@ -1779,217 +1773,190 @@ def open_trade_popup(game_instance):
     slider_min = -max_sell_lots
     slider_max = max_buy_lots
 
-    crystals_available = game_instance.resources.get("Кристаллы", 0)
+    crystals = game_instance.resources.get("Кристаллы", 0)
 
-    # === БЛОК ЦЕНЫ ===
-    prev_price = game_instance.raw_material_price_history[-2] if len(
-        game_instance.raw_material_price_history) > 1 else current_price
+    root = BoxLayout(
+        orientation="vertical",
+        padding=dp(15),
+        spacing=dp(12)
+    )
 
-    arrow_color = (0, 1, 0, 1) if current_price > prev_price else \
-        (1, 0, 0, 1) if current_price < prev_price else (1, 1, 1, 1)
+    # ================= PRICE =================
 
-    price_card = BoxLayout(
-        orientation='vertical',
-        size_hint=(1, None),
-        height=dp(80),
-        padding=dp(10)
+    price_layout = BoxLayout(
+        orientation="vertical",
+        size_hint_y=None,
+        height=dp(60)
     )
 
     price_label = Label(
         text=f"[b]{format_number(current_price)} крон[/b]",
         markup=True,
         font_size=sp(28),
-        color=arrow_color,
-        halign="center"
+        halign="center",
+        valign="middle"
     )
-    price_label.bind(size=price_label.setter('text_size'))
+    price_label.bind(size=price_label.setter("text_size"))
 
-    price_sub = Label(
-        text="Цена за 1 лот",
+    sub_price = Label(
+        text="Цена за лот",
         font_size=sp(14),
-        color=(0.8, 0.8, 0.8, 1)
+        color=(0.7,0.7,0.7,1)
     )
 
-    price_card.add_widget(price_label)
-    price_card.add_widget(price_sub)
+    price_layout.add_widget(price_label)
+    price_layout.add_widget(sub_price)
 
-    root.add_widget(price_card)
+    root.add_widget(price_layout)
 
-    # === БЛОК РЕСУРСОВ ===
-    resource_card = BoxLayout(
-        orientation='horizontal',
-        size_hint=(1, None),
-        height=dp(60),
+    # ================= SELL ALL =================
+
+    sell_layout = BoxLayout(
+        size_hint_y=None,
+        height=dp(45),
         spacing=dp(10)
     )
 
-    crowns_label = Label(
-        text=f"[b]Кроны[/b]\n{format_number(crowns)}",
-        markup=True,
-        halign="center",
-        font_size=sp(16)
-    )
-    crowns_label.bind(size=crowns_label.setter('text_size'))
-
-    crystals_label = Label(
-        text=f"[b]Кристаллы[/b]\n{format_number(crystals_available)}",
-        markup=True,
-        halign="center",
-        font_size=sp(16)
-    )
-    crystals_label.bind(size=crystals_label.setter('text_size'))
-
-    lots_label = Label(
-        text=f"[b]Лоты[/b]\n{max_sell_lots}",
-        markup=True,
-        halign="center",
-        font_size=sp(16)
-    )
-    lots_label.bind(size=lots_label.setter('text_size'))
-
-    resource_card.add_widget(crowns_label)
-    resource_card.add_widget(crystals_label)
-    resource_card.add_widget(lots_label)
-
-    root.add_widget(resource_card)
-
-    # === ЧЕКБОКС ПРОДАТЬ ВСЁ ===
-    sell_all_layout = BoxLayout(
-        orientation='horizontal',
-        size_hint=(1, None),
-        height=dp(40),
-        spacing=dp(10)
+    sell_all_checkbox = CheckBox(
+        size_hint=(None,None),
+        size=(dp(30),dp(30))
     )
 
-    sell_all_checkbox = CheckBox(size_hint=(None, None), size=(dp(30), dp(30)))
-
-    sell_all_label = Label(
+    sell_label = Label(
         text="Продать все",
-        font_size=sp(16),
-        halign="left"
+        halign="left",
+        valign="middle"
     )
+    sell_label.bind(size=sell_label.setter("text_size"))
 
-    sell_all_layout.add_widget(sell_all_checkbox)
-    sell_all_layout.add_widget(sell_all_label)
-    sell_all_layout.add_widget(Widget())
+    sell_layout.add_widget(sell_all_checkbox)
+    sell_layout.add_widget(sell_label)
 
-    root.add_widget(sell_all_layout)
+    root.add_widget(sell_layout)
 
-    # === ИНФОРМАЦИЯ О СДЕЛКЕ ===
+    # ================= INFO =================
+
     trade_info_label = Label(
         text="Нет операции",
         font_size=sp(20),
-        bold=True,
-        size_hint=(1, None),
+        size_hint_y=None,
         height=dp(40),
-        halign="center"
+        halign="center",
+        valign="middle"
     )
-    trade_info_label.bind(size=trade_info_label.setter('text_size'))
+    trade_info_label.bind(size=trade_info_label.setter("text_size"))
 
     root.add_widget(trade_info_label)
 
-    # === СЛАЙДЕР ===
+    # ================= SLIDER =================
+
     trade_slider = Slider(
         min=slider_min,
         max=slider_max,
         value=0,
         step=1,
-        size_hint=(1, None),
+        size_hint_y=None,
         height=dp(60)
     )
 
     root.add_widget(trade_slider)
 
-    # === КНОПКИ ===
-    button_layout = BoxLayout(
-        spacing=dp(15),
-        size_hint=(1, None),
-        height=dp(70)
+    # ================= BUTTONS =================
+
+    buttons = BoxLayout(
+        size_hint_y=None,
+        height=dp(65),
+        spacing=dp(10)
     )
 
     buy_btn = Button(
         text="КУПИТЬ",
+        background_normal="",
+        background_color=(0.15,0.6,0.25,1),
         font_size=sp(18),
-        bold=True,
-        background_normal='',
-        background_color=(0.1, 0.7, 0.3, 1),
         disabled=True
     )
 
     sell_btn = Button(
         text="ПРОДАТЬ",
+        background_normal="",
+        background_color=(0.8,0.2,0.2,1),
         font_size=sp(18),
-        bold=True,
-        background_normal='',
-        background_color=(0.8, 0.2, 0.2, 1),
         disabled=True
     )
 
-    button_layout.add_widget(buy_btn)
-    button_layout.add_widget(sell_btn)
+    buttons.add_widget(buy_btn)
+    buttons.add_widget(sell_btn)
 
-    root.add_widget(button_layout)
+    root.add_widget(buttons)
 
-    # === ЛОГИКА СЛАЙДЕРА ===
-    def update_slider_label(instance, value):
+    # ================= SLIDER LOGIC =================
+
+    def update_slider(instance,value):
 
         if sell_all_checkbox.active:
             return
 
-        val = int(value)
+        val=int(value)
 
-        if val > 0:
-            trade_info_label.text = f"Купить {val} лотов"
-            trade_info_label.color = (0, 1, 0, 1)
-        elif val < 0:
-            trade_info_label.text = f"Продать {abs(val)} лотов"
-            trade_info_label.color = (1, 0, 0, 1)
+        if val>0:
+            trade_info_label.text=f"Купить {val}"
+            trade_info_label.color=(0,1,0,1)
+
+        elif val<0:
+            trade_info_label.text=f"Продать {abs(val)}"
+            trade_info_label.color=(1,0,0,1)
+
         else:
-            trade_info_label.text = "Нет операции"
-            trade_info_label.color = (1, 1, 1, 1)
+            trade_info_label.text="Нет операции"
+            trade_info_label.color=(1,1,1,1)
 
-        buy_btn.disabled = val <= 0
-        sell_btn.disabled = val >= 0
+        buy_btn.disabled = val<=0
+        sell_btn.disabled = val>=0
 
-    trade_slider.bind(value=update_slider_label)
+    trade_slider.bind(value=update_slider)
 
-    # === ПРОДАТЬ ВСЁ ===
-    def on_sell_all_toggle(instance, value):
+    # ================= SELL ALL =================
+
+    def toggle_all(instance,value):
 
         if value:
-            trade_slider.disabled = True
-            trade_slider.value = -max_sell_lots
-            trade_info_label.text = f"Продать ВСЁ ({max_sell_lots})"
-            trade_info_label.color = (1, 0, 0, 1)
 
-            buy_btn.disabled = True
-            sell_btn.disabled = False
+            trade_slider.disabled=True
+            trade_slider.value=-max_sell_lots
+
+            trade_info_label.text=f"Продать ВСЁ ({max_sell_lots})"
+            trade_info_label.color=(1,0,0,1)
+
+            buy_btn.disabled=True
+            sell_btn.disabled=False
 
         else:
-            trade_slider.disabled = False
-            trade_slider.value = 0
-            update_slider_label(None, 0)
 
-    sell_all_checkbox.bind(active=on_sell_all_toggle)
+            trade_slider.disabled=False
+            trade_slider.value=0
 
-    # === ПОПАП ===
+    sell_all_checkbox.bind(active=toggle_all)
+
+    # ================= POPUP =================
+
     popup = Popup(
-        title="Рынок кристаллов",
+        title="Рынок",
         content=root,
-        size_hint=(0.95, 0.85)
+        size_hint=(0.95,0.8),
+        auto_dismiss=True
     )
 
-    # === ОБРАБОТЧИКИ ===
     def on_press_wrapper(action):
 
         def handler(instance):
 
             if sell_all_checkbox.active:
-                quantity = max_sell_lots
+                quantity=max_sell_lots
             else:
-                quantity = abs(int(trade_slider.value))
+                quantity=abs(int(trade_slider.value))
 
-            handle_trade(game_instance, action, quantity, popup)
+            handle_trade(game_instance,action,quantity,popup)
 
         return handler
 
