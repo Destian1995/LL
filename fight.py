@@ -1,4 +1,39 @@
 from db_lerdon_connect import *
+import random
+
+# Константы для типов войск
+UNIT_TYPE_INFANTRY = "Пехота"
+UNIT_TYPE_ARCHER = "Стрелки"
+UNIT_TYPE_CAVALRY = "Кавалерия"
+UNIT_TYPE_SIEGE = "Осадные"
+
+# Матрица эффективности (атакующий тип -> защищающийся тип -> множитель урона)
+TYPE_EFFECTIVENESS = {
+    UNIT_TYPE_INFANTRY: {
+        UNIT_TYPE_INFANTRY: 1.0,
+        UNIT_TYPE_ARCHER: 1.2,      # Пехота эффективна против стрелков
+        UNIT_TYPE_CAVALRY: 0.8,     # Пехота слаба против кавалерии
+        UNIT_TYPE_SIEGE: 1.3,       # Пехота эффективна против осадных
+    },
+    UNIT_TYPE_ARCHER: {
+        UNIT_TYPE_INFANTRY: 0.9,
+        UNIT_TYPE_ARCHER: 1.0,
+        UNIT_TYPE_CAVALRY: 0.7,     # Стрелки слабы против кавалерии
+        UNIT_TYPE_SIEGE: 1.4,       # Стрелки эффективны против осадных
+    },
+    UNIT_TYPE_CAVALRY: {
+        UNIT_TYPE_INFANTRY: 1.3,    # Кавалерия эффективна против пехоты
+        UNIT_TYPE_ARCHER: 1.4,      # Кавалерия очень эффективна против стрелков
+        UNIT_TYPE_CAVALRY: 1.0,
+        UNIT_TYPE_SIEGE: 1.5,       # Кавалерия разрушительна против осадных
+    },
+    UNIT_TYPE_SIEGE: {
+        UNIT_TYPE_INFANTRY: 0.7,    # Осадные слабы против пехоты
+        UNIT_TYPE_ARCHER: 0.8,      # Осадные слабы против стрелков
+        UNIT_TYPE_CAVALRY: 0.6,     # Осадные очень слабы против кавалерии
+        UNIT_TYPE_SIEGE: 1.0,
+    }
+}
 
 
 def merge_units(army):
@@ -694,6 +729,96 @@ def get_unit_class(unit):
     return int(unit['units_stats'].get('Класс юнита', '1'))
 
 
+def get_unit_type_from_db(unit_name, conn=None):
+    """
+    Получает тип юнита (Пехота, Стрелки, Кавалерия, Осадные) из базы данных.
+    :param unit_name: Имя юнита.
+    :param conn: Соединение с базой данных.
+    :return: Тип юнита как строка.
+    """
+    if not conn:
+        return UNIT_TYPE_INFANTRY
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT unit_type FROM units WHERE unit_name = ?", (unit_name,))
+        result = cursor.fetchone()
+        cursor.close()
+        if result and result[0]:
+            return result[0]
+    except Exception as e:
+        print(f"[WARNING] Не удалось получить тип юнита {unit_name}: {e}")
+    
+    return UNIT_TYPE_INFANTRY
+
+
+def get_type_effectiveness(attacker_type, defender_type):
+    """
+    Получает множитель урона на основе взаимодействия типов войск.
+    :param attacker_type: Тип атакующего юнита.
+    :param defender_type: Тип защищающегося юнита.
+    :return: Множитель урона (float).
+    """
+    if attacker_type in TYPE_EFFECTIVENESS:
+        return TYPE_EFFECTIVENESS[attacker_type].get(defender_type, 1.0)
+    return 1.0
+
+
+def calculate_artifact_bonuses_for_hero(hero_name, conn):
+    """
+    Рассчитывает суммарные бонусы от артефактов для героя.
+    :param hero_name: Имя героя.
+    :param conn: Соединение с базой данных.
+    :return: dict с бонусами {'attack': X, 'defense': Y, 'durability': Z}
+    """
+    bonuses = {'attack': 0, 'defense': 0, 'durability': 0}
+    
+    if not conn:
+        return bonuses
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Проверяем обе таблицы экипировки
+        for table in ['hero_equipment', 'ai_hero_equipment']:
+            cursor.execute(f"""
+                SELECT artifact_id FROM {table} 
+                WHERE hero_name = ? AND artifact_id IS NOT NULL
+            """, (hero_name,))
+            
+            for (artifact_id,) in cursor.fetchall():
+                cursor.execute("""
+                    SELECT attack, defense FROM artifacts WHERE id = ?
+                """, (artifact_id,))
+                result = cursor.fetchone()
+                
+                if result:
+                    atk, df = result
+                    bonuses['attack'] += atk if atk else 0
+                    bonuses['defense'] += df if df else 0
+        
+        # Проверяем artifact_effects_log для сезонных бонусов
+        cursor.execute("""
+            SELECT stat_name, value_change FROM artifact_effects_log 
+            WHERE hero_name = ?
+        """, (hero_name,))
+        
+        for stat_name, value_change in cursor.fetchall():
+            if stat_name == 'attack':
+                bonuses['attack'] += value_change
+            elif stat_name == 'defense':
+                bonuses['defense'] += value_change
+            elif stat_name == 'durability':
+                bonuses['durability'] += value_change
+        
+        cursor.close()
+        
+    except Exception as e:
+        print(f"[WARNING] Ошибка при расчете бонусов артефактов для {hero_name}: {e}")
+    
+    return bonuses
+
+
 def calculate_army_power(army):
     """
     Рассчитывает общую силу армии.
@@ -708,22 +833,65 @@ def calculate_army_power(army):
     return total_power
 
 
-def calculate_unit_power(unit, is_attacking):
+def calculate_unit_power(unit, is_attacking, conn=None):
     """
-    Рассчитывает силу одного юнита.
+    Рассчитывает силу одного юнита с учетом типа войска и бонусов.
     :param unit: Данные о юните (словарь с характеристиками).
     :param is_attacking: True, если юнит атакующий; False, если защитный.
+    :param conn: Соединение с базой данных для получения типа войска.
     :return: Сила юнита (float).
     """
+    base_attack = unit['units_stats']['Урон']
+    base_durability = unit['units_stats']['Живучесть']
+    base_defense = unit['units_stats']['Защита']
+    
+    # Получаем тип юнита
+    unit_type = get_unit_type_from_db(unit['unit_name'], conn)
+    
     if is_attacking:
-        # Для атакующих юнитов
-        attack = unit['units_stats']['Урон']
-        return attack
+        # Для атакующих: базовый урон + возможные бонусы
+        power = base_attack
+        
+        # Добавляем бонус живучести как дополнительный фактор для героев
+        unit_class = get_unit_class(unit)
+        if unit_class >= 2:
+            power += base_durability * 0.3  # 30% от живучести добавляется к силе атаки
+        
+        return power
     else:
-        # Для защитных юнитов
-        durability = unit['units_stats']['Живучесть']
-        defense = unit['units_stats']['Защита']
-        return durability + defense
+        # Для защитных: живучесть + защита
+        power = base_durability + base_defense
+        
+        # Герои получают дополнительный бонус к защите
+        unit_class = get_unit_class(unit)
+        if unit_class >= 2:
+            power += base_attack * 0.2  # 20% от атаки добавляется к защите
+        
+        return power
+
+
+def calculate_unit_power_with_matchup(attacker, defender, conn=None):
+    """
+    Рассчитывает эффективность атаки с учетом взаимодействия типов войск.
+    :param attacker: Атакующий юнит.
+    :param defender: Защищающийся юнит.
+    :param conn: Соединение с базой данных.
+    :return: tuple (effective_attack, type_multiplier)
+    """
+    # Получаем типы войск
+    attacker_type = get_unit_type_from_db(attacker['unit_name'], conn)
+    defender_type = get_unit_type_from_db(defender['unit_name'], conn)
+    
+    # Получаем множитель эффективности
+    type_multiplier = get_type_effectiveness(attacker_type, defender_type)
+    
+    # Базовая сила атаки
+    base_attack = calculate_unit_power(attacker, is_attacking=True, conn=conn)
+    
+    # Эффективная атака с учетом типа
+    effective_attack = base_attack * type_multiplier
+    
+    return effective_attack, type_multiplier
 
 
 def update_garrisons_after_battle(winner, attacking_city, defending_city,
