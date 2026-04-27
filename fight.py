@@ -1,5 +1,22 @@
 from db_lerdon_connect import *
 import random
+from battle_enhancements import (
+    ENHANCED_TYPE_EFFECTIVENESS, 
+    ELEMENT_EFFECTIVENESS,
+    get_type_effectiveness_enhanced,
+    get_element_effectiveness,
+    calculate_ability_modifier,
+    apply_status_effects,
+    ABILITY_CRITICAL_HIT,
+    ABILITY_DODGE,
+    ABILITY_VAMPIRISM,
+    ABILITY_FIRST_STRIKE,
+    ABILITY_DOUBLE_ATTACK,
+    ABILITY_ARMOR_PIERCE,
+    ABILITY_BERSERK,
+    STATUS_POISONED,
+    STATUS_STUNNED,
+)
 
 # Константы для типов войск
 UNIT_TYPE_INFANTRY = "Пехота"
@@ -8,32 +25,8 @@ UNIT_TYPE_CAVALRY = "Кавалерия"
 UNIT_TYPE_SIEGE = "Осадные"
 
 # Матрица эффективности (атакующий тип -> защищающийся тип -> множитель урона)
-TYPE_EFFECTIVENESS = {
-    UNIT_TYPE_INFANTRY: {
-        UNIT_TYPE_INFANTRY: 1.0,
-        UNIT_TYPE_ARCHER: 1.2,      # Пехота эффективна против стрелков
-        UNIT_TYPE_CAVALRY: 0.8,     # Пехота слаба против кавалерии
-        UNIT_TYPE_SIEGE: 1.3,       # Пехота эффективна против осадных
-    },
-    UNIT_TYPE_ARCHER: {
-        UNIT_TYPE_INFANTRY: 0.9,
-        UNIT_TYPE_ARCHER: 1.0,
-        UNIT_TYPE_CAVALRY: 0.7,     # Стрелки слабы против кавалерии
-        UNIT_TYPE_SIEGE: 1.4,       # Стрелки эффективны против осадных
-    },
-    UNIT_TYPE_CAVALRY: {
-        UNIT_TYPE_INFANTRY: 1.3,    # Кавалерия эффективна против пехоты
-        UNIT_TYPE_ARCHER: 1.4,      # Кавалерия очень эффективна против стрелков
-        UNIT_TYPE_CAVALRY: 1.0,
-        UNIT_TYPE_SIEGE: 1.5,       # Кавалерия разрушительна против осадных
-    },
-    UNIT_TYPE_SIEGE: {
-        UNIT_TYPE_INFANTRY: 0.7,    # Осадные слабы против пехоты
-        UNIT_TYPE_ARCHER: 0.8,      # Осадные слабы против стрелков
-        UNIT_TYPE_CAVALRY: 0.6,     # Осадные очень слабы против кавалерии
-        UNIT_TYPE_SIEGE: 1.0,
-    }
-}
+# Используем улучшенную матрицу из battle_enhancements.py
+TYPE_EFFECTIVENESS = ENHANCED_TYPE_EFFECTIVENESS
 
 
 def merge_units(army):
@@ -835,7 +828,7 @@ def calculate_army_power(army):
 
 def calculate_unit_power(unit, is_attacking, conn=None):
     """
-    Рассчитывает силу одного юнита с учетом типа войска и бонусов.
+    Рассчитывает силу одного юнита с учетом типа войска, элементов и способностей.
     :param unit: Данные о юните (словарь с характеристиками).
     :param is_attacking: True, если юнит атакующий; False, если защитный.
     :param conn: Соединение с базой данных для получения типа войска.
@@ -848,14 +841,35 @@ def calculate_unit_power(unit, is_attacking, conn=None):
     # Получаем тип юнита
     unit_type = get_unit_type_from_db(unit['unit_name'], conn)
     
+    # Получаем элемент и способности из БД
+    element = None
+    abilities = []
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT element, abilities FROM units WHERE unit_name = ?", (unit['unit_name'],))
+            result = cursor.fetchone()
+            if result:
+                element = result[0]
+                if result[1]:
+                    abilities = result[1].split(',')
+            cursor.close()
+        except Exception as e:
+            print(f"[WARNING] Не удалось получить элемент/способности для {unit['unit_name']}: {e}")
+    
+    # Базовый расчет
     if is_attacking:
-        # Для атакующих: базовый урон + возможные бонусы
         power = base_attack
         
-        # Добавляем бонус живучести как дополнительный фактор для героев
+        # Добавляем бонус живучести для героев
         unit_class = get_unit_class(unit)
         if unit_class >= 2:
-            power += base_durability * 0.3  # 30% от живучести добавляется к силе атаки
+            power += base_durability * 0.3
+        
+        # Применяем множитель от способностей
+        context = {'health_percent': 100, 'is_first_turn': True}
+        modifiers = calculate_ability_modifier(abilities, [], context)
+        power *= modifiers.get('damage_mult', 1.0)
         
         return power
     else:
@@ -865,33 +879,55 @@ def calculate_unit_power(unit, is_attacking, conn=None):
         # Герои получают дополнительный бонус к защите
         unit_class = get_unit_class(unit)
         if unit_class >= 2:
-            power += base_attack * 0.2  # 20% от атаки добавляется к защите
+            power += base_attack * 0.2
         
         return power
 
 
 def calculate_unit_power_with_matchup(attacker, defender, conn=None):
     """
-    Рассчитывает эффективность атаки с учетом взаимодействия типов войск.
+    Рассчитывает эффективность атаки с учетом взаимодействия типов войск и элементов.
     :param attacker: Атакующий юнит.
     :param defender: Защищающийся юнит.
     :param conn: Соединение с базой данных.
-    :return: tuple (effective_attack, type_multiplier)
+    :return: tuple (effective_attack, type_multiplier, element_multiplier)
     """
     # Получаем типы войск
     attacker_type = get_unit_type_from_db(attacker['unit_name'], conn)
     defender_type = get_unit_type_from_db(defender['unit_name'], conn)
     
-    # Получаем множитель эффективности
-    type_multiplier = get_type_effectiveness(attacker_type, defender_type)
+    # Получаем элементы
+    attacker_element = None
+    defender_element = None
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT element FROM units WHERE unit_name = ?", (attacker['unit_name'],))
+            result = cursor.fetchone()
+            if result:
+                attacker_element = result[0]
+            
+            cursor.execute("SELECT element FROM units WHERE unit_name = ?", (defender['unit_name'],))
+            result = cursor.fetchone()
+            if result:
+                defender_element = result[0]
+            cursor.close()
+        except Exception as e:
+            print(f"[WARNING] Не удалось получить элементы: {e}")
+    
+    # Получаем множитель эффективности типов (используем улучшенную функцию)
+    type_multiplier = get_type_effectiveness_enhanced(attacker_type, defender_type)
+    
+    # Получаем множитель эффективности элементов
+    element_multiplier = get_element_effectiveness(attacker_element, defender_element)
     
     # Базовая сила атаки
     base_attack = calculate_unit_power(attacker, is_attacking=True, conn=conn)
     
-    # Эффективная атака с учетом типа
-    effective_attack = base_attack * type_multiplier
+    # Эффективная атака с учетом типа и элемента
+    effective_attack = base_attack * type_multiplier * element_multiplier
     
-    return effective_attack, type_multiplier
+    return effective_attack, type_multiplier, element_multiplier
 
 
 def update_garrisons_after_battle(winner, attacking_city, defending_city,
